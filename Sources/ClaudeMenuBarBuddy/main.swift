@@ -795,19 +795,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                 attributes: [.foregroundColor: NSColor.secondaryLabelColor, .font: NSFont.systemFont(ofSize: 11)]
             )
         }
+        let stale = planUsageIsStale
         if let fh = usage.fiveHourPct {
-            fiveHourLineItem.attributedTitle = NSAttributedString(
-                string: "5-hour limit: \(bar(fh)) \(fh)%",
-                attributes: [.foregroundColor: thresholdColor(fh), .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)]
-            )
-            checkThreshold(pct: fh, label: "5-hour limit", lastNotified: notifiedFiveHour) { self.notifiedFiveHour = $0 }
+            updateLimitLine(fiveHourLineItem, label: "5-hour limit", pct: fh, stale: stale)
+            if !stale {
+                checkThreshold(pct: fh, label: "5-hour limit", lastNotified: notifiedFiveHour) { self.notifiedFiveHour = $0 }
+            }
         }
         if let sd = usage.weeklyPct {
-            weeklyLineItem.attributedTitle = NSAttributedString(
-                string: "Weekly limit: \(bar(sd)) \(sd)%",
-                attributes: [.foregroundColor: thresholdColor(sd), .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)]
-            )
-            checkThreshold(pct: sd, label: "Weekly limit", lastNotified: notifiedWeekly) { self.notifiedWeekly = $0 }
+            updateLimitLine(weeklyLineItem, label: "Weekly limit", pct: sd, stale: stale)
+            if !stale {
+                checkThreshold(pct: sd, label: "Weekly limit", lastNotified: notifiedWeekly) { self.notifiedWeekly = $0 }
+            }
         }
         updatePetMood()
         updateSessionsSubmenu()
@@ -885,6 +884,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     func bar(_ pct: Int, width: Int = 10) -> String {
         let filled = min(width, max(0, pct * width / 100))
         return String(repeating: "▓", count: filled) + String(repeating: "░", count: width - filled)
+    }
+
+    /// Only Claude Desktop writes plan-usage-history.json; with Desktop
+    /// closed the numbers freeze at the last sample. Past this age they're
+    /// history, not status — the UI grays them out and the pet/notification
+    /// logic ignores them entirely.
+    var planUsageIsStale: Bool {
+        guard let sampled = usage.planUsageDate else { return true }
+        return Date().timeIntervalSince(sampled) > 30 * 60
+    }
+
+    func formatAge(_ date: Date) -> String {
+        let seconds = Int(Date().timeIntervalSince(date))
+        if seconds >= 86_400 { return "\(seconds / 86_400)d" }
+        if seconds >= 3_600 { return "\(seconds / 3_600)h" }
+        return "\(max(1, seconds / 60))m"
+    }
+
+    /// Fresh reading: colored by threshold, as always. Stale reading: gray,
+    /// tagged with its age, and clickable to launch Claude Desktop (the only
+    /// thing that can produce a fresh sample).
+    func updateLimitLine(_ item: NSMenuItem, label: String, pct: Int, stale: Bool) {
+        var text = "\(label): \(bar(pct)) \(pct)%"
+        if stale, let sampled = usage.planUsageDate {
+            text += "  · \(formatAge(sampled)) ago"
+        }
+        item.attributedTitle = NSAttributedString(
+            string: text,
+            attributes: [.foregroundColor: stale ? NSColor.tertiaryLabelColor : thresholdColor(pct),
+                         .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)]
+        )
+        if stale {
+            item.action = #selector(openClaudeDesktop(_:))
+            item.target = self
+            item.toolTip = "Last sampled by Claude Desktop \(usage.planUsageDate.map(formatAge) ?? "?") ago — click to open Claude Desktop and refresh"
+        } else {
+            item.action = nil
+            item.target = nil
+            item.toolTip = nil
+        }
+    }
+
+    @objc func openClaudeDesktop(_ sender: NSMenuItem) {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.anthropic.claudefordesktop") else { return }
+        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
     }
 
     // <50% used = healthy, 50-80% = warning, >80% = critical.
@@ -980,11 +1024,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     func updatePetMood() {
-        let limitMood = petMood(for: usage.fiveHourPct)
+        // Stale plan data (Claude Desktop closed) is treated as unknown —
+        // a pet asleep over an 11-day-old "100%" would be lying.
+        let limitMood = petMood(for: planUsageIsStale ? nil : usage.fiveHourPct)
         // Was tired/sleepy/asleep last time we checked, and just dropped
         // back to healthy — the 5-hour window rolled over. Worth a little
         // fanfare instead of silently snapping back to the idle GIF.
-        let limitJustRefreshed = lastLimitMood != "idle" && limitMood == "idle"
+        // (Not when the drop is only the reading going stale, though.)
+        let limitJustRefreshed = lastLimitMood != "idle" && limitMood == "idle" && !planUsageIsStale
         lastLimitMood = limitMood
 
         // Working (turn marker in flight, or a transcript touched in the

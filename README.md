@@ -31,7 +31,7 @@ When a permission request comes in, the icon changes, a sound plays, and the dro
 - **Celebrate on refresh** — when the 5-hour limit rolls back over to healthy, the pet throws a little arms-up celebration (with a notification) instead of silently snapping back to idle
 - **Floating desktop pet** (Codex Pet-style) — an always-on-top, draggable panda that sits on your desktop independent of the menu bar dropdown, with the same mood system (tired/sleepy/asleep/celebrate) refreshed in the background every ~30s. Toggle from the menu (`Floating Pet`). Panda only for now.
 - **Token usage today** — summed from local session transcripts, no network calls
-- **Plan usage** — 5-hour and weekly limit bars, read from the same file Claude Desktop itself writes, color-coded (green/orange/red at 50%/80% used)
+- **Plan usage** — 5-hour and weekly limit bars, read from the same file Claude Desktop itself writes, color-coded (green/orange/red at 50%/80% used). Only Claude Desktop refreshes that file: with it closed the reading goes stale, so after 30 minutes the bars turn gray with an age tag ("· 11d ago"), clicking the line opens Claude Desktop to refresh, and stale numbers stop driving the pet's mood and threshold notifications
 - **Threshold notifications** — a macOS notification fires the first time a limit crosses into the warning (50%) or critical (80%) band, so you don't have to keep the menu open to notice
 - **Turn-finished toast** — when a turn that took 15+ seconds finishes, a compact green card pops up at the pet with the project and duration (and the pet celebrates); quick back-and-forth stays silent, and the plain macOS banner only fires as a fallback when the app isn't running
 - **Login item** — starts automatically, no manual launch needed

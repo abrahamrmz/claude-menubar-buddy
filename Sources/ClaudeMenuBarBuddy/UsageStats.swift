@@ -15,6 +15,10 @@ struct UsageSnapshot {
     var lastActivity: Date? = nil
     var fiveHourPct: Int? = nil
     var weeklyPct: Int? = nil
+    // When Claude Desktop last sampled the plan limits. Only Claude Desktop
+    // writes that file, so with Desktop closed the percentages freeze —
+    // consumers must treat old samples as unknown, not as current truth.
+    var planUsageDate: Date? = nil
 }
 
 enum UsageReader {
@@ -27,13 +31,15 @@ enum UsageReader {
     static let planUsageURL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/Claude/plan-usage-history.json")
 
-    static func readPlanUsage() -> (fiveHour: Int?, weekly: Int?) {
+    static func readPlanUsage() -> (fiveHour: Int?, weekly: Int?, sampled: Date?) {
         guard let data = try? Data(contentsOf: planUsageURL),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let samples = obj["samples"] as? [[String: Any]],
               let last = samples.last,
-              let u = last["u"] as? [String: Any] else { return (nil, nil) }
-        return (u["fh"] as? Int, u["sd"] as? Int)
+              let u = last["u"] as? [String: Any] else { return (nil, nil, nil) }
+        // "t" is epoch milliseconds.
+        let sampled = (last["t"] as? Double).map { Date(timeIntervalSince1970: $0 / 1000) }
+        return (u["fh"] as? Int, u["sd"] as? Int, sampled)
     }
 
     /// Claude Code encodes a session's working directory into its project
@@ -86,6 +92,7 @@ enum UsageReader {
         let plan = readPlanUsage()
         result.fiveHourPct = plan.fiveHour
         result.weeklyPct = plan.weekly
+        result.planUsageDate = plan.sampled
         return result
     }
 
