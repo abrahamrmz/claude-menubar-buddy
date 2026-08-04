@@ -286,6 +286,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     // Base command (e.g. "gh") of the Bash request currently on screen, when
     // one could be extracted — enables the "Always allow" button/hotkey.
     var currentCommandBase: String?
+    // What the card's quiet third row does for the CURRENT request (always
+    // allow / auto-edits / review in VS Code) — ⌥⌘⏎ triggers it too.
+    var currentQuietAction: (() -> Void)?
     // True while the verdict/exit animation runs — poll() must not surface
     // the next queued request (or rebuild the card) mid-animation, and a
     // second ⌘⏎ mash must not double-respond.
@@ -379,6 +382,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         floatingItem.target = self
         floatingItem.state = floatingPetVisible ? .on : .off
         menu.addItem(floatingItem)
+        let autoEditsItem = NSMenuItem(title: "Auto-approve Edits", action: #selector(toggleAutoEdits), keyEquivalent: "")
+        autoEditsItem.target = self
+        autoEditsItem.state = autoEditsEnabled ? .on : .off
+        autoEditsItem.toolTip = "While on, Edit/Write/NotebookEdit are approved instantly with no card. Uncheck to go back to ask-before-each-edit."
+        menu.addItem(autoEditsItem)
         menu.addItem(withTitle: "Quit", action: #selector(quit), keyEquivalent: "q")
         idleMenu = menu
         // petImageView was just recreated with the idle GIF — invalidate the
@@ -518,11 +526,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         let blockHeight = textHeight + blockInset * 2
         let headerHeight: CGFloat = 26
         let buttonRowHeight: CGFloat = 32
-        // Bash requests with a recognizable base command get a third,
-        // quieter action: remember this command and stop asking.
+        // Third, quieter action row, tool-dependent: Bash remembers the
+        // base command; edit tools offer auto-approve mode; plans hand off
+        // to VS Code where the full options (auto-accept / manual / tell
+        // Claude) live.
         let base = req.tool == "Bash" ? commandBase(from: req.hint) : nil
         currentCommandBase = base
-        let alwaysRowHeight: CGFloat = base != nil ? 26 + 8 : 0
+        let isEditTool = ["Edit", "MultiEdit", "Write", "NotebookEdit"].contains(req.tool)
+        let isPlan = req.tool == "ExitPlanMode"
+        let hasQuietRow = base != nil || isEditTool || isPlan
+        let alwaysRowHeight: CGFloat = hasQuietRow ? 26 + 8 : 0
         let cardHeight = pad + buttonRowHeight + alwaysRowHeight + 10 + blockHeight + 10 + headerHeight + pad
 
         let window: NSWindow
@@ -596,6 +609,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             rightEdge -= badge.frame.width + 6
         }
 
+        // Hand-off: answer this one in VS Code / the terminal instead. The
+        // hook returns no decision immediately, so the native prompt (with
+        // all its options) appears right away rather than after the 55s
+        // timeout.
+        let passButton = NSButton(frame: NSRect(x: rightEdge - 22, y: headerY + 2, width: 22, height: 22))
+        passButton.isBordered = false
+        passButton.target = self
+        passButton.action = #selector(passToNative)
+        if let symbol = NSImage(systemSymbolName: "arrow.up.forward.app", accessibilityDescription: "decide in VS Code") {
+            passButton.image = symbol.withSymbolConfiguration(.init(pointSize: 13, weight: .medium))
+            passButton.contentTintColor = .secondaryLabelColor
+        }
+        passButton.toolTip = "Decide in VS Code / terminal instead (full native options)"
+        card.addSubview(passButton)
+        rightEdge -= 28
+
         let titleField = NSTextField(labelWithString: req.tool)
         titleField.font = NSFont.boldSystemFont(ofSize: 14)
         titleField.textColor = .labelColor
@@ -644,17 +673,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         card.addSubview(denyButton)
         denyButtonRef = denyButton
 
-        // Quieter full-width row above the pills: approve AND remember this
-        // base command so hook.sh's fast path skips the card next time.
-        if let base = base {
-            let alwaysButton = pillButton(title: "⚡ Always allow \(base)", shortcut: "⌥⌘⏎",
-                                          fill: NSColor.white.withAlphaComponent(0.07),
-                                          textColor: accent, action: #selector(alwaysAllow))
-            alwaysButton.layer?.cornerRadius = 13
-            alwaysButton.frame = NSRect(x: contentX, y: pad + buttonRowHeight + 8,
-                                        width: cardWidth - contentX - pad, height: 26)
-            card.addSubview(alwaysButton)
-            alwaysButtonRef = alwaysButton
+        // Quieter full-width row above the pills, per tool kind.
+        if hasQuietRow {
+            let quietButton: PressablePillButton
+            if let base = base {
+                quietButton = pillButton(title: "⚡ Always allow \(base)", shortcut: "⌥⌘⏎",
+                                         fill: NSColor.white.withAlphaComponent(0.07),
+                                         textColor: accent, action: #selector(alwaysAllow))
+                currentQuietAction = { [weak self] in self?.alwaysAllow() }
+            } else if isEditTool {
+                quietButton = pillButton(title: "⚡ Auto-approve edits from now on", shortcut: "⌥⌘⏎",
+                                         fill: NSColor.white.withAlphaComponent(0.07),
+                                         textColor: accent, action: #selector(autoApproveEditsFromCard))
+                currentQuietAction = { [weak self] in self?.autoApproveEditsFromCard() }
+            } else {
+                quietButton = pillButton(title: "↗ Review in VS Code — auto-accept, manual, tell Claude…", shortcut: "⌥⌘⏎",
+                                         fill: NSColor.white.withAlphaComponent(0.07),
+                                         textColor: accent, action: #selector(passToNative))
+                currentQuietAction = { [weak self] in self?.passToNative() }
+            }
+            quietButton.layer?.cornerRadius = 13
+            quietButton.frame = NSRect(x: contentX, y: pad + buttonRowHeight + 8,
+                                       width: cardWidth - contentX - pad, height: 26)
+            card.addSubview(quietButton)
+            alwaysButtonRef = quietButton
+        } else {
+            currentQuietAction = nil
         }
 
         let wasVisible = window.isVisible
@@ -859,7 +903,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                 guard let obj = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
                       let decision = obj["decision"] as? String,
                       let tool = obj["tool"] as? String else { continue }
-                var title = "\(decision == "allow" ? "✓" : "✕") \(tool)"
+                let icon = decision == "allow" ? "✓" : decision == "pass" ? "→" : "✕"
+                var title = "\(icon) \(tool)"
                 if let project = obj["project"] as? String, !project.isEmpty { title += " — \(project)" }
                 if let ts = obj["ts"] as? Double {
                     title += "   \(timeFormatter.string(from: Date(timeIntervalSince1970: ts)))"
@@ -1118,16 +1163,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     /// Menu bar title while no request is pending: pet plus the number of
     /// sessions currently active (hidden when zero) — same at-a-glance
-    /// signal Masko showed.
+    /// signal Masko showed. ✏️ marks auto-approve-edits mode: a standing
+    /// grant of power should never be invisible.
     func updateIdleTitle() {
         guard currentRequestId == nil else { return }
-        statusItem.button?.title = lastActiveCount > 0 ? "🐼\(lastActiveCount)" : "🐼"
+        let editsBadge = autoEditsEnabled ? "✏️" : ""
+        statusItem.button?.title = "🐼\(editsBadge)" + (lastActiveCount > 0 ? "\(lastActiveCount)" : "")
+    }
+
+    @objc func toggleAutoEdits() {
+        if autoEditsEnabled {
+            try? FileManager.default.removeItem(at: autoEditsFlagURL)
+        } else {
+            try? Data().write(to: autoEditsFlagURL)
+        }
+        buildIdleMenu()
+        if currentRequestId == nil {
+            setIdle()
+            updatePetMood()
+        }
     }
 
     func setIdle() {
         currentRequestId = nil
         currentRequest = nil
         currentCommandBase = nil
+        currentQuietAction = nil
         approvalHotKeys.disable()
         updateIdleTitle()
         statusItem.menu = idleMenu
@@ -1264,6 +1325,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     // Deliberately separate from ~/.claude/settings.json — the buddy never
     // edits Claude Code's own config.
     var alwaysAllowURL: URL { dirURL.appendingPathComponent("always_allow.json") }
+
+    // Flag file for auto-approve-edits mode; hook.sh fast-paths Edit/Write/
+    // NotebookEdit while it exists. A file (not UserDefaults) so the hook
+    // can read it without talking to the app.
+    var autoEditsFlagURL: URL { dirURL.appendingPathComponent("auto_approve_edits") }
+    var autoEditsEnabled: Bool { FileManager.default.fileExists(atPath: autoEditsFlagURL.path) }
 
     func readAlwaysAllow() -> [String] {
         guard let data = try? Data(contentsOf: alwaysAllowURL),
@@ -1537,7 +1604,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
         let perform: () -> Void = { [weak self] in
             switch decision {
-            case "always": self?.alwaysAllow()
+            case "always":
+                // Whatever the quiet row offers for this card (always
+                // allow / auto-edits / review in VS Code); plain allow when
+                // the card has no quiet row.
+                if let quiet = self?.currentQuietAction { quiet() }
+                else { self?.respond("allow") }
             case "allow": self?.respond("allow")
             default: self?.respond("deny")
             }
@@ -1568,6 +1640,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         respond("allow")
     }
 
+    /// Approve this edit AND flip on auto-approve-edits mode (hook.sh
+    /// fast-paths edit tools from now on; the menu item unchecks it).
+    @objc func autoApproveEditsFromCard() {
+        try? Data().write(to: autoEditsFlagURL)
+        buildIdleMenu()
+        respond("allow")
+    }
+
+    /// No decision from the buddy — the hook returns immediately and the
+    /// native VS Code / terminal prompt takes over with all its options.
+    @objc func passToNative() {
+        respond("pass")
+    }
+
     /// Verdict flash + exit: a green ✓ / red ✕ pops over a tinted wash,
     /// then the whole card fades away. The response file was already
     /// written by then — the animation only delays the NEXT card, never
@@ -1575,6 +1661,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     func animateCardDismiss(decision: String, completion: @escaping () -> Void) {
         guard let window = statusBubbleWindow, window.isVisible, let card = window.contentView else {
             completion()
+            return
+        }
+        // Hand-off to the native prompt: no verdict was rendered by the
+        // buddy, so no ✓/✕ — just a quick neutral fade.
+        if decision == "pass" {
+            NSAnimationContext.runAnimationGroup({ ctx in
+                ctx.duration = 0.18
+                window.animator().alphaValue = 0
+            }, completionHandler: {
+                window.orderOut(nil)
+                window.alphaValue = 1
+                completion()
+            })
             return
         }
         let isAllow = decision == "allow"

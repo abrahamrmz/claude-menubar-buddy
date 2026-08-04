@@ -14,6 +14,19 @@ INPUT="$(cat)"
 ID="$(uuidgen)"
 TOOL="$(echo "$INPUT" | jq -r '.tool_name // "unknown"')"
 
+# Fast path: auto-approve-edits mode. Toggled from the app's menu (or the ⚡
+# row on an Edit card); while the flag file exists, file-modifying tools
+# skip the card entirely. Delete the flag (or uncheck the menu item) to go
+# back to ask-before-each-edit.
+if [ -f "$DIR/auto_approve_edits" ]; then
+  case "$TOOL" in
+    Edit|MultiEdit|Write|NotebookEdit)
+      jq -n '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"allow",permissionDecisionReason:"Auto-approved edit via Claude Menu Bar Buddy"}}'
+      exit 0
+      ;;
+  esac
+fi
+
 # Fast path: Bash commands whose base command the user marked "Always allow"
 # from the approval card get approved instantly — no card, no waiting. The
 # list is maintained by the menu bar app (always_allow.json); removing an
@@ -78,6 +91,12 @@ for i in $(seq 1 110); do
       exit 0
     elif [ "$DECISION" = "deny" ]; then
       echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Denied via Claude Menu Bar Buddy"}}'
+      exit 0
+    elif [ "$DECISION" = "pass" ]; then
+      # Hand off to the normal interactive prompt RIGHT NOW (no decision =
+      # default "ask" flow) — used for e.g. reading a long plan in VS Code
+      # with its full options instead of on the card.
+      echo '{}'
       exit 0
     fi
   fi
