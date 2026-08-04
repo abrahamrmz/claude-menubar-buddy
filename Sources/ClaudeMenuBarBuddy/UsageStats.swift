@@ -69,11 +69,11 @@ enum UsageReader {
 
             for url in files {
                 guard url.pathExtension == "jsonl" else { continue }
-                guard let attrs = try? url.resourceValues(forKeys: [.contentModificationDateKey]),
+                guard let attrs = try? url.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey]),
                       let mtime = attrs.contentModificationDate else { continue }
 
                 if mtime >= startOfToday {
-                    result.tokensToday += sumOutputTokens(in: url)
+                    result.tokensToday += sumOutputTokens(in: url, size: UInt64(attrs.fileSize ?? 0), mtime: mtime)
                 }
                 if now.timeIntervalSince(mtime) < 15 {
                     result.activeSessions.append(ActiveSession(projectPath: projectPath, lastActivity: mtime))
@@ -89,11 +89,35 @@ enum UsageReader {
         return result
     }
 
-    private static func sumOutputTokens(in url: URL) -> Int {
-        guard let handle = try? FileHandle(forReadingFrom: url) else { return 0 }
-        defer { try? handle.close() }
+    // Per-file token totals, so a snapshot() every ~5s costs a stat per file
+    // instead of re-parsing every transcript touched today. Transcripts are
+    // append-only JSONL, so on growth only the appended bytes are read.
+    // Main-thread only (timer + menuWillOpen), hence the bare static var.
+    private struct TokenCacheEntry {
+        var size: UInt64
+        var mtime: Date
+        var offset: UInt64 // first byte after the last complete line counted
+        var tokens: Int    // output tokens summed through `offset`
+    }
+    private static var tokenCacheByPath: [String: TokenCacheEntry] = [:]
+
+    private static func sumOutputTokens(in url: URL, size: UInt64, mtime: Date) -> Int {
+        let path = url.path
+        if let cached = tokenCacheByPath[path], cached.size == size, cached.mtime == mtime {
+            return cached.tokens
+        }
 
         var total = 0
+        var consumed: UInt64 = 0
+        if let cached = tokenCacheByPath[path], size >= cached.offset {
+            total = cached.tokens
+            consumed = cached.offset
+        } // else: shrunk/rotated file — full re-read from 0
+
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return total }
+        defer { try? handle.close() }
+        if consumed > 0 { try? handle.seek(toOffset: consumed) }
+
         var buffer = Data()
         let chunkSize = 1 << 20 // 1MB chunks
 
@@ -104,10 +128,15 @@ enum UsageReader {
 
             while let newlineRange = buffer.range(of: Data([0x0A])) {
                 let lineData = buffer.subdata(in: buffer.startIndex..<newlineRange.lowerBound)
+                consumed += UInt64(newlineRange.upperBound - buffer.startIndex)
                 buffer.removeSubrange(buffer.startIndex..<newlineRange.upperBound)
                 total += tokensFromLine(lineData)
             }
         }
+        // The cache stops at the last complete line: a trailing partial line
+        // is usually a record mid-write, so it's counted for this snapshot
+        // but re-read (complete) on the next change.
+        tokenCacheByPath[path] = TokenCacheEntry(size: size, mtime: mtime, offset: consumed, tokens: total)
         if !buffer.isEmpty { total += tokensFromLine(buffer) }
         return total
     }

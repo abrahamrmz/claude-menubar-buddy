@@ -18,6 +18,10 @@ When a permission request comes in, the icon changes, a sound plays, and the dro
 ## Features
 
 - **Approve/Deny in the menu bar** for Bash, Write, Edit, WebFetch, and NotebookEdit tool calls — an alternative to answering permission prompts in the terminal or Claude Desktop
+- **Styled approval card** on the desktop, next to the floating pet: per-tool accent color and icon (teal Bash, orange Edit, purple Write, pink plans), project badge, the full command or a red/green mini-diff in a scrollable code block, and pill Allow/Deny buttons — non-activating, so deciding never steals focus from what you're typing
+- **Micro-interactions** — buttons visibly sink when pressed (also when triggered via hotkey), and deciding flashes a green ✓ / red ✕ verdict over the card before it fades out; queued requests then enter one at a time
+- **Global approval shortcuts** — ⌘⏎ approves, ⇧⌘⏎ denies, from any app without switching focus; the hotkeys are registered only while a request is actually pending, so ⌘⏎ keeps working normally everywhere else
+- **Working animation** — while any Claude Code session is actively running a turn, the panda types away on a little laptop; it drops back to idle (or tired/sleepy, per the 5-hour limit) a few seconds after the turn ends
 - **17 pet characters** to choose from (`Choose Buddy` submenu): a pixel-art panda plus 16 ASCII-art pets reused from the M5Stick Hardware Buddy firmware (cat, turtle, dragon, ghost, robot, and more)
 - **Session status** — idle / active, based on recent Claude Code session file activity
 - **Active Sessions submenu** — lists each active session's project path and how long ago it was last active; click one to reveal that project folder in Finder
@@ -28,9 +32,9 @@ When a permission request comes in, the icon changes, a sound plays, and the dro
 - **Token usage today** — summed from local session transcripts, no network calls
 - **Plan usage** — 5-hour and weekly limit bars, read from the same file Claude Desktop itself writes, color-coded (green/orange/red at 50%/80% used)
 - **Threshold notifications** — a macOS notification fires the first time a limit crosses into the warning (50%) or critical (80%) band, so you don't have to keep the menu open to notice
-- **Turn-finished notification** — get notified when a turn that took 30+ seconds finishes, so you don't have to keep tabbing back to check; quick back-and-forth stays silent
+- **Turn-finished toast** — when a turn that took 15+ seconds finishes, a compact green card pops up at the pet with the project and duration (and the pet celebrates); quick back-and-forth stays silent, and the plain macOS banner only fires as a fallback when the app isn't running
 - **Login item** — starts automatically, no manual launch needed
-- Everything updates fresh each time you open the menu (no background polling wasting CPU)
+- Stats refresh in the background every ~5s, kept cheap by a per-file token cache that stats each transcript and reads only newly appended bytes (plus a fresh compute every time the menu opens)
 
 ## How it works
 

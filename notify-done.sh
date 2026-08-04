@@ -36,6 +36,11 @@ case "$EVENT" in
       if [ -n "$START" ]; then
         NOW="$(date +%s)"
         ELAPSED=$((NOW - START))
+        # Hand the finished turn to the menu bar app regardless of duration —
+        # it shows a toast card at the pet, applying its own minimum-duration
+        # threshold (kept app-side so tuning it doesn't mean editing hooks).
+        jq -n --arg project "$PROJECT_NAME" --argjson elapsed "$ELAPSED" \
+          '{project: $project, elapsed: $elapsed, ts: now}' > "$DIR/done_${SESSION_ID}.json"
         if [ "$ELAPSED" -ge "$MIN_SECONDS_TO_NOTIFY" ]; then
           MINS=$((ELAPSED / 60))
           SECS=$((ELAPSED % 60))
@@ -44,7 +49,12 @@ case "$EVENT" in
           else
             DURATION_TEXT="${SECS}s"
           fi
-          osascript -e "display notification \"Finished in ${DURATION_TEXT}\" with title \"Claude Code — ${PROJECT_NAME}\" sound name \"Glass\""
+          # Banner only as fallback — when the app is running, the toast
+          # (plus its Glass sound) already covers this and a second banner
+          # would be double noise.
+          if ! pgrep -f ClaudeMenuBarBuddy >/dev/null 2>&1; then
+            osascript -e "display notification \"Finished in ${DURATION_TEXT}\" with title \"Claude Code — ${PROJECT_NAME}\" sound name \"Glass\""
+          fi
         fi
       fi
     fi

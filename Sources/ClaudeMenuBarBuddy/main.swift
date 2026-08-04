@@ -133,6 +133,36 @@ final class DraggablePetImageView: NSImageView {
     }
 }
 
+// Pill button that visibly sinks while pressed — scales down and dims, then
+// springs back. setPressed is public so the ⌘⏎ hotkey path can flash the
+// same pressed state: the whole point is that the shortcut FEELS like
+// pushing the on-screen button, not like the card silently obeying.
+final class PressablePillButton: NSButton {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func mouseDown(with event: NSEvent) {
+        setPressed(true)
+        // Blocks in the cell's tracking loop; the action fires inside it.
+        super.mouseDown(with: event)
+        setPressed(false)
+    }
+
+    func setPressed(_ down: Bool) {
+        guard let layer = layer else { return }
+        // Scale about the center, not AppKit's default bottom-left anchor.
+        if layer.anchorPoint != CGPoint(x: 0.5, y: 0.5) {
+            let f = layer.frame
+            layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
+            layer.position = CGPoint(x: f.midX, y: f.midY)
+        }
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(0.08)
+        layer.setAffineTransform(down ? CGAffineTransform(scaleX: 0.95, y: 0.93) : .identity)
+        layer.opacity = down ? 0.7 : 1.0
+        CATransaction.commit()
+    }
+}
+
 // The approval card's background: same manual drag as the pet (grab the
 // title row or any empty padding; buttons and the text view keep handling
 // their own clicks), so the card can be pulled out of the way of whatever
@@ -212,6 +242,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     // temporarily overrides the displayed GIF without losing track of what
     // to revert to.
     var lastComputedMood = "idle"
+    // Limit-derived mood only (idle/tired/sleepy/asleep), ignoring "working" —
+    // the celebrate-on-refresh detection must not misfire on a plain
+    // working→idle transition when a turn ends.
+    var lastLimitMood = "idle"
+    // What applyMoodGif last put on screen. Reloading the same GIF restarts
+    // its animation loop, which at the 5s refresh cadence would make the pet
+    // visibly stutter — so same-mood applies are skipped.
+    var displayedMood: String?
     var flashWorkItem: DispatchWorkItem?
 
     // Codex-style floating desktop pet — panda only (Ray, 2026-07-12).
@@ -224,8 +262,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     // How many 1s poll() ticks between background usage/mood refreshes for
     // the floating pet — it has no "menu opened" moment to piggyback on
     // like the dropdown does, so it needs its own cheap periodic check.
+    // 5s (down from 30s) so the working↔idle animation reacts within a few
+    // seconds of a turn starting/ending; affordable because UsageReader
+    // caches per-file token counts and only reads appended transcript bytes.
     var floatingRefreshTickCounter = 0
-    let floatingRefreshEveryTicks = 30
+    let floatingRefreshEveryTicks = 5
 
     // Approval card above the floating pet (xisland-inspired): title row
     // with project+tool, monospaced scrollable body with the FULL command /
@@ -233,6 +274,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     // the panel window itself is reused.
     var statusBubbleWindow: NSWindow?
     var currentRequest: PendingRequest?
+
+    // ⌘⏎ / ⇧⌘⏎, live only while a request is pending (see HotKeys.swift).
+    let approvalHotKeys = ApprovalHotKeys()
+    // The current card's buttons, kept so the hotkey path can flash the
+    // matching button's pressed state before dismissing.
+    weak var allowButtonRef: PressablePillButton?
+    weak var denyButtonRef: PressablePillButton?
+    // True while the verdict/exit animation runs — poll() must not surface
+    // the next queued request (or rebuild the card) mid-animation, and a
+    // second ⌘⏎ mash must not double-respond.
+    var isDismissing = false
+
+    // Turn-finished toast: same visual language as the approval card,
+    // compact, no buttons, auto-dismissing. Fed by done_<session>.json
+    // files that notify-done.sh writes on Stop.
+    var toastWindow: NSPanel?
+    var toastDismissWorkItem: DispatchWorkItem?
+    // Turns shorter than this don't get a toast — you were watching anyway.
+    // (The macOS banner threshold lives in notify-done.sh; this one is
+    // deliberately lower because a toast at the pet is much less intrusive.)
+    let toastMinSeconds = 15
 
     // Thresholds match ClaudeBar's scheme (see the community-project survey):
     // <50% used = healthy, 50-80% = warning, >80% = critical. Persist the
@@ -254,6 +316,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         try? FileManager.default.createDirectory(at: dirURL, withIntermediateDirectories: true)
+
+        approvalHotKeys.onAllow = { [weak self] in self?.decideViaHotKey("allow") }
+        approvalHotKeys.onDeny = { [weak self] in self?.decideViaHotKey("deny") }
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         buildIdleMenu()
@@ -307,6 +372,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         menu.addItem(floatingItem)
         menu.addItem(withTitle: "Quit", action: #selector(quit), keyEquivalent: "q")
         idleMenu = menu
+        // petImageView was just recreated with the idle GIF — invalidate the
+        // same-mood skip so the next applyMoodGif really loads its GIF.
+        displayedMood = nil
     }
 
     // Codex-style floating pet — panda only, ambient status, no chat bubble
@@ -340,6 +408,72 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     func hideFloatingPet() {
         floatingWindow?.orderOut(nil)
         hideStatusBubble()
+        hideDoneToast()
+    }
+
+    // Per-tool accent so the card reads at a glance what KIND of action is
+    // asking — a green Allow on an orange "Edit" card is a different snap
+    // judgment than on a teal "Bash" one.
+    func toolAccent(_ tool: String) -> NSColor {
+        switch tool {
+        case "Bash": return .systemTeal
+        case "Edit", "MultiEdit": return .systemOrange
+        case "Write": return .systemPurple
+        case "WebFetch", "WebSearch": return .systemBlue
+        case "NotebookEdit": return .systemYellow
+        case "ExitPlanMode": return .systemPink
+        default: return .systemGray
+        }
+    }
+
+    func toolSymbol(_ tool: String) -> String {
+        switch tool {
+        case "Bash": return "terminal.fill"
+        case "Edit", "MultiEdit": return "pencil"
+        case "Write": return "square.and.pencil"
+        case "WebFetch", "WebSearch": return "globe"
+        case "NotebookEdit": return "text.book.closed.fill"
+        case "ExitPlanMode": return "list.bullet.clipboard.fill"
+        default: return "questionmark.circle.fill"
+        }
+    }
+
+    /// Small capsule label (project badge, "+N" queue badge).
+    func pillLabel(_ text: String, textColor: NSColor, background: NSColor) -> NSTextField {
+        let label = NSTextField(labelWithString: text)
+        label.font = NSFont.systemFont(ofSize: 11, weight: .medium)
+        label.textColor = textColor
+        label.alignment = .center
+        label.wantsLayer = true
+        label.layer?.backgroundColor = background.cgColor
+        let width = ceil(label.intrinsicContentSize.width) + 16
+        label.frame = NSRect(x: 0, y: 0, width: width, height: 18)
+        label.layer?.cornerRadius = 9
+        return label
+    }
+
+    /// Flat rounded pill button; the keyboard shortcut rides along dimmed
+    /// inside the title so it never reads as part of the action name.
+    func pillButton(title: String, shortcut: String, fill: NSColor, textColor: NSColor, action: Selector) -> PressablePillButton {
+        let button = PressablePillButton(title: "", target: self, action: action)
+        button.isBordered = false
+        button.wantsLayer = true
+        button.layer?.backgroundColor = fill.cgColor
+        button.layer?.cornerRadius = 16
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        let text = NSMutableAttributedString(string: title, attributes: [
+            .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
+            .foregroundColor: textColor,
+            .paragraphStyle: paragraph,
+        ])
+        text.append(NSAttributedString(string: "  \(shortcut)", attributes: [
+            .font: NSFont.systemFont(ofSize: 12, weight: .regular),
+            .foregroundColor: textColor.withAlphaComponent(0.55),
+            .paragraphStyle: paragraph,
+        ]))
+        button.attributedTitle = text
+        return button
     }
 
     // Interactive approval card positioned just above the floating pet, so
@@ -358,19 +492,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         guard floatingPetVisible, let petWindow = floatingWindow else { return }
         let cardWidth: CGFloat = 430
         let pad: CGFloat = 14
+        let stripeWidth: CGFloat = 4
+        let contentX = pad + stripeWidth
+        let blockInset: CGFloat = 8
+        let accent = toolAccent(req.tool)
         let bodyFont = NSFont.monospacedSystemFont(ofSize: 12.5, weight: .regular)
         let body = String(req.hint.prefix(2000))
         let bodyMaxHeight: CGFloat = 200
 
         let measured = (body as NSString).boundingRect(
-            with: NSSize(width: cardWidth - pad * 2 - 14, height: .greatestFiniteMagnitude),
+            with: NSSize(width: cardWidth - contentX - pad - blockInset * 2 - 14, height: .greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin],
             attributes: [.font: bodyFont]
         )
-        let bodyHeight = min(bodyMaxHeight, max(18, ceil(measured.height) + 4))
-        let titleHeight: CGFloat = 18
-        let buttonRowHeight: CGFloat = 28
-        let cardHeight = pad + buttonRowHeight + 6 + bodyHeight + 6 + titleHeight + pad
+        let textHeight = min(bodyMaxHeight, max(18, ceil(measured.height) + 4))
+        let blockHeight = textHeight + blockInset * 2
+        let headerHeight: CGFloat = 26
+        let buttonRowHeight: CGFloat = 32
+        let cardHeight = pad + buttonRowHeight + 10 + blockHeight + 10 + headerHeight + pad
 
         let window: NSWindow
         if let existing = statusBubbleWindow {
@@ -386,6 +525,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
             panel.ignoresMouseEvents = false
             panel.becomesKeyOnlyIfNeeded = true
+            // Explicit opt-in to screen capture: on Sequoia this panel was
+            // absent from ScreenCaptureKit's shareable content (screenshots
+            // showed everything but the card), which also breaks capturing
+            // it for docs/debugging. Visibility on the physical display was
+            // never affected.
+            panel.sharingType = .readOnly
             // Delegate so windowDidMove can remember where the user drags
             // the card relative to the pet.
             panel.delegate = self
@@ -399,21 +544,62 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         card.material = .hudWindow
         card.state = .active
         card.wantsLayer = true
-        card.layer?.cornerRadius = 12
+        card.layer?.cornerRadius = 14
         card.layer?.masksToBounds = true
         window.contentView = card
 
-        var title = req.tool
-        if let project = req.project, !project.isEmpty { title = "\(project) — \(title)" }
-        if queued > 0 { title += "   (+\(queued) queued)" }
-        let titleField = NSTextField(labelWithString: title)
-        titleField.font = NSFont.boldSystemFont(ofSize: 13.5)
+        let stripe = NSView(frame: NSRect(x: 0, y: 0, width: stripeWidth, height: cardHeight))
+        stripe.wantsLayer = true
+        stripe.layer?.backgroundColor = accent.cgColor
+        card.addSubview(stripe)
+
+        // Header: [icon chip] Tool                     [+N] [project]
+        let headerY = cardHeight - pad - headerHeight
+        let chip = NSImageView(frame: NSRect(x: contentX, y: headerY + 1, width: 24, height: 24))
+        chip.wantsLayer = true
+        chip.layer?.backgroundColor = accent.withAlphaComponent(0.22).cgColor
+        chip.layer?.cornerRadius = 6
+        if let symbol = NSImage(systemSymbolName: toolSymbol(req.tool), accessibilityDescription: req.tool) {
+            chip.image = symbol.withSymbolConfiguration(.init(pointSize: 12, weight: .semibold))
+            chip.contentTintColor = accent
+        }
+        card.addSubview(chip)
+
+        var rightEdge = cardWidth - pad
+        if let project = req.project, !project.isEmpty {
+            let badge = pillLabel(project, textColor: .secondaryLabelColor,
+                                  background: NSColor.white.withAlphaComponent(0.10))
+            badge.setFrameOrigin(NSPoint(x: rightEdge - badge.frame.width, y: headerY + 4))
+            card.addSubview(badge)
+            rightEdge -= badge.frame.width + 6
+        }
+        if queued > 0 {
+            let badge = pillLabel("+\(queued)", textColor: .black,
+                                  background: NSColor.systemOrange)
+            badge.toolTip = "\(queued) more request\(queued == 1 ? "" : "s") waiting"
+            badge.setFrameOrigin(NSPoint(x: rightEdge - badge.frame.width, y: headerY + 4))
+            card.addSubview(badge)
+            rightEdge -= badge.frame.width + 6
+        }
+
+        let titleField = NSTextField(labelWithString: req.tool)
+        titleField.font = NSFont.boldSystemFont(ofSize: 14)
         titleField.textColor = .labelColor
         titleField.lineBreakMode = .byTruncatingTail
-        titleField.frame = NSRect(x: pad, y: cardHeight - pad - titleHeight, width: cardWidth - pad * 2, height: titleHeight)
+        titleField.frame = NSRect(x: contentX + 32, y: headerY + 4,
+                                  width: rightEdge - contentX - 32, height: 18)
         card.addSubview(titleField)
 
-        let scroll = NSScrollView(frame: NSRect(x: pad, y: pad + buttonRowHeight + 6, width: cardWidth - pad * 2, height: bodyHeight))
+        // Body: the full command / mini-diff inside a code-block well.
+        let block = NSView(frame: NSRect(x: contentX, y: pad + buttonRowHeight + 10,
+                                         width: cardWidth - contentX - pad, height: blockHeight))
+        block.wantsLayer = true
+        block.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.28).cgColor
+        block.layer?.cornerRadius = 8
+        card.addSubview(block)
+
+        let scroll = NSScrollView(frame: NSRect(x: blockInset, y: blockInset,
+                                                width: block.frame.width - blockInset * 2, height: textHeight))
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
         scroll.drawsBackground = false
@@ -428,43 +614,76 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         textView.minSize = NSSize(width: 0, height: 0)
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         scroll.documentView = textView
-        card.addSubview(scroll)
+        block.addSubview(scroll)
 
-        let buttonWidth: CGFloat = (cardWidth - pad * 2 - 8) / 2
-        let allowButton = NSButton(title: "✓ Allow", target: self, action: #selector(allow))
-        allowButton.bezelStyle = .rounded
-        allowButton.controlSize = .regular
-        allowButton.bezelColor = .systemGreen
-        allowButton.frame = NSRect(x: pad, y: pad, width: buttonWidth, height: buttonRowHeight)
+        let buttonWidth: CGFloat = (cardWidth - contentX - pad - 8) / 2
+        let allowButton = pillButton(title: "✓ Allow", shortcut: "⌘⏎",
+                                     fill: .systemGreen, textColor: .white, action: #selector(allow))
+        allowButton.frame = NSRect(x: contentX, y: pad, width: buttonWidth, height: buttonRowHeight)
         card.addSubview(allowButton)
+        allowButtonRef = allowButton
 
-        let denyButton = NSButton(title: "✕ Deny", target: self, action: #selector(deny))
-        denyButton.bezelStyle = .rounded
-        denyButton.controlSize = .regular
-        denyButton.hasDestructiveAction = true
-        denyButton.frame = NSRect(x: pad + buttonWidth + 8, y: pad, width: buttonWidth, height: buttonRowHeight)
+        let denyButton = pillButton(title: "✕ Deny", shortcut: "⇧⌘⏎",
+                                    fill: NSColor.white.withAlphaComponent(0.10),
+                                    textColor: .systemRed, action: #selector(deny))
+        denyButton.frame = NSRect(x: contentX + buttonWidth + 8, y: pad, width: buttonWidth, height: buttonRowHeight)
         card.addSubview(denyButton)
+        denyButtonRef = denyButton
 
+        let wasVisible = window.isVisible
         positionStatusBubble(above: petWindow)
-        window.orderFront(nil)
+        if wasVisible {
+            window.orderFront(nil)
+        } else {
+            // Entrance: fade in while rising the last few points. Exit stays
+            // instant — approve should feel like the card got out of the way.
+            let target = window.frame
+            window.setFrame(target.offsetBy(dx: 0, dy: -8), display: false)
+            window.alphaValue = 0
+            window.orderFront(nil)
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.2
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                window.animator().alphaValue = 1
+                window.animator().setFrame(target, display: true)
+            }
+        }
     }
 
     func hideStatusBubble() {
         statusBubbleWindow?.orderOut(nil)
     }
 
+    /// Default spot for any pet-attached window (approval card, done toast):
+    /// centered above the pet's head. Keeps it on screen: with the pet
+    /// parked near the top the "above the head" spot is offscreen (the card
+    /// silently opened out of view), so flip it below the pet; and a pet
+    /// hugging a side edge would push a centered window past it, so clamp
+    /// horizontally.
+    func originNearPet(for size: NSSize) -> NSPoint {
+        guard let pet = floatingWindow else { return .zero }
+        let petFrame = pet.frame
+        var origin = NSPoint(x: petFrame.midX - size.width / 2, y: petFrame.maxY + 6)
+        if let screen = pet.screen ?? NSScreen.main {
+            let visible = screen.visibleFrame
+            if origin.y + size.height > visible.maxY {
+                origin.y = petFrame.minY - 6 - size.height
+            }
+            origin.x = min(max(origin.x, visible.minX + 8), visible.maxX - size.width - 8)
+            origin.y = max(origin.y, visible.minY + 8)
+        }
+        return origin
+    }
+
     func positionStatusBubble(above petWindow: NSWindow) {
         guard let bubble = statusBubbleWindow else { return }
-        let petFrame = petWindow.frame
         if let offset = cardOffset {
+            let petFrame = petWindow.frame
             bubble.setFrameOrigin(NSPoint(x: petFrame.origin.x + offset.x,
                                           y: petFrame.origin.y + offset.y))
-        } else {
-            bubble.setFrameOrigin(NSPoint(
-                x: petFrame.midX - bubble.frame.size.width / 2,
-                y: petFrame.maxY + 6
-            ))
+            return
         }
+        bubble.setFrameOrigin(originNearPet(for: bubble.frame.size))
     }
 
     @objc func toggleFloatingPet() {
@@ -473,7 +692,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         buildIdleMenu()
         if currentRequestId == nil {
             setIdle()
-            updatePetMood(usage.fiveHourPct)
+            updatePetMood()
         }
     }
 
@@ -515,7 +734,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         selectedSpecies = species
         buildIdleMenu()
         setIdle()
-        updatePetMood(usage.fiveHourPct)
+        updatePetMood()
     }
 
     // Fires right before the dropdown is shown to the user — usage/status
@@ -555,7 +774,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                 attributes: [.foregroundColor: thresholdColor(fh), .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)]
             )
             checkThreshold(pct: fh, label: "5-hour limit", lastNotified: notifiedFiveHour) { self.notifiedFiveHour = $0 }
-            updatePetMood(fh)
         }
         if let sd = usage.weeklyPct {
             weeklyLineItem.attributedTitle = NSAttributedString(
@@ -564,6 +782,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             )
             checkThreshold(pct: sd, label: "Weekly limit", lastNotified: notifiedWeekly) { self.notifiedWeekly = $0 }
         }
+        updatePetMood()
         updateSessionsSubmenu()
         updateHistorySubmenu()
     }
@@ -679,6 +898,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     func petMoodText(_ mood: String) -> String {
         switch mood {
+        case "working": return "⚡ Working — session active"
         case "tired": return "😅 Getting tired..."
         case "sleepy": return "😴 Getting sleepy..."
         case "asleep": return "💤 Fast asleep (5h limit reached)"
@@ -686,21 +906,71 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
     }
 
-    func updatePetMood(_ fiveHourPct: Int?) {
-        let mood = petMood(for: fiveHourPct)
+    /// True while any Claude Code turn is actually in flight, going by the
+    /// turn_start markers notify-done.sh maintains (written on
+    /// UserPromptSubmit, removed on Stop). This is the fix for the pet
+    /// flickering back to idle mid-turn: transcript mtime goes quiet during
+    /// long tool runs (a 30s build writes nothing), but the marker doesn't.
+    /// The 30-minute cap self-heals orphans from sessions killed mid-turn.
+    func anyTurnInFlight() -> Bool {
+        let fm = FileManager.default
+        guard let urls = try? fm.contentsOfDirectory(at: dirURL, includingPropertiesForKeys: [.contentModificationDateKey]) else { return false }
+        let now = Date()
+        for url in urls where url.lastPathComponent.hasPrefix("turn_start_") {
+            if let mtime = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
+               now.timeIntervalSince(mtime) < 30 * 60 {
+                return true
+            }
+        }
+        return false
+    }
+
+    func updatePetMood() {
+        let limitMood = petMood(for: usage.fiveHourPct)
         // Was tired/sleepy/asleep last time we checked, and just dropped
         // back to healthy — the 5-hour window rolled over. Worth a little
         // fanfare instead of silently snapping back to the idle GIF.
-        if lastComputedMood != "idle" && mood == "idle" {
-            sendNotification(title: "Claude 5-hour limit refreshed", body: "Buddy is back and ready to go!")
-            flashMood("celebrate", for: 4.0)
+        let limitJustRefreshed = lastLimitMood != "idle" && limitMood == "idle"
+        lastLimitMood = limitMood
+
+        // Working (turn marker in flight, or a transcript touched in the
+        // last ~15s as fallback for sessions without the notify-done hook)
+        // beats the intermediate limit moods, but not asleep — a pet at
+        // 100% of the 5-hour limit can't be typing.
+        let mood: String
+        if limitMood == "asleep" {
+            mood = "asleep"
+        } else if anyTurnInFlight() || !usage.activeSessions.isEmpty {
+            mood = "working"
+        } else {
+            mood = limitMood
         }
         lastComputedMood = mood
-        applyMoodGif(mood)
+
+        if limitJustRefreshed {
+            sendNotification(title: "Claude 5-hour limit refreshed", body: "Buddy is back and ready to go!")
+            if currentRequestId == nil { flashMood("celebrate", for: 4.0) }
+        } else if flashWorkItem == nil && currentRequestId == nil {
+            // Don't stomp an in-progress heart/celebrate flash (it reverts
+            // to lastComputedMood by itself) or the pending pose.
+            applyMoodGif(mood)
+        }
+    }
+
+    /// Only the panda has a "working" GIF (the species art comes from the
+    /// hardware-buddy firmware, which has no such pose) — fall back to idle
+    /// rather than leaving the previous GIF frozen on screen.
+    func gifName(for species: String, mood: String) -> String {
+        if Bundle.module.url(forResource: "\(species)_\(mood)", withExtension: "gif", subdirectory: "Resources") != nil {
+            return "\(species)_\(mood)"
+        }
+        return "\(species)_idle"
     }
 
     func applyMoodGif(_ mood: String) {
-        setGif(on: petImageView, named: "\(selectedSpecies)_\(mood)")
+        guard mood != displayedMood else { return }
+        displayedMood = mood
+        setGif(on: petImageView, named: gifName(for: selectedSpecies, mood: mood))
         petMoodLineItem.attributedTitle = NSAttributedString(
             string: petMoodText(mood),
             attributes: [.foregroundColor: NSColor.secondaryLabelColor, .font: NSFont.systemFont(ofSize: 11)]
@@ -708,7 +978,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         // Floating pet is panda-only regardless of the dropdown's species
         // choice (Ray, 2026-07-12: "ทำแค่ panda ก็พอ").
         if let floatingImageView = floatingImageView {
-            setGif(on: floatingImageView, named: "buddy_\(mood)")
+            setGif(on: floatingImageView, named: gifName(for: "buddy", mood: mood))
         }
     }
 
@@ -719,6 +989,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         applyMoodGif(mood)
         let work = DispatchWorkItem { [weak self] in
             guard let self = self else { return }
+            // Nil first: it doubles as the "flash in progress" flag that
+            // keeps updatePetMood from stomping the flash early.
+            self.flashWorkItem = nil
             self.applyMoodGif(self.lastComputedMood)
         }
         flashWorkItem = work
@@ -753,13 +1026,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     func setIdle() {
         currentRequestId = nil
         currentRequest = nil
+        approvalHotKeys.disable()
         updateIdleTitle()
         statusItem.menu = idleMenu
         hideStatusBubble()
-        // Floating pet back to its real mood (it was showing the pending GIF).
-        if let floatingImageView = floatingImageView {
-            setGif(on: floatingImageView, named: "buddy_\(lastComputedMood)")
-        }
+        // Both pets back to the real mood (they were showing the pending
+        // pose); displayedMood is cleared because setPending bypassed
+        // applyMoodGif when it swapped the GIFs.
+        displayedMood = nil
+        applyMoodGif(lastComputedMood)
     }
 
     /// Colors the hook's mini-diff like a real diff: lines under "--- quita"
@@ -839,7 +1114,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         menu.addItem(withTitle: "Quit", action: #selector(quit), keyEquivalent: "q")
         statusItem.menu = menu
 
+        hideDoneToast()
         showStatusBubble(for: req, queued: queued)
+        // Wide-eyed attention pose on the floating pet too, matching the
+        // dropdown's pending GIF; setIdle reverts both to the real mood.
+        if let floatingImageView = floatingImageView {
+            setGif(on: floatingImageView, named: "buddy_pending")
+        }
+        approvalHotKeys.enable()
         NSSound(named: "Ping")?.play()
     }
 
@@ -868,18 +1150,203 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         return requests.sorted { ($0.ts ?? 0) < ($1.ts ?? 0) }
     }
 
+    func formatDuration(_ seconds: Int) -> String {
+        seconds >= 60 ? "\(seconds / 60)m \(seconds % 60)s" : "\(seconds)s"
+    }
+
+    /// Picks up done_<session>.json markers written by notify-done.sh on
+    /// Stop and turns them into a toast at the pet (or a banner when an
+    /// approval card has the spotlight). Markers are consumed on sight.
+    func processDoneMarkers() {
+        let fm = FileManager.default
+        guard let urls = try? fm.contentsOfDirectory(at: dirURL, includingPropertiesForKeys: nil) else { return }
+        let now = Date().timeIntervalSince1970
+        var latest: (project: String, elapsed: Int)? = nil
+        for url in urls where url.lastPathComponent.hasPrefix("done_") && url.pathExtension == "json" {
+            defer { try? fm.removeItem(at: url) }
+            guard let data = try? Data(contentsOf: url),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let elapsed = obj["elapsed"] as? Int else { continue }
+            // Stale marker (written while the app wasn't running): a toast
+            // about something long finished would only confuse.
+            if let ts = obj["ts"] as? Double, now - ts > 60 { continue }
+            guard elapsed >= toastMinSeconds else { continue }
+            let project = obj["project"] as? String ?? ""
+            if latest == nil || elapsed > latest!.elapsed { latest = (project, elapsed) }
+        }
+        guard let done = latest else { return }
+        if currentRequestId != nil {
+            // An approval card is up — that keeps the spotlight, the finish
+            // notice degrades to a banner.
+            sendNotification(title: "Claude Code — \(done.project)",
+                             body: "Finished in \(formatDuration(done.elapsed))")
+        } else {
+            showDoneToast(project: done.project, elapsed: done.elapsed)
+            flashMood("celebrate", for: 4.0)
+            NSSound(named: "Glass")?.play()
+        }
+    }
+
+    func showDoneToast(project: String, elapsed: Int) {
+        guard floatingPetVisible, floatingWindow != nil else {
+            sendNotification(title: "Claude Code — \(project)",
+                             body: "Finished in \(formatDuration(elapsed))")
+            return
+        }
+        toastDismissWorkItem?.cancel()
+
+        let width: CGFloat = 300
+        let height: CGFloat = 64
+        let pad: CGFloat = 12
+        let stripeWidth: CGFloat = 4
+
+        let window: NSPanel
+        if let existing = toastWindow {
+            window = existing
+            window.setContentSize(NSSize(width: width, height: height))
+        } else {
+            let panel = NSPanel(contentRect: NSRect(origin: .zero, size: NSSize(width: width, height: height)),
+                              styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+            panel.isOpaque = false
+            panel.backgroundColor = .clear
+            panel.level = .floating
+            panel.hasShadow = true
+            panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+            panel.ignoresMouseEvents = true
+            panel.sharingType = .readOnly
+            toastWindow = panel
+            window = panel
+        }
+
+        let card = NSVisualEffectView(frame: NSRect(origin: .zero, size: NSSize(width: width, height: height)))
+        card.material = .hudWindow
+        card.state = .active
+        card.wantsLayer = true
+        card.layer?.cornerRadius = 12
+        card.layer?.masksToBounds = true
+        window.contentView = card
+
+        let stripe = NSView(frame: NSRect(x: 0, y: 0, width: stripeWidth, height: height))
+        stripe.wantsLayer = true
+        stripe.layer?.backgroundColor = NSColor.systemGreen.cgColor
+        card.addSubview(stripe)
+
+        let chip = NSImageView(frame: NSRect(x: pad + stripeWidth, y: (height - 28) / 2, width: 28, height: 28))
+        chip.wantsLayer = true
+        chip.layer?.backgroundColor = NSColor.systemGreen.withAlphaComponent(0.22).cgColor
+        chip.layer?.cornerRadius = 7
+        if let symbol = NSImage(systemSymbolName: "checkmark.seal.fill", accessibilityDescription: "done") {
+            chip.image = symbol.withSymbolConfiguration(.init(pointSize: 14, weight: .semibold))
+            chip.contentTintColor = .systemGreen
+        }
+        card.addSubview(chip)
+
+        let textX = pad + stripeWidth + 36
+        let titleField = NSTextField(labelWithString: project.isEmpty ? "Claude Code" : project)
+        titleField.font = NSFont.boldSystemFont(ofSize: 13)
+        titleField.textColor = .labelColor
+        titleField.lineBreakMode = .byTruncatingTail
+        titleField.frame = NSRect(x: textX, y: height / 2 + 1, width: width - textX - pad, height: 17)
+        card.addSubview(titleField)
+
+        let subtitleField = NSTextField(labelWithString: "Turn finished in \(formatDuration(elapsed))")
+        subtitleField.font = NSFont.systemFont(ofSize: 11)
+        subtitleField.textColor = .secondaryLabelColor
+        subtitleField.frame = NSRect(x: textX, y: height / 2 - 16, width: width - textX - pad, height: 15)
+        card.addSubview(subtitleField)
+
+        let wasVisible = window.isVisible
+        window.setFrameOrigin(originNearPet(for: NSSize(width: width, height: height)))
+        if wasVisible {
+            window.orderFront(nil)
+        } else {
+            let target = window.frame
+            window.setFrame(target.offsetBy(dx: 0, dy: -8), display: false)
+            window.alphaValue = 0
+            window.orderFront(nil)
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.2
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                window.animator().alphaValue = 1
+                window.animator().setFrame(target, display: true)
+            }
+        }
+
+        let work = DispatchWorkItem { [weak self] in
+            guard let self = self, let toast = self.toastWindow, toast.isVisible else { return }
+            NSAnimationContext.runAnimationGroup({ ctx in
+                ctx.duration = 0.3
+                toast.animator().alphaValue = 0
+            }, completionHandler: {
+                toast.orderOut(nil)
+                toast.alphaValue = 1
+            })
+        }
+        toastDismissWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6.0, execute: work)
+    }
+
+    func hideDoneToast() {
+        toastDismissWorkItem?.cancel()
+        toastWindow?.orderOut(nil)
+        toastWindow?.alphaValue = 1
+    }
+
+    /// Debug/docs helper: `touch ~/.config/claude-menubar-buddy/capture_card`
+    /// while a card is showing and the app renders it to card_selfie.png in
+    /// the same directory. Exists because the non-activating panel renders
+    /// blank through ScreenCaptureKit (screencapture gets only the blur
+    /// material), so an in-process render is the only faithful screenshot.
+    func captureCardSelfieIfRequested() {
+        let flagURL = dirURL.appendingPathComponent("capture_card")
+        guard FileManager.default.fileExists(atPath: flagURL.path) else { return }
+        // Whichever pet-attached window is up: done toast or approval card.
+        let visibleContent = (toastWindow?.isVisible == true ? toastWindow?.contentView : nil)
+            ?? (statusBubbleWindow?.isVisible == true ? statusBubbleWindow?.contentView : nil)
+        guard let card = visibleContent else { return }
+        try? FileManager.default.removeItem(at: flagURL)
+        guard let rep = card.bitmapImageRepForCachingDisplay(in: card.bounds) else { return }
+        card.cacheDisplay(in: card.bounds, to: rep)
+        if let png = rep.representation(using: .png, properties: [:]) {
+            try? png.write(to: dirURL.appendingPathComponent("card_selfie.png"))
+        }
+    }
+
+    /// Same in-process render as the card selfie, for the pet window:
+    /// `touch ~/.config/claude-menubar-buddy/capture_pet` → pet_selfie.png.
+    func capturePetSelfieIfRequested() {
+        let flagURL = dirURL.appendingPathComponent("capture_pet")
+        guard FileManager.default.fileExists(atPath: flagURL.path) else { return }
+        guard let content = floatingWindow?.contentView, floatingWindow?.isVisible == true else { return }
+        try? FileManager.default.removeItem(at: flagURL)
+        guard let rep = content.bitmapImageRepForCachingDisplay(in: content.bounds) else { return }
+        content.cacheDisplay(in: content.bounds, to: rep)
+        if let png = rep.representation(using: .png, properties: [:]) {
+            try? png.write(to: dirURL.appendingPathComponent("pet_selfie.png"))
+        }
+    }
+
     func poll() {
-        // Background usage/mood/session-count refresh, throttled — full
-        // jsonl scan isn't free, hence every ~30s rather than every 1s tick.
-        // Runs regardless of the floating pet: the menu bar session badge
-        // needs it too.
+        captureCardSelfieIfRequested()
+        capturePetSelfieIfRequested()
+        // Mid-verdict-animation: don't touch the card or surface the next
+        // request; respond()'s completion re-runs poll() the moment the
+        // exit finishes.
+        if isDismissing { return }
+
+        processDoneMarkers()
+        // Background usage/mood/session-count refresh, throttled to every
+        // ~5s — cheap thanks to UsageReader's per-file token cache (stat
+        // per file, read appended bytes only). Runs regardless of the
+        // floating pet: the menu bar session badge and the working/idle
+        // animation need it too.
         floatingRefreshTickCounter += 1
         if floatingRefreshTickCounter >= floatingRefreshEveryTicks {
             floatingRefreshTickCounter = 0
             usage = UsageReader.snapshot()
             lastActiveCount = usage.activeSessions.count
             updateIdleTitle()
-            if floatingPetVisible, let fh = usage.fiveHourPct { updatePetMood(fh) }
+            updatePetMood()
         }
 
         let requests = scanRequests()
@@ -899,8 +1366,75 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
     }
 
+    /// Hotkey path: flash the matching button's pressed state first, so
+    /// ⌘⏎ visibly pushes the button instead of the card silently obeying.
+    /// (Mouse clicks get this for free from PressablePillButton.mouseDown.)
+    func decideViaHotKey(_ decision: String) {
+        guard currentRequestId != nil, !isDismissing else { return }
+        guard let button = decision == "allow" ? allowButtonRef : denyButtonRef,
+              statusBubbleWindow?.isVisible == true else {
+            respond(decision)
+            return
+        }
+        button.setPressed(true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            button.setPressed(false)
+            self?.respond(decision)
+        }
+    }
+
+    /// Verdict flash + exit: a green ✓ / red ✕ pops over a tinted wash,
+    /// then the whole card fades away. The response file was already
+    /// written by then — the animation only delays the NEXT card, never
+    /// the decision reaching the hook.
+    func animateCardDismiss(decision: String, completion: @escaping () -> Void) {
+        guard let window = statusBubbleWindow, window.isVisible, let card = window.contentView else {
+            completion()
+            return
+        }
+        let isAllow = decision == "allow"
+        let color: NSColor = isAllow ? .systemGreen : .systemRed
+
+        let overlay = NSView(frame: card.bounds)
+        overlay.wantsLayer = true
+        overlay.layer?.backgroundColor = color.withAlphaComponent(0.20).cgColor
+        overlay.alphaValue = 0
+
+        let iconSide: CGFloat = 64
+        let icon = NSImageView(frame: NSRect(x: card.bounds.midX - iconSide / 2,
+                                             y: card.bounds.midY - iconSide / 2,
+                                             width: iconSide, height: iconSide))
+        icon.imageScaling = .scaleProportionallyUpOrDown
+        if let symbol = NSImage(systemSymbolName: isAllow ? "checkmark.circle.fill" : "xmark.circle.fill",
+                                accessibilityDescription: decision) {
+            icon.image = symbol.withSymbolConfiguration(.init(pointSize: 48, weight: .bold))
+            icon.contentTintColor = color
+        }
+        // Start small; animating the frame outward reads as a little pop.
+        icon.frame = icon.frame.insetBy(dx: 14, dy: 14)
+        overlay.addSubview(icon)
+        card.addSubview(overlay)
+
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = 0.14
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            overlay.animator().alphaValue = 1
+            icon.animator().frame = icon.frame.insetBy(dx: -14, dy: -14)
+        }, completionHandler: {
+            NSAnimationContext.runAnimationGroup({ ctx in
+                ctx.duration = 0.18
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
+                window.animator().alphaValue = 0
+            }, completionHandler: {
+                window.orderOut(nil)
+                window.alphaValue = 1
+                completion()
+            })
+        })
+    }
+
     func respond(_ decision: String) {
-        guard let id = currentRequestId else { return }
+        guard let id = currentRequestId, !isDismissing else { return }
         let responseURL = dirURL.appendingPathComponent("response_\(id).json")
         let payload = "{\"decision\":\"\(decision)\"}"
         try? payload.write(to: responseURL, atomically: true, encoding: .utf8)
@@ -938,10 +1472,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         try? FileManager.default.removeItem(at: dirURL.appendingPathComponent("request_\(id).json"))
         try? FileManager.default.removeItem(at: legacyRequestURL)
         respondedIds.insert(id)
-        setIdle()
-        // Surface the next queued request immediately instead of waiting up
-        // to a full 1s timer tick — back-to-back approvals should feel snappy.
-        poll()
+        // Verdict animation first — the decision is already on disk, so the
+        // hook isn't waiting on this. setIdle + surfacing the next queued
+        // request happen when the card finishes leaving, so back-to-back
+        // approvals read as distinct cards instead of content swapping.
+        isDismissing = true
+        animateCardDismiss(decision: decision) { [weak self] in
+            guard let self = self else { return }
+            self.isDismissing = false
+            self.setIdle()
+            self.poll()
+        }
     }
 
     @objc func allow() { respond("allow") }

@@ -69,8 +69,28 @@ CELEBRATE = [  # 5-hour limit just reset — arms-up, wide happy eyes
     "..KK........KK..",
 ]
 
+# Working: Claude is actively running in some session — panda at a little
+# gray laptop, paws alternating over the keyboard row.
+WORK_A = [
+    "...KK......KK...", "..KKKK....KKKK..", "..KKKK....KKKK..",
+    "...WWWWWWWWWW...", "..WWWWWWWWWWWW..", ".WWWKKW..WKKWWW.",
+    ".WWWKKW..WKKWWW.", ".WBWWWWWKKWWWBW.", ".WWWWWWWWWWWWWW.",
+    "..WWWWWWWWWWWW..", "..WWWWWWWWWWWW..", ".WWWWWWWWWWWWWW.",
+    ".WWWWGGGGGGWWWW.", "KWWWWGGGGGGWWWWK", "KKWWWKGGGGKWWWKK",
+    "..KK........KK..",
+]
+WORK_B = [  # same pose, paws shifted a key inward — the typing wiggle
+    "...KK......KK...", "..KKKK....KKKK..", "..KKKK....KKKK..",
+    "...WWWWWWWWWW...", "..WWWWWWWWWWWW..", ".WWWKKW..WKKWWW.",
+    ".WWWKKW..WKKWWW.", ".WBWWWWWKKWWWBW.", ".WWWWWWWWWWWWWW.",
+    "..WWWWWWWWWWWW..", "..WWWWWWWWWWWW..", ".WWWWWWWWWWWWWW.",
+    ".WWWWGGGGGGWWWW.", "KWWWWGGGGGGWWWWK", "KKWWWGKGGKGWWWKK",
+    "..KK........KK..",
+]
+
 COLORS = {"K": (132, 136, 140, 255), "W": (255, 255, 255, 255),
           "P": (255, 77, 148, 255), "B": (255, 170, 190, 140),
+          "G": (95, 100, 108, 255),
           ".": (0, 0, 0, 0)}
 
 
@@ -150,4 +170,9 @@ celebrate_frames = [
 ]
 save_gif(celebrate_frames, [200, 200, 200, 200], "Sources/ClaudeMenuBarBuddy/Resources/buddy_celebrate.gif")
 
-print("Wrote buddy_idle/pending/tired/sleepy/asleep/heart/celebrate.gif")
+# Working: brisk typing loop, no body bounce — heads-down concentration,
+# clearly distinct from idle's slow blink at a glance.
+working_frames = [render(WORK_A), render(WORK_B), render(WORK_A), render(WORK_B)]
+save_gif(working_frames, [170, 170, 170, 170], "Sources/ClaudeMenuBarBuddy/Resources/buddy_working.gif")
+
+print("Wrote buddy_idle/pending/tired/sleepy/asleep/heart/celebrate/working.gif")
