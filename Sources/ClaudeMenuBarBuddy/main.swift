@@ -112,6 +112,37 @@ final class DraggablePetImageView: NSImageView {
     private var dragStartMouseScreenLocation: NSPoint = .zero
     private var dragStartWindowOrigin: NSPoint = .zero
 
+    // Without this, the first click on the pet while the app is inactive is
+    // swallowed by activation and the drag never starts. The app is inactive
+    // almost always once the non-activating approval card is in use (that
+    // panel deliberately never activates us), which made the pet undraggable
+    // exactly whenever the card was on screen.
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func mouseDown(with event: NSEvent) {
+        dragStartMouseScreenLocation = NSEvent.mouseLocation
+        dragStartWindowOrigin = window?.frame.origin ?? .zero
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let window = window else { return }
+        let current = NSEvent.mouseLocation
+        let dx = current.x - dragStartMouseScreenLocation.x
+        let dy = current.y - dragStartMouseScreenLocation.y
+        window.setFrameOrigin(NSPoint(x: dragStartWindowOrigin.x + dx, y: dragStartWindowOrigin.y + dy))
+    }
+}
+
+// The approval card's background: same manual drag as the pet (grab the
+// title row or any empty padding; buttons and the text view keep handling
+// their own clicks), so the card can be pulled out of the way of whatever
+// it happens to cover.
+final class DraggableCardView: NSVisualEffectView {
+    private var dragStartMouseScreenLocation: NSPoint = .zero
+    private var dragStartWindowOrigin: NSPoint = .zero
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
     override func mouseDown(with event: NSEvent) {
         dragStartMouseScreenLocation = NSEvent.mouseLocation
         dragStartWindowOrigin = window?.frame.origin ?? .zero
@@ -348,13 +379,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
             panel.ignoresMouseEvents = false
             panel.becomesKeyOnlyIfNeeded = true
+            // Delegate so windowDidMove can remember where the user drags
+            // the card relative to the pet.
+            panel.delegate = self
             window = panel
             statusBubbleWindow = window
         }
 
         // Fresh content view per request — rebuilding is cheaper to reason
         // about than reframing five subviews around a variable-height body.
-        let card = NSVisualEffectView(frame: NSRect(origin: .zero, size: NSSize(width: cardWidth, height: cardHeight)))
+        let card = DraggableCardView(frame: NSRect(origin: .zero, size: NSSize(width: cardWidth, height: cardHeight)))
         card.material = .hudWindow
         card.state = .active
         card.wantsLayer = true
@@ -378,9 +412,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         scroll.drawsBackground = false
         scroll.borderType = .noBorder
         let textView = NSTextView(frame: NSRect(origin: .zero, size: scroll.contentSize))
-        textView.string = body
-        textView.font = bodyFont
-        textView.textColor = .labelColor
+        textView.textStorage?.setAttributedString(attributedHint(body, font: bodyFont))
         textView.drawsBackground = false
         textView.isEditable = false
         textView.isSelectable = true
@@ -415,11 +447,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     func positionStatusBubble(above petWindow: NSWindow) {
         guard let bubble = statusBubbleWindow else { return }
         let petFrame = petWindow.frame
-        let bubbleSize = bubble.frame.size
-        bubble.setFrameOrigin(NSPoint(
-            x: petFrame.midX - bubbleSize.width / 2,
-            y: petFrame.maxY + 6
-        ))
+        if let offset = cardOffset {
+            bubble.setFrameOrigin(NSPoint(x: petFrame.origin.x + offset.x,
+                                          y: petFrame.origin.y + offset.y))
+        } else {
+            bubble.setFrameOrigin(NSPoint(
+                x: petFrame.midX - bubble.frame.size.width / 2,
+                y: petFrame.maxY + 6
+            ))
+        }
     }
 
     @objc func toggleFloatingPet() {
@@ -432,11 +468,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
     }
 
+    // Where the user last left the card, as an origin offset from the pet's
+    // origin. Nil until the card is first positioned; once the user drags
+    // the card somewhere, it stays glued to the pet at THAT offset instead
+    // of snapping back above its head on the next request.
+    var cardOffset: NSPoint?
+
     func windowDidMove(_ notification: Notification) {
-        guard let window = notification.object as? FloatingPetWindow else { return }
-        UserDefaults.standard.set(NSStringFromPoint(window.frame.origin), forKey: "floatingPetOrigin")
-        if statusBubbleWindow?.isVisible == true {
-            positionStatusBubble(above: window)
+        if let window = notification.object as? FloatingPetWindow {
+            UserDefaults.standard.set(NSStringFromPoint(window.frame.origin), forKey: "floatingPetOrigin")
+            if statusBubbleWindow?.isVisible == true {
+                positionStatusBubble(above: window)
+            }
+        } else if let panel = notification.object as? NSWindow, panel === statusBubbleWindow,
+                  let pet = floatingWindow {
+            cardOffset = NSPoint(x: panel.frame.origin.x - pet.frame.origin.x,
+                                 y: panel.frame.origin.y - pet.frame.origin.y)
         }
     }
 
@@ -654,6 +701,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
     }
 
+    /// Colors the hook's mini-diff like a real diff: lines under "--- quita"
+    /// in red, lines under "+++ pone" / "+++ contenido" in green, the marker
+    /// lines themselves dimmed, everything else (commands, paths) plain.
+    func attributedHint(_ text: String, font: NSFont) -> NSAttributedString {
+        let result = NSMutableAttributedString()
+        var section = 0 // 0 = plain, 1 = removing, 2 = adding
+        let lines = text.components(separatedBy: "\n")
+        for (index, line) in lines.enumerated() {
+            let color: NSColor
+            if line.hasPrefix("--- quita") {
+                section = 1
+                color = .secondaryLabelColor
+            } else if line.hasPrefix("+++ pone") || line.hasPrefix("+++ contenido") {
+                section = 2
+                color = .secondaryLabelColor
+            } else {
+                switch section {
+                case 1: color = .systemRed
+                case 2: color = .systemGreen
+                default: color = .labelColor
+                }
+            }
+            let suffix = index < lines.count - 1 ? "\n" : ""
+            result.append(NSAttributedString(string: line + suffix,
+                                             attributes: [.font: font, .foregroundColor: color]))
+        }
+        return result
+    }
+
     func setPending(_ req: PendingRequest, queued: Int) {
         statusItem.button?.title = queued > 0 ? "🐼❗\(queued + 1)" : "🐼❗"
         currentRequestId = req.id
@@ -685,9 +761,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         )
         let hintHeight = min(160, ceil(hintMeasured.height) + 8)
         let hintContainer = NSView(frame: NSRect(x: 0, y: 0, width: hintWidth, height: hintHeight))
-        let hintField = NSTextField(wrappingLabelWithString: hintText)
-        hintField.font = hintFont
-        hintField.textColor = .labelColor
+        let hintField = NSTextField(wrappingLabelWithString: "")
+        hintField.attributedStringValue = attributedHint(hintText, font: hintFont)
         hintField.frame = NSRect(x: 14, y: 4, width: hintWidth - 28, height: hintHeight - 8)
         hintContainer.addSubview(hintField)
         let hintItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
