@@ -14,6 +14,23 @@ INPUT="$(cat)"
 ID="$(uuidgen)"
 TOOL="$(echo "$INPUT" | jq -r '.tool_name // "unknown"')"
 
+# Fast path: Bash commands whose base command the user marked "Always allow"
+# from the approval card get approved instantly — no card, no waiting. The
+# list is maintained by the menu bar app (always_allow.json); removing an
+# entry from its "Auto-allowed Commands" submenu re-enables the card.
+ALLOW_FILE="$DIR/always_allow.json"
+if [ "$TOOL" = "Bash" ] && [ -f "$ALLOW_FILE" ]; then
+  # First token of the command that isn't an env assignment (FOO=bar) — the
+  # same base the app extracts when offering the "Always allow" button.
+  CMD_BASE="$(echo "$INPUT" | jq -r '.tool_input.command // ""' | head -1 \
+    | awk '{for(i=1;i<=NF;i++){if($i !~ /^[A-Za-z_][A-Za-z0-9_]*=/){print $i; exit}}}')"
+  if [ -n "$CMD_BASE" ] && jq -e --arg c "$CMD_BASE" 'index($c) != null' "$ALLOW_FILE" >/dev/null 2>&1; then
+    jq -n --arg r "Always-allowed via Claude Menu Bar Buddy: $CMD_BASE" \
+      '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"allow",permissionDecisionReason:$r}}'
+    exit 0
+  fi
+fi
+
 # Full content, not a teaser: the whole command for Bash, a mini-diff for
 # Edit, path + content preview for Write. The app decides how much fits on
 # screen (scrolls beyond that); truncation here is only a payload safety cap.

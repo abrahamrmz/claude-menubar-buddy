@@ -13,9 +13,11 @@ import Carbon.HIToolbox
 final class ApprovalHotKeys {
     var onAllow: (() -> Void)?
     var onDeny: (() -> Void)?
+    var onAlwaysAllow: (() -> Void)?
 
     private var allowRef: EventHotKeyRef?
     private var denyRef: EventHotKeyRef?
+    private var alwaysRef: EventHotKeyRef?
     private var handlerRef: EventHandlerRef?
     private static let signature: OSType = 0x43425544 // 'CBUD'
 
@@ -31,6 +33,7 @@ final class ApprovalHotKeys {
             let hotKeys = Unmanaged<ApprovalHotKeys>.fromOpaque(userData).takeUnretainedValue()
             if hotKeyID.id == 1 { hotKeys.onAllow?() }
             else if hotKeyID.id == 2 { hotKeys.onDeny?() }
+            else if hotKeyID.id == 3 { hotKeys.onAlwaysAllow?() }
             return noErr
         }, 1, &eventType, Unmanaged.passUnretained(self).toOpaque(), &handlerRef)
     }
@@ -43,10 +46,14 @@ final class ApprovalHotKeys {
         RegisterEventHotKey(UInt32(kVK_Return), UInt32(cmdKey | shiftKey),
                             EventHotKeyID(signature: Self.signature, id: 2),
                             GetEventDispatcherTarget(), 0, &denyRef)
+        RegisterEventHotKey(UInt32(kVK_Return), UInt32(cmdKey | optionKey),
+                            EventHotKeyID(signature: Self.signature, id: 3),
+                            GetEventDispatcherTarget(), 0, &alwaysRef)
     }
 
     func disable() {
         if let ref = allowRef { UnregisterEventHotKey(ref); allowRef = nil }
         if let ref = denyRef { UnregisterEventHotKey(ref); denyRef = nil }
+        if let ref = alwaysRef { UnregisterEventHotKey(ref); alwaysRef = nil }
     }
 }

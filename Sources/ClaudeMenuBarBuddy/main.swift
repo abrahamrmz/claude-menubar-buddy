@@ -235,6 +235,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     var weeklyLineItem: NSMenuItem!
     var sessionsSubmenuTop: NSMenuItem!
     var historySubmenuTop: NSMenuItem!
+    var alwaysSubmenuTop: NSMenuItem!
     var petImageView: NSImageView!
     var petMoodLineItem: NSMenuItem!
     // Tracks the last mood actually computed from usage, separate from
@@ -281,6 +282,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     // matching button's pressed state before dismissing.
     weak var allowButtonRef: PressablePillButton?
     weak var denyButtonRef: PressablePillButton?
+    weak var alwaysButtonRef: PressablePillButton?
+    // Base command (e.g. "gh") of the Bash request currently on screen, when
+    // one could be extracted — enables the "Always allow" button/hotkey.
+    var currentCommandBase: String?
     // True while the verdict/exit animation runs — poll() must not surface
     // the next queued request (or rebuild the card) mid-animation, and a
     // second ⌘⏎ mash must not double-respond.
@@ -319,6 +324,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
         approvalHotKeys.onAllow = { [weak self] in self?.decideViaHotKey("allow") }
         approvalHotKeys.onDeny = { [weak self] in self?.decideViaHotKey("deny") }
+        approvalHotKeys.onAlwaysAllow = { [weak self] in self?.decideViaHotKey("always") }
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         buildIdleMenu()
@@ -364,6 +370,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         historySubmenuTop = NSMenuItem(title: "Decision History", action: nil, keyEquivalent: "")
         historySubmenuTop.submenu = NSMenu()
         menu.addItem(historySubmenuTop)
+        alwaysSubmenuTop = NSMenuItem(title: "Auto-allowed Commands", action: nil, keyEquivalent: "")
+        alwaysSubmenuTop.submenu = NSMenu()
+        menu.addItem(alwaysSubmenuTop)
         menu.addItem(NSMenuItem.separator())
         menu.addItem(buildSpeciesSubmenuItem())
         let floatingItem = NSMenuItem(title: "Floating Pet", action: #selector(toggleFloatingPet), keyEquivalent: "")
@@ -509,7 +518,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         let blockHeight = textHeight + blockInset * 2
         let headerHeight: CGFloat = 26
         let buttonRowHeight: CGFloat = 32
-        let cardHeight = pad + buttonRowHeight + 10 + blockHeight + 10 + headerHeight + pad
+        // Bash requests with a recognizable base command get a third,
+        // quieter action: remember this command and stop asking.
+        let base = req.tool == "Bash" ? commandBase(from: req.hint) : nil
+        currentCommandBase = base
+        let alwaysRowHeight: CGFloat = base != nil ? 26 + 8 : 0
+        let cardHeight = pad + buttonRowHeight + alwaysRowHeight + 10 + blockHeight + 10 + headerHeight + pad
 
         let window: NSWindow
         if let existing = statusBubbleWindow {
@@ -591,7 +605,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         card.addSubview(titleField)
 
         // Body: the full command / mini-diff inside a code-block well.
-        let block = NSView(frame: NSRect(x: contentX, y: pad + buttonRowHeight + 10,
+        let block = NSView(frame: NSRect(x: contentX, y: pad + buttonRowHeight + alwaysRowHeight + 10,
                                          width: cardWidth - contentX - pad, height: blockHeight))
         block.wantsLayer = true
         block.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.28).cgColor
@@ -629,6 +643,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         denyButton.frame = NSRect(x: contentX + buttonWidth + 8, y: pad, width: buttonWidth, height: buttonRowHeight)
         card.addSubview(denyButton)
         denyButtonRef = denyButton
+
+        // Quieter full-width row above the pills: approve AND remember this
+        // base command so hook.sh's fast path skips the card next time.
+        if let base = base {
+            let alwaysButton = pillButton(title: "⚡ Always allow \(base)", shortcut: "⌥⌘⏎",
+                                          fill: NSColor.white.withAlphaComponent(0.07),
+                                          textColor: accent, action: #selector(alwaysAllow))
+            alwaysButton.layer?.cornerRadius = 13
+            alwaysButton.frame = NSRect(x: contentX, y: pad + buttonRowHeight + 8,
+                                        width: cardWidth - contentX - pad, height: 26)
+            card.addSubview(alwaysButton)
+            alwaysButtonRef = alwaysButton
+        }
 
         let wasVisible = window.isVisible
         positionStatusBubble(above: petWindow)
@@ -785,6 +812,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         updatePetMood()
         updateSessionsSubmenu()
         updateHistorySubmenu()
+        updateAlwaysSubmenu()
+    }
+
+    /// One item per always-allowed base command; clicking removes it, so the
+    /// card comes back for that command from then on.
+    func updateAlwaysSubmenu() {
+        guard let submenu = alwaysSubmenuTop.submenu else { return }
+        submenu.removeAllItems()
+        let list = readAlwaysAllow()
+        if list.isEmpty {
+            alwaysSubmenuTop.title = "Auto-allowed Commands"
+            submenu.addItem(withTitle: "None yet — ⚡ on a Bash card adds one", action: nil, keyEquivalent: "")
+            return
+        }
+        alwaysSubmenuTop.title = "Auto-allowed Commands (\(list.count))"
+        for base in list {
+            let item = NSMenuItem(title: "⚡ \(base) — click to remove",
+                                  action: #selector(removeAlwaysAllow(_:)), keyEquivalent: "")
+            item.representedObject = base
+            item.target = self
+            submenu.addItem(item)
+        }
+    }
+
+    @objc func removeAlwaysAllow(_ sender: NSMenuItem) {
+        guard let base = sender.representedObject as? String else { return }
+        writeAlwaysAllow(readAlwaysAllow().filter { $0 != base })
     }
 
     /// Last 10 decisions, newest first, from decisions.jsonl (appended by
@@ -1026,6 +1080,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     func setIdle() {
         currentRequestId = nil
         currentRequest = nil
+        currentCommandBase = nil
         approvalHotKeys.disable()
         updateIdleTitle()
         statusItem.menu = idleMenu
@@ -1152,6 +1207,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     func formatDuration(_ seconds: Int) -> String {
         seconds >= 60 ? "\(seconds / 60)m \(seconds % 60)s" : "\(seconds)s"
+    }
+
+    // MARK: - Always-allow list (mirrors hook.sh's fast path)
+
+    // Buddy-managed allowlist of Bash base commands, stored beside the
+    // request files. hook.sh consults it BEFORE writing a request, so
+    // always-allowed commands are approved instantly with no card at all.
+    // Deliberately separate from ~/.claude/settings.json — the buddy never
+    // edits Claude Code's own config.
+    var alwaysAllowURL: URL { dirURL.appendingPathComponent("always_allow.json") }
+
+    func readAlwaysAllow() -> [String] {
+        guard let data = try? Data(contentsOf: alwaysAllowURL),
+              let list = try? JSONSerialization.jsonObject(with: data) as? [String] else { return [] }
+        return list
+    }
+
+    func writeAlwaysAllow(_ list: [String]) {
+        if let data = try? JSONSerialization.data(withJSONObject: list.sorted(), options: [.prettyPrinted]) {
+            try? data.write(to: alwaysAllowURL, options: [.atomic])
+        }
+    }
+
+    /// First token of the command that isn't an env assignment — must match
+    /// hook.sh's extraction so the button's promise ("gh won't ask again")
+    /// is exactly what the fast path later honors. Returns nil for anything
+    /// that doesn't look like a plain command name.
+    func commandBase(from hint: String) -> String? {
+        guard let firstLine = hint.split(separator: "\n").first else { return nil }
+        for token in firstLine.split(whereSeparator: { $0 == " " || $0 == "\t" }) {
+            if token.range(of: "^[A-Za-z_][A-Za-z0-9_]*=", options: .regularExpression) != nil { continue }
+            let base = String(token)
+            guard base.range(of: "^[A-Za-z0-9_./-]+$", options: .regularExpression) != nil else { return nil }
+            return base
+        }
+        return nil
     }
 
     /// Picks up done_<session>.json markers written by notify-done.sh on
@@ -1351,7 +1442,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
         let requests = scanRequests()
         guard let first = requests.first else {
-            if currentRequestId != nil { setIdle() }
+            if currentRequestId != nil {
+                // Resolved WITHOUT an app decision — hook timeout, answered
+                // in the terminal, or the session was cancelled. Neutral
+                // fade, deliberately distinct from the ✓/✕ verdict flash:
+                // the buddy did not approve anything here.
+                if let window = statusBubbleWindow, window.isVisible {
+                    isDismissing = true
+                    NSAnimationContext.runAnimationGroup({ ctx in
+                        ctx.duration = 0.25
+                        window.animator().alphaValue = 0
+                    }, completionHandler: { [weak self] in
+                        window.orderOut(nil)
+                        window.alphaValue = 1
+                        self?.isDismissing = false
+                        self?.setIdle()
+                    })
+                } else {
+                    setIdle()
+                }
+            }
             return
         }
         if first.id != currentRequestId {
@@ -1369,18 +1479,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     /// Hotkey path: flash the matching button's pressed state first, so
     /// ⌘⏎ visibly pushes the button instead of the card silently obeying.
     /// (Mouse clicks get this for free from PressablePillButton.mouseDown.)
+    /// decision is "allow", "deny", or "always" (allow + remember command).
     func decideViaHotKey(_ decision: String) {
         guard currentRequestId != nil, !isDismissing else { return }
-        guard let button = decision == "allow" ? allowButtonRef : denyButtonRef,
-              statusBubbleWindow?.isVisible == true else {
-            respond(decision)
+        let button: PressablePillButton?
+        switch decision {
+        case "allow": button = allowButtonRef
+        case "always": button = alwaysButtonRef
+        default: button = denyButtonRef
+        }
+        let perform: () -> Void = { [weak self] in
+            switch decision {
+            case "always": self?.alwaysAllow()
+            case "allow": self?.respond("allow")
+            default: self?.respond("deny")
+            }
+        }
+        guard let button = button, statusBubbleWindow?.isVisible == true else {
+            perform()
             return
         }
         button.setPressed(true)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             button.setPressed(false)
-            self?.respond(decision)
+            perform()
         }
+    }
+
+    /// Approve the current request AND remember its base command in the
+    /// buddy allowlist, so hook.sh auto-approves it from now on without a
+    /// card. Falls back to a plain allow when no base was extractable
+    /// (non-Bash card, or an unparseable command).
+    @objc func alwaysAllow() {
+        guard let base = currentCommandBase else {
+            respond("allow")
+            return
+        }
+        var list = readAlwaysAllow()
+        if !list.contains(base) { list.append(base) }
+        writeAlwaysAllow(list)
+        respond("allow")
     }
 
     /// Verdict flash + exit: a green ✓ / red ✕ pops over a tinted wash,
