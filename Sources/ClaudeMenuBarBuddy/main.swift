@@ -21,7 +21,9 @@ func sendNotification(title: String, body: String) {
 
 let dirURL = FileManager.default.homeDirectoryForCurrentUser
     .appendingPathComponent(".config/claude-menubar-buddy")
-let requestURL = dirURL.appendingPathComponent("pending_request.json")
+// Written by hook.sh versions before the one-file-per-request queue; still
+// honored so an in-flight session running the old hook isn't orphaned.
+let legacyRequestURL = dirURL.appendingPathComponent("pending_request.json")
 
 struct PendingRequest: Decodable {
     let id: String
@@ -30,6 +32,7 @@ struct PendingRequest: Decodable {
     // Optional so request files written by an older hook.sh (no project field)
     // still decode instead of being silently ignored by poll().
     let project: String?
+    let ts: Double?
 }
 
 // Returns the menu item plus the NSImageView inside it, so callers that need
@@ -147,6 +150,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     var statusItem: NSStatusItem!
     var timer: Timer?
     var currentRequestId: String?
+    // How many requests are waiting behind the one currently shown — used to
+    // decide when the bubble's "(+N queued)" suffix needs a refresh without
+    // rebuilding the whole pending menu (unsafe while the menu is open).
+    var lastQueuedCount = 0
     var usage = UsageSnapshot()
     // Belt-and-suspenders against the same request file being seen twice
     // (e.g. the hook writes it again, or a filesystem event fires twice)
@@ -611,9 +618,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
     }
 
-    func setPending(_ req: PendingRequest) {
-        statusItem.button?.title = "🐼❗"
+    func bubbleText(_ req: PendingRequest, queued: Int) -> String {
+        var text = "\(req.tool): \(String(req.hint.prefix(40)))"
+        if let project = req.project, !project.isEmpty { text = "[\(project)] \(text)" }
+        if queued > 0 { text += "  (+\(queued) queued)" }
+        return text
+    }
+
+    func setPending(_ req: PendingRequest, queued: Int) {
+        statusItem.button?.title = queued > 0 ? "🐼❗\(queued + 1)" : "🐼❗"
         currentRequestId = req.id
+        lastQueuedCount = queued
 
         let menu = NSMenu()
         menu.addItem(gifMenuItem(named: "\(selectedSpecies)_pending").0)
@@ -634,6 +649,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             attributes: [.foregroundColor: NSColor.labelColor, .font: NSFont.systemFont(ofSize: 12)]
         )
         menu.addItem(hintItem)
+        if queued > 0 {
+            menu.addItem(statusMenuItem("\(queued) more request\(queued == 1 ? "" : "s") waiting…"))
+        }
         menu.addItem(NSMenuItem.separator())
         menu.addItem(withTitle: "Allow", action: #selector(allow), keyEquivalent: "a")
         menu.addItem(withTitle: "Deny", action: #selector(deny), keyEquivalent: "d")
@@ -641,8 +659,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         menu.addItem(withTitle: "Quit", action: #selector(quit), keyEquivalent: "q")
         statusItem.menu = menu
 
-        showStatusBubble(text: "\(req.tool): \(String(req.hint.prefix(40)))")
+        showStatusBubble(text: bubbleText(req, queued: queued))
         NSSound(named: "Ping")?.play()
+    }
+
+    /// All live request files, oldest first. Expired ones (hook gave up at
+    /// ~55s; anything older is an orphan from a killed hook) are deleted on
+    /// sight so they can't wedge the queue.
+    func scanRequests() -> [PendingRequest] {
+        let fm = FileManager.default
+        let now = Date().timeIntervalSince1970
+        var requests: [PendingRequest] = []
+
+        var urls = (try? fm.contentsOfDirectory(at: dirURL, includingPropertiesForKeys: nil))?
+            .filter { $0.lastPathComponent.hasPrefix("request_") && $0.pathExtension == "json" } ?? []
+        if fm.fileExists(atPath: legacyRequestURL.path) { urls.append(legacyRequestURL) }
+
+        for url in urls {
+            guard let data = try? Data(contentsOf: url),
+                  let req = try? JSONDecoder().decode(PendingRequest.self, from: data) else { continue }
+            if let ts = req.ts, now - ts > 75 {
+                try? fm.removeItem(at: url)
+                continue
+            }
+            if respondedIds.contains(req.id) { continue }
+            requests.append(req)
+        }
+        return requests.sorted { ($0.ts ?? 0) < ($1.ts ?? 0) }
     }
 
     func poll() {
@@ -659,16 +702,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             }
         }
 
-        guard FileManager.default.fileExists(atPath: requestURL.path) else {
+        let requests = scanRequests()
+        guard let first = requests.first else {
             if currentRequestId != nil { setIdle() }
             return
         }
-        guard let data = try? Data(contentsOf: requestURL),
-              let req = try? JSONDecoder().decode(PendingRequest.self, from: data) else {
-            return
-        }
-        if req.id != currentRequestId && !respondedIds.contains(req.id) {
-            setPending(req)
+        if first.id != currentRequestId {
+            setPending(first, queued: requests.count - 1)
+        } else if requests.count - 1 != lastQueuedCount {
+            // Same request on screen but the line behind it changed length.
+            // Only refresh the bubble text and icon badge — rebuilding the
+            // pending menu here could glitch it mid-open.
+            lastQueuedCount = requests.count - 1
+            statusItem.button?.title = lastQueuedCount > 0 ? "🐼❗\(lastQueuedCount + 1)" : "🐼❗"
+            statusBubbleLabel?.stringValue = bubbleText(first, queued: lastQueuedCount)
         }
     }
 
@@ -683,9 +730,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         // next tick, treat it as new (currentRequestId was just reset to
         // nil by setIdle()), and re-trigger setPending() — including a
         // second, spurious Ping sound.
-        try? FileManager.default.removeItem(at: requestURL)
+        try? FileManager.default.removeItem(at: dirURL.appendingPathComponent("request_\(id).json"))
+        try? FileManager.default.removeItem(at: legacyRequestURL)
         respondedIds.insert(id)
         setIdle()
+        // Surface the next queued request immediately instead of waiting up
+        // to a full 1s timer tick — back-to-back approvals should feel snappy.
+        poll()
     }
 
     @objc func allow() { respond("allow") }

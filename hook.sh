@@ -8,7 +8,6 @@
 set -euo pipefail
 
 DIR="$HOME/.config/claude-menubar-buddy"
-REQUEST_FILE="$DIR/pending_request.json"
 mkdir -p "$DIR"
 
 INPUT="$(cat)"
@@ -29,10 +28,19 @@ PROJECT="$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null || echo "")"
 PROJECT_NAME=""
 [ -n "$PROJECT" ] && PROJECT_NAME="$(basename "$PROJECT")"
 
+# One file per request (request_<id>.json) so concurrent sessions queue up
+# in the app instead of overwriting each other's single pending_request.json.
+REQUEST_FILE="$DIR/request_${ID}.json"
+
 jq -n --arg id "$ID" --arg tool "$TOOL" --arg hint "$HINT" --arg project "$PROJECT_NAME" \
   '{id: $id, tool: $tool, hint: $hint, project: $project, ts: now}' > "$REQUEST_FILE"
 
 RESPONSE_FILE="$DIR/response_${ID}.json"
+
+# When the user answers in the terminal instead, Claude Code kills this hook —
+# without this trap the request file would linger and the app would keep
+# showing an already-resolved request.
+trap 'rm -f "$REQUEST_FILE" "$RESPONSE_FILE"; exit 0' TERM HUP INT
 
 # Poll for up to 55s (keep under the hook's own timeout, set to 60s in settings.json)
 for i in $(seq 1 110); do
