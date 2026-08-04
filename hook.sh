@@ -22,8 +22,15 @@ HINT="$(echo "$INPUT" | jq -r '
   else (.tool_input | tostring)
   end' 2>/dev/null || echo "")"
 
-jq -n --arg id "$ID" --arg tool "$TOOL" --arg hint "$HINT" \
-  '{id: $id, tool: $tool, hint: $hint, ts: now}' > "$REQUEST_FILE"
+# Project = basename of the session's cwd, so the approval UI can show which
+# repo/session is actually asking (avoids approving something from the wrong
+# project when several sessions run at once).
+PROJECT="$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null || echo "")"
+PROJECT_NAME=""
+[ -n "$PROJECT" ] && PROJECT_NAME="$(basename "$PROJECT")"
+
+jq -n --arg id "$ID" --arg tool "$TOOL" --arg hint "$HINT" --arg project "$PROJECT_NAME" \
+  '{id: $id, tool: $tool, hint: $hint, project: $project, ts: now}' > "$REQUEST_FILE"
 
 RESPONSE_FILE="$DIR/response_${ID}.json"
 

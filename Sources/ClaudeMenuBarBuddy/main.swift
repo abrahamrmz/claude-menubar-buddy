@@ -27,6 +27,9 @@ struct PendingRequest: Decodable {
     let id: String
     let tool: String
     let hint: String
+    // Optional so request files written by an older hook.sh (no project field)
+    // still decode instead of being silently ignored by poll().
+    let project: String?
 }
 
 // Returns the menu item plus the NSImageView inside it, so callers that need
@@ -294,29 +297,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         hideStatusBubble()
     }
 
-    // Small borderless panel positioned just above the floating pet,
-    // showing what it's currently waiting on approval for. Only exists
-    // while there's a real pending request — not a general "what is Claude
-    // doing" indicator (that would need a new hook covering every tool
-    // call, deliberately not built yet, see the chat about why).
+    // Interactive approval bubble positioned just above the floating pet:
+    // shows what's waiting for approval plus Allow/Deny buttons, so the
+    // decision can be made right on the desktop pet without opening the
+    // menu bar dropdown. Only exists while there's a real pending request.
+    //
+    // .nonactivatingPanel is the load-bearing detail: clicking Allow/Deny
+    // must NOT activate this app or steal key focus from whatever the user
+    // is typing in (single-screen laptop workflow — approve and keep
+    // typing in the terminal without a window switch).
     func showStatusBubble(text: String) {
         guard floatingPetVisible, let petWindow = floatingWindow else { return }
-        let bubbleWidth: CGFloat = 200
-        let bubbleHeight: CGFloat = 40
+        let bubbleWidth: CGFloat = 230
+        let bubbleHeight: CGFloat = 74
         let window: NSWindow
         let label: NSTextField
         if let existing = statusBubbleWindow, let existingLabel = statusBubbleLabel {
             window = existing
             label = existingLabel
         } else {
-            window = NSPanel(contentRect: NSRect(origin: .zero, size: NSSize(width: bubbleWidth, height: bubbleHeight)),
-                              styleMask: [.borderless], backing: .buffered, defer: false)
-            window.isOpaque = false
-            window.backgroundColor = .clear
-            window.level = .floating
-            window.hasShadow = true
-            window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
-            window.ignoresMouseEvents = true
+            let panel = NSPanel(contentRect: NSRect(origin: .zero, size: NSSize(width: bubbleWidth, height: bubbleHeight)),
+                              styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+            panel.isOpaque = false
+            panel.backgroundColor = .clear
+            panel.level = .floating
+            panel.hasShadow = true
+            panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+            panel.ignoresMouseEvents = false
+            panel.becomesKeyOnlyIfNeeded = true
+            window = panel
 
             let bubbleView = NSVisualEffectView(frame: NSRect(origin: .zero, size: NSSize(width: bubbleWidth, height: bubbleHeight)))
             bubbleView.material = .hudWindow
@@ -327,13 +336,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             window.contentView = bubbleView
 
             let textField = NSTextField(labelWithString: "")
-            textField.frame = NSRect(x: 8, y: 4, width: bubbleWidth - 16, height: bubbleHeight - 8)
+            textField.frame = NSRect(x: 8, y: 34, width: bubbleWidth - 16, height: bubbleHeight - 38)
             textField.font = NSFont.systemFont(ofSize: 11)
             textField.textColor = .labelColor
             textField.alignment = .center
             textField.lineBreakMode = .byTruncatingTail
             textField.maximumNumberOfLines = 2
             bubbleView.addSubview(textField)
+
+            let buttonWidth: CGFloat = (bubbleWidth - 24) / 2
+            let allowButton = NSButton(title: "✓ Allow", target: self, action: #selector(allow))
+            allowButton.bezelStyle = .rounded
+            allowButton.controlSize = .small
+            allowButton.frame = NSRect(x: 8, y: 6, width: buttonWidth, height: 24)
+            bubbleView.addSubview(allowButton)
+
+            let denyButton = NSButton(title: "✕ Deny", target: self, action: #selector(deny))
+            denyButton.bezelStyle = .rounded
+            denyButton.controlSize = .small
+            denyButton.frame = NSRect(x: 16 + buttonWidth, y: 6, width: buttonWidth, height: 24)
+            bubbleView.addSubview(denyButton)
 
             statusBubbleWindow = window
             statusBubbleLabel = textField
@@ -583,6 +605,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         currentRequestId = nil
         statusItem.menu = idleMenu
         hideStatusBubble()
+        // Floating pet back to its real mood (it was showing the pending GIF).
+        if let floatingImageView = floatingImageView {
+            setGif(on: floatingImageView, named: "buddy_\(lastComputedMood)")
+        }
     }
 
     func setPending(_ req: PendingRequest) {
@@ -592,9 +618,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         let menu = NSMenu()
         menu.addItem(gifMenuItem(named: "\(selectedSpecies)_pending").0)
 
+        // "tool — project" when the hook told us which session is asking;
+        // several concurrent sessions otherwise look identical up here.
+        let toolTitle = (req.project?.isEmpty == false) ? "\(req.tool) — \(req.project!)" : req.tool
         let toolItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         toolItem.attributedTitle = NSAttributedString(
-            string: req.tool,
+            string: toolTitle,
             attributes: [.foregroundColor: NSColor.labelColor, .font: NSFont.boldSystemFont(ofSize: 13)]
         )
         menu.addItem(toolItem)
