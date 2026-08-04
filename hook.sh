@@ -18,7 +18,9 @@ TOOL="$(echo "$INPUT" | jq -r '.tool_name // "unknown"')"
 # Edit, path + content preview for Write. The app decides how much fits on
 # screen (scrolls beyond that); truncation here is only a payload safety cap.
 HINT="$(echo "$INPUT" | jq -r '
-  (if .tool_name == "Edit" and .tool_input.old_string != null then
+  (if .tool_name == "ExitPlanMode" and .tool_input.plan != null then
+    "PLAN PROPUESTO\n" + .tool_input.plan
+  elif .tool_name == "Edit" and .tool_input.old_string != null then
     (.tool_input.file_path // "?") + "\n--- quita\n" + .tool_input.old_string + "\n+++ pone\n" + .tool_input.new_string
   elif .tool_name == "Write" and .tool_input.content != null then
     (.tool_input.file_path // "?") + "\n+++ contenido\n" + .tool_input.content

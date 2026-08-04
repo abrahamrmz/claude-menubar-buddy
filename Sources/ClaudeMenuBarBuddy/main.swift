@@ -185,6 +185,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     // decide when the bubble's "(+N queued)" suffix needs a refresh without
     // rebuilding the whole pending menu (unsafe while the menu is open).
     var lastQueuedCount = 0
+    // Active Claude Code sessions (transcript activity in the last ~15s),
+    // shown as a number next to the pet in the menu bar while idle.
+    var lastActiveCount = 0
     var usage = UsageSnapshot()
     // Belt-and-suspenders against the same request file being seen twice
     // (e.g. the hook writes it again, or a filesystem event fires twice)
@@ -201,6 +204,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     var fiveHourLineItem: NSMenuItem!
     var weeklyLineItem: NSMenuItem!
     var sessionsSubmenuTop: NSMenuItem!
+    var historySubmenuTop: NSMenuItem!
     var petImageView: NSImageView!
     var petMoodLineItem: NSMenuItem!
     // Tracks the last mood actually computed from usage, separate from
@@ -292,6 +296,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         sessionsSubmenuTop = NSMenuItem(title: "Active Sessions", action: nil, keyEquivalent: "")
         sessionsSubmenuTop.submenu = NSMenu()
         menu.addItem(sessionsSubmenuTop)
+        historySubmenuTop = NSMenuItem(title: "Decision History", action: nil, keyEquivalent: "")
+        historySubmenuTop.submenu = NSMenu()
+        menu.addItem(historySubmenuTop)
         menu.addItem(NSMenuItem.separator())
         menu.addItem(buildSpeciesSubmenuItem())
         let floatingItem = NSMenuItem(title: "Floating Pet", action: #selector(toggleFloatingPet), keyEquivalent: "")
@@ -349,20 +356,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     // is always reachable before deciding, never a truncated teaser.
     func showStatusBubble(for req: PendingRequest, queued: Int) {
         guard floatingPetVisible, let petWindow = floatingWindow else { return }
-        let cardWidth: CGFloat = 360
-        let pad: CGFloat = 10
-        let bodyFont = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+        let cardWidth: CGFloat = 430
+        let pad: CGFloat = 14
+        let bodyFont = NSFont.monospacedSystemFont(ofSize: 12.5, weight: .regular)
         let body = String(req.hint.prefix(2000))
-        let bodyMaxHeight: CGFloat = 150
+        let bodyMaxHeight: CGFloat = 200
 
         let measured = (body as NSString).boundingRect(
             with: NSSize(width: cardWidth - pad * 2 - 14, height: .greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin],
             attributes: [.font: bodyFont]
         )
-        let bodyHeight = min(bodyMaxHeight, max(16, ceil(measured.height) + 4))
-        let titleHeight: CGFloat = 16
-        let buttonRowHeight: CGFloat = 24
+        let bodyHeight = min(bodyMaxHeight, max(18, ceil(measured.height) + 4))
+        let titleHeight: CGFloat = 18
+        let buttonRowHeight: CGFloat = 28
         let cardHeight = pad + buttonRowHeight + 6 + bodyHeight + 6 + titleHeight + pad
 
         let window: NSWindow
@@ -400,7 +407,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         if let project = req.project, !project.isEmpty { title = "\(project) — \(title)" }
         if queued > 0 { title += "   (+\(queued) queued)" }
         let titleField = NSTextField(labelWithString: title)
-        titleField.font = NSFont.boldSystemFont(ofSize: 12)
+        titleField.font = NSFont.boldSystemFont(ofSize: 13.5)
         titleField.textColor = .labelColor
         titleField.lineBreakMode = .byTruncatingTail
         titleField.frame = NSRect(x: pad, y: cardHeight - pad - titleHeight, width: cardWidth - pad * 2, height: titleHeight)
@@ -426,13 +433,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         let buttonWidth: CGFloat = (cardWidth - pad * 2 - 8) / 2
         let allowButton = NSButton(title: "✓ Allow", target: self, action: #selector(allow))
         allowButton.bezelStyle = .rounded
-        allowButton.controlSize = .small
+        allowButton.controlSize = .regular
+        allowButton.bezelColor = .systemGreen
         allowButton.frame = NSRect(x: pad, y: pad, width: buttonWidth, height: buttonRowHeight)
         card.addSubview(allowButton)
 
         let denyButton = NSButton(title: "✕ Deny", target: self, action: #selector(deny))
         denyButton.bezelStyle = .rounded
-        denyButton.controlSize = .small
+        denyButton.controlSize = .regular
+        denyButton.hasDestructiveAction = true
         denyButton.frame = NSRect(x: pad + buttonWidth + 8, y: pad, width: buttonWidth, height: buttonRowHeight)
         card.addSubview(denyButton)
 
@@ -520,6 +529,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     func updateUsageLabels() {
         let count = usage.activeSessions.count
+        lastActiveCount = count
+        updateIdleTitle()
         let statusText = count > 0
             ? "● Active — \(count) session\(count == 1 ? "" : "s")"
             : "○ Idle"
@@ -554,6 +565,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             checkThreshold(pct: sd, label: "Weekly limit", lastNotified: notifiedWeekly) { self.notifiedWeekly = $0 }
         }
         updateSessionsSubmenu()
+        updateHistorySubmenu()
+    }
+
+    /// Last 10 decisions, newest first, from decisions.jsonl (appended by
+    /// respond()). Only the tail of the file is read — the log grows forever
+    /// by design (it's the user's audit trail) but the menu never pays for
+    /// its full length.
+    func updateHistorySubmenu() {
+        guard let submenu = historySubmenuTop.submenu else { return }
+        submenu.removeAllItems()
+        let logURL = dirURL.appendingPathComponent("decisions.jsonl")
+        let timeFormatter = DateFormatter()
+        timeFormatter.dateFormat = "HH:mm"
+        var added = 0
+        if let data = try? Data(contentsOf: logURL), !data.isEmpty {
+            let tail = data.count > 32_768 ? Data(data.suffix(32_768)) : data
+            let lines = String(decoding: tail, as: UTF8.self)
+                .split(separator: "\n").suffix(10).reversed()
+            for line in lines {
+                guard let obj = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
+                      let decision = obj["decision"] as? String,
+                      let tool = obj["tool"] as? String else { continue }
+                var title = "\(decision == "allow" ? "✓" : "✕") \(tool)"
+                if let project = obj["project"] as? String, !project.isEmpty { title += " — \(project)" }
+                if let ts = obj["ts"] as? Double {
+                    title += "   \(timeFormatter.string(from: Date(timeIntervalSince1970: ts)))"
+                }
+                submenu.addItem(withTitle: title, action: nil, keyEquivalent: "")
+                added += 1
+            }
+        }
+        if added == 0 {
+            submenu.addItem(withTitle: "No decisions yet", action: nil, keyEquivalent: "")
+        }
+        submenu.addItem(NSMenuItem.separator())
+        let openItem = NSMenuItem(title: "Open Full Log…", action: #selector(openDecisionLog), keyEquivalent: "")
+        openItem.target = self
+        submenu.addItem(openItem)
+    }
+
+    @objc func openDecisionLog() {
+        NSWorkspace.shared.open(dirURL.appendingPathComponent("decisions.jsonl"))
     }
 
     func bar(_ pct: Int, width: Int = 10) -> String {
@@ -689,10 +742,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
     }
 
+    /// Menu bar title while no request is pending: pet plus the number of
+    /// sessions currently active (hidden when zero) — same at-a-glance
+    /// signal Masko showed.
+    func updateIdleTitle() {
+        guard currentRequestId == nil else { return }
+        statusItem.button?.title = lastActiveCount > 0 ? "🐼\(lastActiveCount)" : "🐼"
+    }
+
     func setIdle() {
-        statusItem.button?.title = "🐼"
         currentRequestId = nil
         currentRequest = nil
+        updateIdleTitle()
         statusItem.menu = idleMenu
         hideStatusBubble()
         // Floating pet back to its real mood (it was showing the pending GIF).
@@ -751,15 +812,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
         // Full content in the dropdown too — wrapping, monospaced, capped in
         // height. Same "no truncated teaser" rule as the floating card.
-        let hintFont = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+        let hintFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
         let hintText = String(req.hint.prefix(1200))
-        let hintWidth: CGFloat = 340
+        let hintWidth: CGFloat = 400
         let hintMeasured = (hintText as NSString).boundingRect(
             with: NSSize(width: hintWidth - 28, height: .greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin],
             attributes: [.font: hintFont]
         )
-        let hintHeight = min(160, ceil(hintMeasured.height) + 8)
+        let hintHeight = min(180, ceil(hintMeasured.height) + 8)
         let hintContainer = NSView(frame: NSRect(x: 0, y: 0, width: hintWidth, height: hintHeight))
         let hintField = NSTextField(wrappingLabelWithString: "")
         hintField.attributedStringValue = attributedHint(hintText, font: hintFont)
@@ -808,17 +869,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     func poll() {
-        // Background usage/mood refresh, throttled — the floating pet has
-        // no "menu opened" moment to piggyback on like the dropdown does,
-        // so it needs its own periodic check. Full jsonl scan isn't free,
-        // hence every ~30s rather than every 1s tick.
-        if floatingPetVisible {
-            floatingRefreshTickCounter += 1
-            if floatingRefreshTickCounter >= floatingRefreshEveryTicks {
-                floatingRefreshTickCounter = 0
-                usage = UsageReader.snapshot()
-                if let fh = usage.fiveHourPct { updatePetMood(fh) }
-            }
+        // Background usage/mood/session-count refresh, throttled — full
+        // jsonl scan isn't free, hence every ~30s rather than every 1s tick.
+        // Runs regardless of the floating pet: the menu bar session badge
+        // needs it too.
+        floatingRefreshTickCounter += 1
+        if floatingRefreshTickCounter >= floatingRefreshEveryTicks {
+            floatingRefreshTickCounter = 0
+            usage = UsageReader.snapshot()
+            lastActiveCount = usage.activeSessions.count
+            updateIdleTitle()
+            if floatingPetVisible, let fh = usage.fiveHourPct { updatePetMood(fh) }
         }
 
         let requests = scanRequests()
@@ -843,6 +904,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         let responseURL = dirURL.appendingPathComponent("response_\(id).json")
         let payload = "{\"decision\":\"\(decision)\"}"
         try? payload.write(to: responseURL, atomically: true, encoding: .utf8)
+
+        // Append to the decision audit trail (shown in the Decision History
+        // submenu). Hint is capped — the log records what was decided, not
+        // full file contents.
+        if let req = currentRequest {
+            let entry: [String: Any] = [
+                "ts": Date().timeIntervalSince1970,
+                "tool": req.tool,
+                "project": req.project ?? "",
+                "hint": String(req.hint.prefix(200)),
+                "decision": decision,
+            ]
+            if let line = try? JSONSerialization.data(withJSONObject: entry) {
+                let logURL = dirURL.appendingPathComponent("decisions.jsonl")
+                if let handle = try? FileHandle(forWritingTo: logURL) {
+                    handle.seekToEndOfFile()
+                    handle.write(line)
+                    handle.write(Data([0x0A]))
+                    try? handle.close()
+                } else {
+                    try? (String(decoding: line, as: UTF8.self) + "\n")
+                        .write(to: logURL, atomically: true, encoding: .utf8)
+                }
+            }
+        }
         // Remove the request file ourselves right away — don't wait for
         // hook.sh's own poll loop to notice and delete it. Otherwise our
         // poll() can see the still-there (already-answered) request on its
