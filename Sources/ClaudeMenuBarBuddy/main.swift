@@ -192,12 +192,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     var floatingRefreshTickCounter = 0
     let floatingRefreshEveryTicks = 30
 
-    // Speech-bubble-style status label above the floating pet — shows
-    // tool+hint reusing the exact same PendingRequest data the dropdown
-    // already displays (2026-07-12: deliberately not a new hook/status
-    // channel, just surfacing data we already have).
+    // Approval card above the floating pet (xisland-inspired): title row
+    // with project+tool, monospaced scrollable body with the FULL command /
+    // mini-diff, Allow/Deny buttons. Content is rebuilt per request; only
+    // the panel window itself is reused.
     var statusBubbleWindow: NSWindow?
-    var statusBubbleLabel: NSTextField?
+    var currentRequest: PendingRequest?
 
     // Thresholds match ClaudeBar's scheme (see the community-project survey):
     // <50% used = healthy, 50-80% = warning, >80% = critical. Persist the
@@ -304,26 +304,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         hideStatusBubble()
     }
 
-    // Interactive approval bubble positioned just above the floating pet:
-    // shows what's waiting for approval plus Allow/Deny buttons, so the
-    // decision can be made right on the desktop pet without opening the
+    // Interactive approval card positioned just above the floating pet, so
+    // the decision can be made right on the desktop pet without opening the
     // menu bar dropdown. Only exists while there's a real pending request.
     //
     // .nonactivatingPanel is the load-bearing detail: clicking Allow/Deny
     // must NOT activate this app or steal key focus from whatever the user
     // is typing in (single-screen laptop workflow — approve and keep
     // typing in the terminal without a window switch).
-    func showStatusBubble(text: String) {
+    //
+    // The card grows with its content (short command = compact pill, long
+    // command/diff = taller card) up to a cap, then scrolls — full content
+    // is always reachable before deciding, never a truncated teaser.
+    func showStatusBubble(for req: PendingRequest, queued: Int) {
         guard floatingPetVisible, let petWindow = floatingWindow else { return }
-        let bubbleWidth: CGFloat = 230
-        let bubbleHeight: CGFloat = 74
+        let cardWidth: CGFloat = 360
+        let pad: CGFloat = 10
+        let bodyFont = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+        let body = String(req.hint.prefix(2000))
+        let bodyMaxHeight: CGFloat = 150
+
+        let measured = (body as NSString).boundingRect(
+            with: NSSize(width: cardWidth - pad * 2 - 14, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin],
+            attributes: [.font: bodyFont]
+        )
+        let bodyHeight = min(bodyMaxHeight, max(16, ceil(measured.height) + 4))
+        let titleHeight: CGFloat = 16
+        let buttonRowHeight: CGFloat = 24
+        let cardHeight = pad + buttonRowHeight + 6 + bodyHeight + 6 + titleHeight + pad
+
         let window: NSWindow
-        let label: NSTextField
-        if let existing = statusBubbleWindow, let existingLabel = statusBubbleLabel {
+        if let existing = statusBubbleWindow {
             window = existing
-            label = existingLabel
+            window.setContentSize(NSSize(width: cardWidth, height: cardHeight))
         } else {
-            let panel = NSPanel(contentRect: NSRect(origin: .zero, size: NSSize(width: bubbleWidth, height: bubbleHeight)),
+            let panel = NSPanel(contentRect: NSRect(origin: .zero, size: NSSize(width: cardWidth, height: cardHeight)),
                               styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
             panel.isOpaque = false
             panel.backgroundColor = .clear
@@ -333,42 +349,61 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             panel.ignoresMouseEvents = false
             panel.becomesKeyOnlyIfNeeded = true
             window = panel
-
-            let bubbleView = NSVisualEffectView(frame: NSRect(origin: .zero, size: NSSize(width: bubbleWidth, height: bubbleHeight)))
-            bubbleView.material = .hudWindow
-            bubbleView.state = .active
-            bubbleView.wantsLayer = true
-            bubbleView.layer?.cornerRadius = 10
-            bubbleView.layer?.masksToBounds = true
-            window.contentView = bubbleView
-
-            let textField = NSTextField(labelWithString: "")
-            textField.frame = NSRect(x: 8, y: 34, width: bubbleWidth - 16, height: bubbleHeight - 38)
-            textField.font = NSFont.systemFont(ofSize: 11)
-            textField.textColor = .labelColor
-            textField.alignment = .center
-            textField.lineBreakMode = .byTruncatingTail
-            textField.maximumNumberOfLines = 2
-            bubbleView.addSubview(textField)
-
-            let buttonWidth: CGFloat = (bubbleWidth - 24) / 2
-            let allowButton = NSButton(title: "✓ Allow", target: self, action: #selector(allow))
-            allowButton.bezelStyle = .rounded
-            allowButton.controlSize = .small
-            allowButton.frame = NSRect(x: 8, y: 6, width: buttonWidth, height: 24)
-            bubbleView.addSubview(allowButton)
-
-            let denyButton = NSButton(title: "✕ Deny", target: self, action: #selector(deny))
-            denyButton.bezelStyle = .rounded
-            denyButton.controlSize = .small
-            denyButton.frame = NSRect(x: 16 + buttonWidth, y: 6, width: buttonWidth, height: 24)
-            bubbleView.addSubview(denyButton)
-
             statusBubbleWindow = window
-            statusBubbleLabel = textField
-            label = textField
         }
-        label.stringValue = text
+
+        // Fresh content view per request — rebuilding is cheaper to reason
+        // about than reframing five subviews around a variable-height body.
+        let card = NSVisualEffectView(frame: NSRect(origin: .zero, size: NSSize(width: cardWidth, height: cardHeight)))
+        card.material = .hudWindow
+        card.state = .active
+        card.wantsLayer = true
+        card.layer?.cornerRadius = 12
+        card.layer?.masksToBounds = true
+        window.contentView = card
+
+        var title = req.tool
+        if let project = req.project, !project.isEmpty { title = "\(project) — \(title)" }
+        if queued > 0 { title += "   (+\(queued) queued)" }
+        let titleField = NSTextField(labelWithString: title)
+        titleField.font = NSFont.boldSystemFont(ofSize: 12)
+        titleField.textColor = .labelColor
+        titleField.lineBreakMode = .byTruncatingTail
+        titleField.frame = NSRect(x: pad, y: cardHeight - pad - titleHeight, width: cardWidth - pad * 2, height: titleHeight)
+        card.addSubview(titleField)
+
+        let scroll = NSScrollView(frame: NSRect(x: pad, y: pad + buttonRowHeight + 6, width: cardWidth - pad * 2, height: bodyHeight))
+        scroll.hasVerticalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.drawsBackground = false
+        scroll.borderType = .noBorder
+        let textView = NSTextView(frame: NSRect(origin: .zero, size: scroll.contentSize))
+        textView.string = body
+        textView.font = bodyFont
+        textView.textColor = .labelColor
+        textView.drawsBackground = false
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.isVerticallyResizable = true
+        textView.textContainer?.widthTracksTextView = true
+        textView.minSize = NSSize(width: 0, height: 0)
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        scroll.documentView = textView
+        card.addSubview(scroll)
+
+        let buttonWidth: CGFloat = (cardWidth - pad * 2 - 8) / 2
+        let allowButton = NSButton(title: "✓ Allow", target: self, action: #selector(allow))
+        allowButton.bezelStyle = .rounded
+        allowButton.controlSize = .small
+        allowButton.frame = NSRect(x: pad, y: pad, width: buttonWidth, height: buttonRowHeight)
+        card.addSubview(allowButton)
+
+        let denyButton = NSButton(title: "✕ Deny", target: self, action: #selector(deny))
+        denyButton.bezelStyle = .rounded
+        denyButton.controlSize = .small
+        denyButton.frame = NSRect(x: pad + buttonWidth + 8, y: pad, width: buttonWidth, height: buttonRowHeight)
+        card.addSubview(denyButton)
+
         positionStatusBubble(above: petWindow)
         window.orderFront(nil)
     }
@@ -610,6 +645,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     func setIdle() {
         statusItem.button?.title = "🐼"
         currentRequestId = nil
+        currentRequest = nil
         statusItem.menu = idleMenu
         hideStatusBubble()
         // Floating pet back to its real mood (it was showing the pending GIF).
@@ -618,16 +654,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
     }
 
-    func bubbleText(_ req: PendingRequest, queued: Int) -> String {
-        var text = "\(req.tool): \(String(req.hint.prefix(40)))"
-        if let project = req.project, !project.isEmpty { text = "[\(project)] \(text)" }
-        if queued > 0 { text += "  (+\(queued) queued)" }
-        return text
-    }
-
     func setPending(_ req: PendingRequest, queued: Int) {
         statusItem.button?.title = queued > 0 ? "🐼❗\(queued + 1)" : "🐼❗"
         currentRequestId = req.id
+        currentRequest = req
         lastQueuedCount = queued
 
         let menu = NSMenu()
@@ -643,11 +673,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         )
         menu.addItem(toolItem)
 
-        let hintItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-        hintItem.attributedTitle = NSAttributedString(
-            string: String(req.hint.prefix(80)),
-            attributes: [.foregroundColor: NSColor.labelColor, .font: NSFont.systemFont(ofSize: 12)]
+        // Full content in the dropdown too — wrapping, monospaced, capped in
+        // height. Same "no truncated teaser" rule as the floating card.
+        let hintFont = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
+        let hintText = String(req.hint.prefix(1200))
+        let hintWidth: CGFloat = 340
+        let hintMeasured = (hintText as NSString).boundingRect(
+            with: NSSize(width: hintWidth - 28, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin],
+            attributes: [.font: hintFont]
         )
+        let hintHeight = min(160, ceil(hintMeasured.height) + 8)
+        let hintContainer = NSView(frame: NSRect(x: 0, y: 0, width: hintWidth, height: hintHeight))
+        let hintField = NSTextField(wrappingLabelWithString: hintText)
+        hintField.font = hintFont
+        hintField.textColor = .labelColor
+        hintField.frame = NSRect(x: 14, y: 4, width: hintWidth - 28, height: hintHeight - 8)
+        hintContainer.addSubview(hintField)
+        let hintItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        hintItem.view = hintContainer
         menu.addItem(hintItem)
         if queued > 0 {
             menu.addItem(statusMenuItem("\(queued) more request\(queued == 1 ? "" : "s") waiting…"))
@@ -659,7 +703,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         menu.addItem(withTitle: "Quit", action: #selector(quit), keyEquivalent: "q")
         statusItem.menu = menu
 
-        showStatusBubble(text: bubbleText(req, queued: queued))
+        showStatusBubble(for: req, queued: queued)
         NSSound(named: "Ping")?.play()
     }
 
@@ -711,11 +755,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             setPending(first, queued: requests.count - 1)
         } else if requests.count - 1 != lastQueuedCount {
             // Same request on screen but the line behind it changed length.
-            // Only refresh the bubble text and icon badge — rebuilding the
-            // pending menu here could glitch it mid-open.
+            // Only refresh the card and icon badge — rebuilding the pending
+            // menu here could glitch it mid-open.
             lastQueuedCount = requests.count - 1
             statusItem.button?.title = lastQueuedCount > 0 ? "🐼❗\(lastQueuedCount + 1)" : "🐼❗"
-            statusBubbleLabel?.stringValue = bubbleText(first, queued: lastQueuedCount)
+            showStatusBubble(for: first, queued: lastQueuedCount)
         }
     }
 

@@ -14,12 +14,19 @@ INPUT="$(cat)"
 ID="$(uuidgen)"
 TOOL="$(echo "$INPUT" | jq -r '.tool_name // "unknown"')"
 
+# Full content, not a teaser: the whole command for Bash, a mini-diff for
+# Edit, path + content preview for Write. The app decides how much fits on
+# screen (scrolls beyond that); truncation here is only a payload safety cap.
 HINT="$(echo "$INPUT" | jq -r '
-  if .tool_input.command then .tool_input.command
+  (if .tool_name == "Edit" and .tool_input.old_string != null then
+    (.tool_input.file_path // "?") + "\n--- quita\n" + .tool_input.old_string + "\n+++ pone\n" + .tool_input.new_string
+  elif .tool_name == "Write" and .tool_input.content != null then
+    (.tool_input.file_path // "?") + "\n+++ contenido\n" + .tool_input.content
+  elif .tool_input.command then .tool_input.command
   elif .tool_input.file_path then .tool_input.file_path
   elif .tool_input.url then .tool_input.url
   else (.tool_input | tostring)
-  end' 2>/dev/null || echo "")"
+  end) | .[0:2000]' 2>/dev/null || echo "")"
 
 # Project = basename of the session's cwd, so the approval UI can show which
 # repo/session is actually asking (avoids approving something from the wrong
