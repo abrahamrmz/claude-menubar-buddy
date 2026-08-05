@@ -32,10 +32,11 @@ Reescribir `HotKeys.swift` con `KeyboardShortcuts.Name` (allow ⌘⏎ / deny ⇧
 - Riesgo: inicialización sin bundle ID — si truena, mantener Carbon tras un flag.
 - Verificar: ⌘⏎ responde con tarjeta; sin tarjeta, ⌘⏎ llega a otras apps.
 
-### 1.2 Jump-to-terminal (⌘M + botón en header de tarjeta)
+### 1.2 Jump-to-terminal (⌘M + botón en header de tarjeta) ✅ 2026-08-05
 El hook hereda el entorno del host: capturar en el request JSON `cwd` completo, `host_bundle` (`$__CFBundleIdentifier`: com.microsoft.VSCode, iterm2, Terminal, etc.) y `term_program` (fallback). En la app (`JumpToHost.swift` nuevo): VS Code/Cursor → `/usr/bin/open -b <bundle> <cwd>` (levanta la ventana que ya tiene esa carpeta — targeting multi-ventana sin permisos AX); terminales → `NSRunningApplication.activate()`. Botón oculto si no hay `host_bundle` (ssh/tmux). Solo en acción explícita del usuario (roba foco a propósito).
 - Archivos: `hook.sh` (+sync instalado), `PendingRequest`, header de tarjeta, `JumpToHost.swift`.
 - Verificar: 2 ventanas de VS Code en repos distintos → ⌘M enfoca la correcta; tarjeta sigue visible/pendiente.
+- Implementado: ⌘M se habilita **solo** cuando la request trae host (si no, ⌘M sigue siendo Minimize); nombre de la app vía Launch Services (`urlForApplication`) en vez de tabla hardcodeada, y ese lookup hace de check "¿sigue instalada?"; ítem `Show in <app>` también en el menú de la barra; `decisions.jsonl` ahora guarda `host`.
 
 ### 1.3 Estados: thinking + sad/excited
 En `MoodEngine.swift`, prioridad nueva: `asleep(100%) > critical(85%) > thinking(turn marker) > working(transcript activo) > stressed(70%) > tired(50%) > idle`. `thinking` = turno en vuelo sin bytes nuevos (Claude procesando) vs `working` = herramientas corriendo. Flash `sad` (3s) en el completion del dismiss tras deny; `excited` cuando el refresh de 5s ve un `turn_start_*` con session id no visto (sembrar el set al arrancar para no disparar en launch).

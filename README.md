@@ -23,7 +23,8 @@ When a permission request comes in, the icon changes, a sound plays, and the dro
 - **Always allow** (⚡ on Bash cards, or ⌥⌘⏎) — approve AND remember the base command (`gh`, `npm`, …) in a buddy-managed allowlist; from then on `hook.sh` auto-approves it in ~20ms with no card at all. Managed from the `Auto-allowed Commands` submenu (click an entry to remove it). Stored in `always_allow.json`, never touching `~/.claude/settings.json`.
 - **Auto-approve Edits mode** (⚡ on Edit/Write cards, or the menu toggle) — while on, file edits skip the card entirely; a ✏️ badge on the menu bar icon keeps the standing grant visible, and unchecking the menu item returns to ask-before-each-edit
 - **Hand off to VS Code** (↗ on any card; it's also ⌥⌘⏎ on plan cards) — the hook returns immediately with no decision, so the native prompt appears right away with its full options (for plans: auto-accept, manually approve, tell Claude what to do). Long plans read better there than on a card.
-- **Global approval shortcuts** — ⌘⏎ approves, ⇧⌘⏎ denies, from any app without switching focus; the hotkeys are registered only while a request is actually pending, so ⌘⏎ keeps working normally everywhere else
+- **Jump to the session** (⧉ on the card, or ⌘M) — raises the exact window that's asking, then leaves the card up and pending so you can read the diff or plan in context and still answer with ⌘⏎. The hook records which app hosts each session, so with two VS Code windows open on two repos it brings forward the one holding *this* session's folder; terminals just come to the front. Hidden when there's no host to jump to (ssh, tmux).
+- **Global approval shortcuts** — ⌘⏎ approves, ⇧⌘⏎ denies, ⌥⌘⏎ takes the card's quiet action, from any app without switching focus; the hotkeys are registered only while a request is actually pending, so ⌘⏎ (and ⌘M for Minimize) keep working normally everywhere else
 - **Working animation** — while any Claude Code session is actively running a turn, the panda types away on a little laptop; it drops back to idle (or tired/sleepy, per the 5-hour limit) a few seconds after the turn ends
 - **17 pet characters** to choose from (`Choose Buddy` submenu): a pixel-art panda plus 16 ASCII-art pets reused from the M5Stick Hardware Buddy firmware (cat, turtle, dragon, ghost, robot, and more)
 - **Session status** — idle / active, based on recent Claude Code session file activity
@@ -91,10 +92,18 @@ Then merge the `hooks.PreToolUse` block from `SKILL.md` into `~/.claude/settings
 ```
 Package.swift                          # Swift Package manifest
 Sources/ClaudeMenuBarBuddy/
-  main.swift                           # menu bar UI, hook polling, species picker
+  main.swift                           # bootstrap, AppDelegate core, menus, poll loop
+  ApprovalCard.swift                   # the floating card: build, decide, verdict animation
+  FloatingPet.swift                    # desktop pet window + dragging
+  MoodEngine.swift                     # which mood/GIF the pet shows, and when
+  Toast.swift                          # turn-finished toast
+  JumpToHost.swift                     # raise the editor/terminal hosting a session
+  HotKeys.swift                        # global shortcuts (KeyboardShortcuts)
+  Prefs.swift                          # Defaults keys + hook flag files
   UsageStats.swift                     # reads session JSONL + plan-usage-history.json
   Resources/                           # generated GIFs + species.txt (checked in)
 hook.sh                                # the PreToolUse hook script
+notify-done.sh                         # UserPromptSubmit/Stop hook (working state + toast)
 generate_gifs.py                       # renders the pixel-art panda GIFs
 generate_species_gifs.py               # extracts ASCII pets from claude-desktop-buddy and renders them
 SKILL.md                               # self-install instructions for Claude Code

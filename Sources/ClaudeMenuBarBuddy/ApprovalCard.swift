@@ -253,6 +253,24 @@ extension AppDelegate {
         card.addSubview(passButton)
         rightEdge -= 28
 
+        // Jump to the window that's asking — read the diff/plan in context
+        // WITHOUT answering here (the card stays up and pending). Absent
+        // when the hook couldn't tell who hosts the session.
+        if let target = jumpTarget(for: req) {
+            let jumpButton = NSButton(frame: NSRect(x: rightEdge - 22, y: headerY + 2, width: 22, height: 22))
+            jumpButton.isBordered = false
+            jumpButton.target = self
+            jumpButton.action = #selector(jumpToHost)
+            if let symbol = NSImage(systemSymbolName: "macwindow.on.rectangle",
+                                    accessibilityDescription: "show the asking window") {
+                jumpButton.image = symbol.withSymbolConfiguration(.init(pointSize: 13, weight: .medium))
+                jumpButton.contentTintColor = .secondaryLabelColor
+            }
+            jumpButton.toolTip = "Show this session in \(target.name)  ⌘M"
+            card.addSubview(jumpButton)
+            rightEdge -= 28
+        }
+
         let titleField = NSTextField(labelWithString: req.tool)
         titleField.font = NSFont.boldSystemFont(ofSize: 14)
         titleField.textColor = .labelColor
@@ -437,6 +455,9 @@ extension AppDelegate {
         menu.addItem(NSMenuItem.separator())
         menu.addItem(withTitle: "Allow", action: #selector(allow), keyEquivalent: "a")
         menu.addItem(withTitle: "Deny", action: #selector(deny), keyEquivalent: "d")
+        if let target = jumpTarget(for: req) {
+            menu.addItem(withTitle: "Show in \(target.name)", action: #selector(jumpToHost), keyEquivalent: "m")
+        }
         menu.addItem(NSMenuItem.separator())
         menu.addItem(withTitle: "Quit", action: #selector(quit), keyEquivalent: "q")
         statusItem.menu = menu
@@ -448,7 +469,7 @@ extension AppDelegate {
         if let floatingImageView = floatingImageView {
             setGif(on: floatingImageView, named: "buddy_pending")
         }
-        approvalHotKeys.enable()
+        approvalHotKeys.enable(jump: jumpTarget(for: req) != nil)
         NSSound(named: "Ping")?.play()
     }
 
@@ -610,6 +631,9 @@ extension AppDelegate {
                 "project": req.project ?? "",
                 "hint": String(req.hint.prefix(200)),
                 "decision": decision,
+                // Which app was hosting the session — the audit trail should
+                // say where a decision came from, not just what it was.
+                "host": req.hostBundle ?? "",
             ]
             if let line = try? JSONSerialization.data(withJSONObject: entry) {
                 let logURL = dirURL.appendingPathComponent("decisions.jsonl")

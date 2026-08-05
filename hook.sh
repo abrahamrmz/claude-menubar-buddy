@@ -63,16 +63,28 @@ HINT="$(echo "$INPUT" | jq -r '
 # Project = basename of the session's cwd, so the approval UI can show which
 # repo/session is actually asking (avoids approving something from the wrong
 # project when several sessions run at once).
-PROJECT="$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null || echo "")"
+CWD="$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null || echo "")"
+[ -z "$CWD" ] && CWD="$PWD"
 PROJECT_NAME=""
-[ -n "$PROJECT" ] && PROJECT_NAME="$(basename "$PROJECT")"
+[ -n "$CWD" ] && PROJECT_NAME="$(basename "$CWD")"
+
+# Who is hosting this session, so the app's "jump to session" button can raise
+# that exact window. The hook inherits the host app's environment: macOS sets
+# __CFBundleIdentifier for anything launched from an .app (com.microsoft.VSCode,
+# com.googlecode.iterm2, com.apple.Terminal…), and terminals additionally set
+# TERM_PROGRAM. Both empty (ssh, tmux, a bare login shell) simply means no
+# jump target — the app hides the button rather than guessing.
+HOST_BUNDLE="${__CFBundleIdentifier:-}"
+TERM_PROG="${TERM_PROGRAM:-}"
 
 # One file per request (request_<id>.json) so concurrent sessions queue up
 # in the app instead of overwriting each other's single pending_request.json.
 REQUEST_FILE="$DIR/request_${ID}.json"
 
 jq -n --arg id "$ID" --arg tool "$TOOL" --arg hint "$HINT" --arg project "$PROJECT_NAME" \
-  '{id: $id, tool: $tool, hint: $hint, project: $project, ts: now}' > "$REQUEST_FILE"
+  --arg cwd "$CWD" --arg host_bundle "$HOST_BUNDLE" --arg term_program "$TERM_PROG" \
+  '{id: $id, tool: $tool, hint: $hint, project: $project, cwd: $cwd,
+    host_bundle: $host_bundle, term_program: $term_program, ts: now}' > "$REQUEST_FILE"
 
 RESPONSE_FILE="$DIR/response_${ID}.json"
 

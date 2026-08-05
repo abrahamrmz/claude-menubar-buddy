@@ -43,6 +43,19 @@ struct PendingRequest: Decodable {
     // still decode instead of being silently ignored by poll().
     let project: String?
     let ts: Double?
+    // Where the asking session lives and which app hosts it — everything
+    // JumpToHost.swift needs to raise that exact window. Also optional: an
+    // older hook.sh doesn't write them, and ssh/tmux sessions have no host
+    // app at all.
+    let cwd: String?
+    let hostBundle: String?
+    let termProgram: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, tool, hint, project, ts, cwd
+        case hostBundle = "host_bundle"
+        case termProgram = "term_program"
+    }
 }
 
 // Returns the menu item plus the NSImageView inside it, so callers that need
@@ -214,6 +227,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         approvalHotKeys.onAllow = { [weak self] in self?.decideViaHotKey("allow") }
         approvalHotKeys.onDeny = { [weak self] in self?.decideViaHotKey("deny") }
         approvalHotKeys.onAlwaysAllow = { [weak self] in self?.decideViaHotKey("always") }
+        approvalHotKeys.onJumpToHost = { [weak self] in self?.jumpToHost() }
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         buildIdleMenu()
