@@ -78,6 +78,7 @@ extension AppDelegate {
         card.wantsLayer = true
         card.layer?.cornerRadius = 12
         card.layer?.masksToBounds = true
+        card.setAccessibilityLabel("\(project.isEmpty ? "Claude Code" : project): turn finished in \(formatDuration(elapsed))")
         window.contentView = card
 
         let stripe = NSView(frame: NSRect(x: 0, y: 0, width: stripeWidth, height: height))

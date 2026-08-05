@@ -16,6 +16,10 @@ extension Defaults.Keys {
     static let notifiedWeekly = Key<Int>("notifiedWeekly", default: 0)
     // NSStringFromPoint-encoded origin of the floating pet window.
     static let floatingPetOrigin = Key<String>("floatingPetOrigin", default: "")
+    // "template" = drawn monochrome panda that follows the menu bar's
+    // appearance; "emoji" = the literal 🐼 the app shipped with, for anyone
+    // who wants the color back.
+    static let iconStyle = Key<String>("iconStyle", default: "template")
 }
 
 extension AppDelegate {
@@ -37,6 +41,11 @@ extension AppDelegate {
     var notifiedWeekly: Int {
         get { Defaults[.notifiedWeekly] }
         set { Defaults[.notifiedWeekly] = newValue }
+    }
+
+    var iconStyle: String {
+        get { Defaults[.iconStyle] }
+        set { Defaults[.iconStyle] = newValue }
     }
 
     // MARK: - Buddy-managed flag files (shared with hook.sh)

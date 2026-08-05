@@ -85,6 +85,7 @@ func gifMenuItem(named name: String, target: AnyObject? = nil, action: Selector?
         button.target = target
         button.action = action
         button.toolTip = "Pet the buddy"
+        button.setAccessibilityLabel("Pet the buddy")
         container.addSubview(button)
     }
     item.view = container
@@ -233,7 +234,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         approvalHotKeys.onAlwaysAllow = { [weak self] in self?.decideViaHotKey("always") }
         approvalHotKeys.onJumpToHost = { [weak self] in self?.jumpToHost() }
 
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        // variableLength, not squareLength: the icon grows a count and (in
+        // auto-edits mode) a pencil beside the panda.
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         buildIdleMenu()
         setIdle()
         if floatingPetVisible { showFloatingPet() }
@@ -282,6 +285,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         menu.addItem(alwaysSubmenuTop)
         menu.addItem(NSMenuItem.separator())
         menu.addItem(buildSpeciesSubmenuItem())
+        menu.addItem(buildIconStyleSubmenuItem())
         let floatingItem = NSMenuItem(title: "Floating Pet", action: #selector(toggleFloatingPet), keyEquivalent: "")
         floatingItem.target = self
         floatingItem.state = floatingPetVisible ? .on : .off
@@ -548,8 +552,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     /// grant of power should never be invisible.
     func updateIdleTitle() {
         guard currentRequestId == nil else { return }
-        let editsBadge = autoEditsEnabled ? "✏️" : ""
-        statusItem.button?.title = "🐼\(editsBadge)" + (lastActiveCount > 0 ? "\(lastActiveCount)" : "")
+        var label = lastActiveCount > 0
+            ? "Claude Menu Bar Buddy — \(lastActiveCount) active session\(lastActiveCount == 1 ? "" : "s")"
+            : "Claude Menu Bar Buddy — no pending requests"
+        if autoEditsEnabled { label += ", auto-approving edits" }
+        applyStatusIcon(pending: false, count: lastActiveCount,
+                        autoEdits: autoEditsEnabled, accessibility: label)
     }
 
     @objc func toggleAutoEdits() {
@@ -609,6 +617,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     func poll() {
         captureCardSelfieIfRequested()
         capturePetSelfieIfRequested()
+        captureIconSelfieIfRequested()
         // Mid-verdict-animation: don't touch the card or surface the next
         // request; respond()'s completion re-runs poll() the moment the
         // exit finishes.
@@ -660,7 +669,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             // Only refresh the card and icon badge — rebuilding the pending
             // menu here could glitch it mid-open.
             lastQueuedCount = requests.count - 1
-            statusItem.button?.title = lastQueuedCount > 0 ? "🐼❗\(lastQueuedCount + 1)" : "🐼❗"
+            applyPendingStatusIcon(for: first, queued: lastQueuedCount)
             showStatusBubble(for: first, queued: lastQueuedCount)
         }
     }

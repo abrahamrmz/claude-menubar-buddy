@@ -99,7 +99,10 @@ extension AppDelegate {
 
     /// Flat rounded pill button; the keyboard shortcut rides along dimmed
     /// inside the title so it never reads as part of the action name.
-    func pillButton(title: String, shortcut: String, fill: NSColor, textColor: NSColor, action: Selector) -> PressablePillButton {
+    /// `accessibility` spells the action out for VoiceOver, which would
+    /// otherwise announce the decorative ✓/✕ and the raw shortcut glyphs.
+    func pillButton(title: String, shortcut: String, fill: NSColor, textColor: NSColor,
+                    action: Selector, accessibility: String) -> PressablePillButton {
         let button = PressablePillButton(title: "", target: self, action: action)
         button.isBordered = false
         button.wantsLayer = true
@@ -118,6 +121,7 @@ extension AppDelegate {
             .paragraphStyle: paragraph,
         ]))
         button.attributedTitle = text
+        button.setAccessibilityLabel(accessibility)
         return button
     }
 
@@ -201,6 +205,8 @@ extension AppDelegate {
         card.wantsLayer = true
         card.layer?.cornerRadius = 14
         card.layer?.masksToBounds = true
+        card.setAccessibilityLabel("Permission request: \(req.tool)"
+            + ((req.project?.isEmpty == false) ? " in \(req.project!)" : ""))
         window.contentView = card
 
         let stripe = NSView(frame: NSRect(x: 0, y: 0, width: stripeWidth, height: cardHeight))
@@ -218,6 +224,8 @@ extension AppDelegate {
             chip.image = symbol.withSymbolConfiguration(.init(pointSize: 12, weight: .semibold))
             chip.contentTintColor = accent
         }
+        // Decoration — the tool name is right beside it in the title.
+        chip.setAccessibilityElement(false)
         card.addSubview(chip)
 
         var rightEdge = cardWidth - pad
@@ -250,6 +258,7 @@ extension AppDelegate {
             passButton.contentTintColor = .secondaryLabelColor
         }
         passButton.toolTip = "Decide in VS Code / terminal instead (full native options)"
+        passButton.setAccessibilityLabel("Decide in VS Code or terminal instead")
         card.addSubview(passButton)
         rightEdge -= 28
 
@@ -267,6 +276,7 @@ extension AppDelegate {
                 jumpButton.contentTintColor = .secondaryLabelColor
             }
             jumpButton.toolTip = "Show this session in \(target.name)  ⌘M"
+            jumpButton.setAccessibilityLabel("Show this session in \(target.name)")
             card.addSubview(jumpButton)
             rightEdge -= 28
         }
@@ -302,19 +312,22 @@ extension AppDelegate {
         textView.textContainer?.widthTracksTextView = true
         textView.minSize = NSSize(width: 0, height: 0)
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        textView.setAccessibilityLabel(req.tool == "ExitPlanMode" ? "Proposed plan" : "Request details")
         scroll.documentView = textView
         block.addSubview(scroll)
 
         let buttonWidth: CGFloat = (cardWidth - contentX - pad - 8) / 2
         let allowButton = pillButton(title: "✓ Allow", shortcut: "⌘⏎",
-                                     fill: .systemGreen, textColor: .white, action: #selector(allow))
+                                     fill: .systemGreen, textColor: .white, action: #selector(allow),
+                                     accessibility: "Allow \(req.tool)")
         allowButton.frame = NSRect(x: contentX, y: pad, width: buttonWidth, height: buttonRowHeight)
         card.addSubview(allowButton)
         allowButtonRef = allowButton
 
         let denyButton = pillButton(title: "✕ Deny", shortcut: "⇧⌘⏎",
                                     fill: NSColor.white.withAlphaComponent(0.10),
-                                    textColor: .systemRed, action: #selector(deny))
+                                    textColor: .systemRed, action: #selector(deny),
+                                    accessibility: "Deny \(req.tool)")
         denyButton.frame = NSRect(x: contentX + buttonWidth + 8, y: pad, width: buttonWidth, height: buttonRowHeight)
         card.addSubview(denyButton)
         denyButtonRef = denyButton
@@ -325,17 +338,20 @@ extension AppDelegate {
             if let base = base {
                 quietButton = pillButton(title: "⚡ Always allow \(base)", shortcut: "⌥⌘⏎",
                                          fill: NSColor.white.withAlphaComponent(0.07),
-                                         textColor: accent, action: #selector(alwaysAllow))
+                                         textColor: accent, action: #selector(alwaysAllow),
+                                         accessibility: "Allow, and always allow \(base) from now on")
                 currentQuietAction = { [weak self] in self?.alwaysAllow() }
             } else if isEditTool {
                 quietButton = pillButton(title: "⚡ Auto-approve edits from now on", shortcut: "⌥⌘⏎",
                                          fill: NSColor.white.withAlphaComponent(0.07),
-                                         textColor: accent, action: #selector(autoApproveEditsFromCard))
+                                         textColor: accent, action: #selector(autoApproveEditsFromCard),
+                                         accessibility: "Allow, and auto-approve edits from now on")
                 currentQuietAction = { [weak self] in self?.autoApproveEditsFromCard() }
             } else {
                 quietButton = pillButton(title: "↗ Review in VS Code — auto-accept, manual, tell Claude…", shortcut: "⌥⌘⏎",
                                          fill: NSColor.white.withAlphaComponent(0.07),
-                                         textColor: accent, action: #selector(passToNative))
+                                         textColor: accent, action: #selector(passToNative),
+                                         accessibility: "Review in VS Code with the full native options")
                 currentQuietAction = { [weak self] in self?.passToNative() }
             }
             quietButton.layer?.cornerRadius = 13
@@ -412,7 +428,7 @@ extension AppDelegate {
     }
 
     func setPending(_ req: PendingRequest, queued: Int) {
-        statusItem.button?.title = queued > 0 ? "🐼❗\(queued + 1)" : "🐼❗"
+        applyPendingStatusIcon(for: req, queued: queued)
         currentRequestId = req.id
         currentRequest = req
         lastQueuedCount = queued

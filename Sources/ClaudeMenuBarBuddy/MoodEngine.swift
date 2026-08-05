@@ -163,15 +163,21 @@ extension AppDelegate {
     func applyMoodGif(_ mood: String) {
         guard mood != displayedMood else { return }
         displayedMood = mood
+        let text = petMoodText(mood)
+        // The mood strings lead with an emoji, which VoiceOver would announce
+        // by name ("panda face, active and happy") — drop it for the label.
+        let spoken = String(text.drop(while: { !$0.isLetter }))
         setGif(on: petImageView, named: gifName(for: selectedSpecies, mood: mood))
+        petImageView.setAccessibilityLabel(spoken)
         petMoodLineItem.attributedTitle = NSAttributedString(
-            string: petMoodText(mood),
+            string: text,
             attributes: [.foregroundColor: NSColor.secondaryLabelColor, .font: NSFont.systemFont(ofSize: 11)]
         )
         // Floating pet is panda-only regardless of the dropdown's species
         // choice (Ray, 2026-07-12: "ทำแค่ panda ก็พอ").
         if let floatingImageView = floatingImageView {
             setGif(on: floatingImageView, named: gifName(for: "buddy", mood: mood))
+            floatingImageView.setAccessibilityLabel(spoken)
         }
     }
 
