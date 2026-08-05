@@ -16,7 +16,7 @@ Restricciones duras: CPU idle ~0 · panel no-activante intocable · build SPM-on
 
 ---
 
-## Fase 0 — Prerrequisito (~medio día)
+## Fase 0 — Prerrequisito (~medio día) ✅ 2026-08-04
 
 Agregar los 3 paquetes a `Package.swift` y partir `main.swift` (~1400 líneas) en archivos por tema:
 - Nuevos: `ApprovalCard.swift`, `FloatingPet.swift`, `MoodEngine.swift`, `Toast.swift`, `Prefs.swift` (keys de Defaults espejando las de UserDefaults actuales).
@@ -27,7 +27,7 @@ Verificar: `swift build` limpio, relanzar, especie/posición del pet persisten, 
 
 ## Fase 1 — Quick wins (~3-4 días)
 
-### 1.1 Hotkeys remapeables (KeyboardShortcuts)
+### 1.1 Hotkeys remapeables (KeyboardShortcuts) ✅ 2026-08-04
 Reescribir `HotKeys.swift` con `KeyboardShortcuts.Name` (allow ⌘⏎ / deny ⇧⌘⏎ / quiet ⌥⌘⏎ / jump ⌘M), manteniendo el contrato `enable()/disable()` solo-mientras-pendiente (KeyboardShortcuts.enable/disable por nombre). Sin cambios en call-sites. El recorder UI llega en 2.1.
 - Riesgo: inicialización sin bundle ID — si truena, mantener Carbon tras un flag.
 - Verificar: ⌘⏎ responde con tarjeta; sin tarjeta, ⌘⏎ llega a otras apps.

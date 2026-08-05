@@ -1,59 +1,48 @@
-import Carbon.HIToolbox
+import KeyboardShortcuts
 
-// Global approval shortcuts: ⌘⏎ = Allow, ⇧⌘⏎ = Deny.
+// Global approval shortcuts, remappable by the user (recorder UI arrives
+// with the Settings window in Fase 2.1; remapping already works because
+// handlers key off names, not key codes — KeyboardShortcuts persists
+// per-name user overrides in UserDefaults).
 //
-// Carbon RegisterEventHotKey rather than a CGEventTap: it needs no
-// Accessibility/Input Monitoring permission. The hotkeys are registered only
-// while a request is actually pending, so the rest of the time ⌘⏎ still
-// reaches Slack/Mail/whatever app is frontmost.
+// Defaults: ⌘⏎ = Allow, ⇧⌘⏎ = Deny, ⌥⌘⏎ = the card's quiet-row action.
 //
-// A global hotkey is the only viable path here: the approval card is a
-// non-activating panel that never becomes key (by design — approve without
-// leaving the terminal), so a window-local keyEquivalent would never fire.
+// Same load-bearing contract as the old raw-Carbon implementation this
+// replaces: the shortcuts are ENABLED only while a request is pending, so
+// the rest of the time ⌘⏎ still reaches Slack/Mail/whatever app is
+// frontmost. No Accessibility permission needed (KeyboardShortcuts uses
+// Carbon RegisterEventHotKey under the hood, same trade-off as before).
+extension KeyboardShortcuts.Name {
+    static let approvalAllow = Self("approvalAllow", default: .init(.return, modifiers: [.command]))
+    static let approvalDeny = Self("approvalDeny", default: .init(.return, modifiers: [.command, .shift]))
+    static let approvalQuiet = Self("approvalQuiet", default: .init(.return, modifiers: [.command, .option]))
+    // Fase 1.2: jump to the terminal/editor hosting the requesting session.
+    static let jumpToHost = Self("jumpToHost", default: .init(.m, modifiers: [.command]))
+}
+
 final class ApprovalHotKeys {
     var onAllow: (() -> Void)?
     var onDeny: (() -> Void)?
     var onAlwaysAllow: (() -> Void)?
 
-    private var allowRef: EventHotKeyRef?
-    private var denyRef: EventHotKeyRef?
-    private var alwaysRef: EventHotKeyRef?
-    private var handlerRef: EventHandlerRef?
-    private static let signature: OSType = 0x43425544 // 'CBUD'
-
     init() {
-        var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard),
-                                      eventKind: UInt32(kEventHotKeyPressed))
-        InstallEventHandler(GetEventDispatcherTarget(), { _, event, userData in
-            guard let event, let userData else { return noErr }
-            var hotKeyID = EventHotKeyID()
-            GetEventParameter(event, EventParamName(kEventParamDirectObject),
-                              EventParamType(typeEventHotKeyID), nil,
-                              MemoryLayout<EventHotKeyID>.size, nil, &hotKeyID)
-            let hotKeys = Unmanaged<ApprovalHotKeys>.fromOpaque(userData).takeUnretainedValue()
-            if hotKeyID.id == 1 { hotKeys.onAllow?() }
-            else if hotKeyID.id == 2 { hotKeys.onDeny?() }
-            else if hotKeyID.id == 3 { hotKeys.onAlwaysAllow?() }
-            return noErr
-        }, 1, &eventType, Unmanaged.passUnretained(self).toOpaque(), &handlerRef)
+        KeyboardShortcuts.onKeyDown(for: .approvalAllow) { [weak self] in self?.onAllow?() }
+        KeyboardShortcuts.onKeyDown(for: .approvalDeny) { [weak self] in self?.onDeny?() }
+        KeyboardShortcuts.onKeyDown(for: .approvalQuiet) { [weak self] in self?.onAlwaysAllow?() }
+        // Registering a handler implicitly enables its shortcut — flip them
+        // off until a request is actually pending.
+        disable()
     }
 
     func enable() {
-        guard allowRef == nil else { return }
-        RegisterEventHotKey(UInt32(kVK_Return), UInt32(cmdKey),
-                            EventHotKeyID(signature: Self.signature, id: 1),
-                            GetEventDispatcherTarget(), 0, &allowRef)
-        RegisterEventHotKey(UInt32(kVK_Return), UInt32(cmdKey | shiftKey),
-                            EventHotKeyID(signature: Self.signature, id: 2),
-                            GetEventDispatcherTarget(), 0, &denyRef)
-        RegisterEventHotKey(UInt32(kVK_Return), UInt32(cmdKey | optionKey),
-                            EventHotKeyID(signature: Self.signature, id: 3),
-                            GetEventDispatcherTarget(), 0, &alwaysRef)
+        for name: KeyboardShortcuts.Name in [.approvalAllow, .approvalDeny, .approvalQuiet] {
+            KeyboardShortcuts.enable(name)
+        }
     }
 
     func disable() {
-        if let ref = allowRef { UnregisterEventHotKey(ref); allowRef = nil }
-        if let ref = denyRef { UnregisterEventHotKey(ref); denyRef = nil }
-        if let ref = alwaysRef { UnregisterEventHotKey(ref); alwaysRef = nil }
+        for name: KeyboardShortcuts.Name in [.approvalAllow, .approvalDeny, .approvalQuiet] {
+            KeyboardShortcuts.disable(name)
+        }
     }
 }
