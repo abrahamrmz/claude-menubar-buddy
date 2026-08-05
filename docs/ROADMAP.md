@@ -52,10 +52,17 @@ Sustituir `🐼✏️N` por imagen template generada en código (SF Symbol pawpr
 - Default = template (el entregable de la fase); `Menu Bar Icon ▸ Panda emoji` regresa al look anterior.
 - Verificado: render real de la app vía `capture_icon` ✓. El menú bar en vivo NO se pudo capturar (TCC bloquea `screencapture` desde este proceso) — confirmación visual queda del lado del usuario. VoiceOver tampoco es automatizable desde aquí.
 
-### 1.5 Burn-rate v1
+### 1.5 Burn-rate v1 ✅ 2026-08-05
 En `UsageStats.swift`: `readPlanUsage` devuelve samples recientes (no solo `.last`). Con datos frescos: fit lineal de `fh` sobre ≤60 min (≥3 samples, ≥10 min spread) → `"▲ 12%/h · 90% ≈ 16:40"` + notificaciones proyectadas 75/90% (keys `notifiedProj75/90`, patrón `checkThreshold`). Con datos stale: solo velocidad de tokens de transcripts (`velocitySamples` ring buffer en memoria, poda 2h, guarda contra rollover del día) → `"~120K tok/h (plan % stale)"`, sin proyección.
 - Archivos: `UsageStats.swift`, `burnLineItem` en menú.
 - Verificar: con Desktop abierto muestra slope plausible; sin Desktop degrada a velocidad sin notificar.
+- **Lo que el plan no contemplaba: el rollover de la ventana.** En los datos reales del 4-ago `fh` cayó 78 → 3 en 9 minutos. Un fit que cruce ese salto reporta una pendiente absurdamente negativa. `fiveHourSlope` recorta a las muestras posteriores al último reset (caída > 10 puntos entre consecutivas) antes de ajustar. Verificado: el mismo tramo de subida, con y sin el rollover a la vista, da la pendiente **idéntica** (34.8%/h) — solo posible si las muestras previas se descartaron.
+- Notificaciones: una sola key en memoria (`notifiedProjection`, no dos en Defaults) que guarda el nivel más alto ya avisado y se resetea sola al detectar rollover. En memoria a propósito: una proyección solo significa algo mientras la app está observando, y un buffer cosido a través de un reinicio mediría un hueco.
+- Proyección con dos topes: pendiente ≥ 0.5%/h (abajo de eso no es señal) y ETA ≤ 5h (más allá, la ventana ya habrá rotado — proyectar 14h es ficción).
+- Extra: `"Burn: measuring…"` mientras el buffer junta sus 10 min, en vez de un guion que se lee como "roto" tras cada reinicio.
+- Verificado: matemática con tests aislados sobre los shapes reales (rollover, plano, recuperando, muestras insuficientes, spread corto, fuera de ventana) ✓. Camino en vivo: los datos del usuario están stale (Desktop cerrado) → cae al fallback de tokens, como debe. El camino con datos frescos necesita Claude Desktop abierto para verse en vivo.
+
+**Fase 1 completa** (1.1 ✅ · 1.2 ✅ · 1.3 ✅ · 1.4 ✅ · 1.5 ✅).
 
 ## Fase 2 — Features grandes (~7-10 días)
 

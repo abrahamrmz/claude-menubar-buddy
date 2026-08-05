@@ -33,6 +33,8 @@ struct UsageSnapshot {
     // the read only happens when a turn is actually in flight.
     var newestTranscript: URL? = nil
     var newestTranscriptSize: UInt64 = 0
+    // Recent plan-limit readings, for the burn-rate fit (see BurnRate.swift).
+    var planSamples: [UsageReader.PlanSample] = []
 }
 
 enum UsageReader {
@@ -44,6 +46,34 @@ enum UsageReader {
     // limit). "fh" = five-hour %, "sd" = seven-day (weekly) %.
     static let planUsageURL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/Claude/plan-usage-history.json")
+
+    /// One reading of the plan limits, as Claude Desktop recorded it. The
+    /// history keeps ~100 of these at a ~15-minute cadence.
+    struct PlanSample {
+        let date: Date
+        let fiveHour: Int
+        let weekly: Int
+    }
+
+    /// Samples from the last `within` seconds, oldest first. Everything past
+    /// that is history no burn-rate should be reading from.
+    static func readPlanSamples(within: TimeInterval = 3 * 3600) -> [PlanSample] {
+        guard let data = try? Data(contentsOf: planUsageURL),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let samples = obj["samples"] as? [[String: Any]] else { return [] }
+        let cutoff = Date().addingTimeInterval(-within)
+        var result: [PlanSample] = []
+        for sample in samples {
+            // "t" is epoch milliseconds.
+            guard let t = sample["t"] as? Double,
+                  let u = sample["u"] as? [String: Any],
+                  let fh = u["fh"] as? Int else { continue }
+            let date = Date(timeIntervalSince1970: t / 1000)
+            guard date >= cutoff else { continue }
+            result.append(PlanSample(date: date, fiveHour: fh, weekly: u["sd"] as? Int ?? 0))
+        }
+        return result.sorted { $0.date < $1.date }
+    }
 
     static func readPlanUsage() -> (fiveHour: Int?, weekly: Int?, sampled: Date?) {
         guard let data = try? Data(contentsOf: planUsageURL),
@@ -109,6 +139,7 @@ enum UsageReader {
         result.fiveHourPct = plan.fiveHour
         result.weeklyPct = plan.weekly
         result.planUsageDate = plan.sampled
+        result.planSamples = readPlanSamples()
         return result
     }
 

@@ -152,6 +152,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     var activityLineItem: NSMenuItem!
     var fiveHourLineItem: NSMenuItem!
     var weeklyLineItem: NSMenuItem!
+    var burnLineItem: NSMenuItem!
+    // (sampled-at, tokens-today) for the fallback burn rate, pruned to 2h.
+    // In memory on purpose: it measures the pace of the session you're in,
+    // and a rate stitched across a restart would be measuring a gap.
+    var velocitySamples: [(date: Date, tokens: Int)] = []
+    // Highest projected-limit warning already sent this 5-hour window, and
+    // the reading it was judged against (a big drop = the window rolled and
+    // the warnings are due again). Not persisted, for the same reason.
+    var notifiedProjection = 0
+    var lastProjectionPct = 0
     var sessionsSubmenuTop: NSMenuItem!
     var historySubmenuTop: NSMenuItem!
     var alwaysSubmenuTop: NSMenuItem!
@@ -267,12 +277,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         activityLineItem = statusMenuItem("Last activity: —")
         fiveHourLineItem = statusMenuItem("5-hour limit: —")
         weeklyLineItem = statusMenuItem("Weekly limit: —")
+        burnLineItem = statusMenuItem("Burn: —")
         menu.addItem(statusLineItem)
         menu.addItem(tokensLineItem)
         menu.addItem(activityLineItem)
         menu.addItem(NSMenuItem.separator())
         menu.addItem(fiveHourLineItem)
         menu.addItem(weeklyLineItem)
+        menu.addItem(burnLineItem)
         menu.addItem(NSMenuItem.separator())
         sessionsSubmenuTop = NSMenuItem(title: "Active Sessions", action: nil, keyEquivalent: "")
         sessionsSubmenuTop.submenu = NSMenu()
@@ -368,6 +380,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                 checkThreshold(pct: sd, label: "Weekly limit", lastNotified: notifiedWeekly) { self.notifiedWeekly = $0 }
             }
         }
+        updateBurnLine()
         updatePetMood()
         updateSessionsSubmenu()
         updateHistorySubmenu()
@@ -635,6 +648,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             usage = UsageReader.snapshot()
             lastActiveCount = usage.activeSessions.count
             updateIdleTitle()
+            // Keeps the token-velocity history filling (and the projected
+            // limit warnings firing) whether or not the menu is ever opened.
+            recordTokenVelocitySample()
+            updateBurnLine()
             updatePetMood()
         }
 
