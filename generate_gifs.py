@@ -36,7 +36,7 @@ WIDE = [
 # 5-hour-limit mood states: same body, progressively more-closed eyes.
 TIRED = [  # half-lidded — top of eye droops shut, pupil still peeking below
     "...KK......KK...", "..KKKK....KKKK..", "..KKKK....KKKK..",
-    "...WWWWWWWWWW...", "..WWWWWWWWWWWW..", ".WWWWWWW..WWWWWW.",
+    "...WWWWWWWWWW...", "..WWWWWWWWWWWW..", ".WWWWWW..WWWWWW.",
     ".WWWKKW..WKKWWW.", ".WBWWWWWKKWWWBW.", ".WWWWWWWWWWWWWW.",
     "..WWWWWWWWWWWW..", "..WWWWWWWWWWWW..", ".WWWWWWWWWWWWWW.",
     ".WWWWWWWWWWWWWW.", "KWWWW......WWWWK", "KKWWW......WWWKK",
@@ -44,8 +44,8 @@ TIRED = [  # half-lidded — top of eye droops shut, pupil still peeking below
 ]
 SLEEPY = [  # eyes fully shut, still upright
     "...KK......KK...", "..KKKK....KKKK..", "..KKKK....KKKK..",
-    "...WWWWWWWWWW...", "..WWWWWWWWWWWW..", ".WWWWWWW..WWWWWW.",
-    ".WWWWWWW..WWWWWW.", ".WBWWWWWKKWWWBW.", ".WWWWWWWWWWWWWW.",
+    "...WWWWWWWWWW...", "..WWWWWWWWWWWW..", ".WWWWWW..WWWWWW.",
+    ".WWWWWW..WWWWWW.", ".WBWWWWWKKWWWBW.", ".WWWWWWWWWWWWWW.",
     "..WWWWWWWWWWWW..", "..WWWWWWWWWWWW..", ".WWWWWWWWWWWWWW.",
     ".WWWWWWWWWWWWWW.", "KWWWW......WWWWK", "KKWWW......WWWKK",
     "..KK........KK..",
@@ -88,9 +88,44 @@ WORK_B = [  # same pose, paws shifted a key inward — the typing wiggle
     "..KK........KK..",
 ]
 
+# Thinking: a turn is in flight but no tool is running — Claude itself is
+# what we're waiting on. Paw up at the chin, eyes rolled up in thought.
+THINKING = [
+    "...KK......KK...", "..KKKK....KKKK..", "..KKKK....KKKK..",
+    "...WWWWWWWWWW...", "..WWWWWWWWWWWW..", ".WKKWWW..KKWWWW.",
+    ".WWWWWW..WWWWWW.", ".WBWWWWWKKWWWBW.", ".WWWWWWWWWKKKWW.",
+    "..WWWWWWWWKKKW..", "..WWWWWWWWWWWW..", ".WWWWWWWWWWWWWW.",
+    ".WWWWWWWWWWWWWW.", "KWWWW......WWWWK", "KKWWW......WWWKK",
+    "..KK........KK..",
+]
+# Sad: a request just got denied. Downcast eyes, a tear, corners of the
+# mouth turned down — three seconds of visible disappointment, then back
+# to whatever the real mood is.
+SAD = [
+    "...KK......KK...", "..KKKK....KKKK..", "..KKKK....KKKK..",
+    "...WWWWWWWWWW...", "..WWWWWWWWWWWW..", ".WWWWWW..WWWWWW.",
+    ".WWWWKW..WKWWWW.", ".WBWTWWWKKWWWBW.", ".WWWWWWKWWKWWWW.",
+    "..WWWWWWWWWWWW..", "..WWWWWWWWWWWW..", ".WWWWWWWWWWWWWW.",
+    ".WWWWWWWWWWWWWW.", ".WWWW......WWWW.", "KKWWW......WWWKK",
+    "..KK........KK..",
+]
+# Excited: a session the buddy hasn't met yet just started talking. Star
+# eyes, open mouth, arms up. Deliberately louder than celebrate — this one
+# is a greeting, not a sigh of relief.
+EXCITED = [
+    "...KK......KK...", "..KKKK....KKKK..", "..KKKK....KKKK..",
+    "...WWWWWWWWWW...", "..WWWWWWWWWWWW..", ".WWYYYW..WYYYWW.",
+    ".WWYKYW..WYKYWW.", ".WBWWWWKKKKWWBW.", ".WWWWWWWWWWWWWW.",
+    "K.WWWWWWWWWWWW.K", "KK.WWWWWWWWWW.KK", ".WWWWWWWWWWWWWW.",
+    ".WWWWWWWWWWWWWW.", ".WWWW......WWWW.", "KKWWW......WWWKK",
+    "..KK........KK..",
+]
+
 COLORS = {"K": (132, 136, 140, 255), "W": (255, 255, 255, 255),
           "P": (255, 77, 148, 255), "B": (255, 170, 190, 140),
           "G": (95, 100, 108, 255),
+          "T": (120, 190, 255, 255),   # tear
+          "Y": (255, 210, 80, 255),    # star-struck eyes
           ".": (0, 0, 0, 0)}
 
 
@@ -175,4 +210,32 @@ save_gif(celebrate_frames, [200, 200, 200, 200], "Sources/ClaudeMenuBarBuddy/Res
 working_frames = [render(WORK_A), render(WORK_B), render(WORK_A), render(WORK_B)]
 save_gif(working_frames, [170, 170, 170, 170], "Sources/ClaudeMenuBarBuddy/Resources/buddy_working.gif")
 
-print("Wrote buddy_idle/pending/tired/sleepy/asleep/heart/celebrate/working.gif")
+# Thinking: unhurried — thought dots accumulate above the head, and the
+# slow cadence is the whole point next to working's brisk typing.
+THINK = (200, 210, 230, 235)
+w2 = max(len(r) for r in THINKING) * PPX
+thinking_frames = [
+    render(THINKING, 0, marks=[(".", w2 - 44, 2, THINK)]),
+    render(THINKING, 0, marks=[("..", w2 - 44, 2, THINK)]),
+    render(THINKING, -1, marks=[("...", w2 - 44, 2, THINK)]),
+    render(THINKING, 0, marks=[("...", w2 - 44, 2, THINK)]),
+]
+save_gif(thinking_frames, [450, 450, 450, 450], "Sources/ClaudeMenuBarBuddy/Resources/buddy_thinking.gif")
+
+# Sad: denied. A slow, small slump — no bounce back up.
+sad_frames = [render(SAD, 0), render(SAD, 1)]
+save_gif(sad_frames, [700, 700], "Sources/ClaudeMenuBarBuddy/Resources/buddy_sad.gif")
+
+# Excited: new session — a proper jump, with "!" popping on either side.
+BANG = (255, 210, 80, 255)
+w3 = max(len(r) for r in EXCITED) * PPX
+excited_frames = [
+    render(EXCITED, 0, marks=[("!", 6, 8, BANG), ("!", w3 - 18, 8, BANG)]),
+    render(EXCITED, -5, marks=[("!", 2, 0, BANG), ("!", w3 - 14, 0, BANG)]),
+    render(EXCITED, 0, marks=[("!", 6, 8, BANG), ("!", w3 - 18, 8, BANG)]),
+    render(EXCITED, -5, marks=[("!", 2, 0, BANG), ("!", w3 - 14, 0, BANG)]),
+]
+save_gif(excited_frames, [160, 160, 160, 160], "Sources/ClaudeMenuBarBuddy/Resources/buddy_excited.gif")
+
+print("Wrote buddy_idle/pending/tired/sleepy/asleep/heart/celebrate/working"
+      "/thinking/sad/excited.gif")

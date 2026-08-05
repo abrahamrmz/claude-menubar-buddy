@@ -9,6 +9,15 @@ struct ActiveSession {
     var lastActivity: Date
 }
 
+/// What a turn in flight is actually waiting on, per the last thing written
+/// to its transcript. `tool` = Claude asked for a tool and the tool is
+/// running; `model` = the last record was input FOR Claude (a tool result or
+/// a prompt), so the model itself is what we're waiting on.
+enum TurnActivity {
+    case tool
+    case model
+}
+
 struct UsageSnapshot {
     var tokensToday: Int = 0
     var activeSessions: [ActiveSession] = []
@@ -19,6 +28,11 @@ struct UsageSnapshot {
     // writes that file, so with Desktop closed the percentages freeze —
     // consumers must treat old samples as unknown, not as current truth.
     var planUsageDate: Date? = nil
+    // Most recently written transcript, for the tail read that tells
+    // thinking from working. Kept as url+size (both already stat'ed here) so
+    // the read only happens when a turn is actually in flight.
+    var newestTranscript: URL? = nil
+    var newestTranscriptSize: UInt64 = 0
 }
 
 enum UsageReader {
@@ -86,6 +100,8 @@ enum UsageReader {
                 }
                 if result.lastActivity == nil || mtime > result.lastActivity! {
                     result.lastActivity = mtime
+                    result.newestTranscript = url
+                    result.newestTranscriptSize = UInt64(attrs.fileSize ?? 0)
                 }
             }
         }
@@ -146,6 +162,54 @@ enum UsageReader {
         tokenCacheByPath[path] = TokenCacheEntry(size: size, mtime: mtime, offset: consumed, tokens: total)
         if !buffer.isEmpty { total += tokensFromLine(buffer) }
         return total
+    }
+
+    // Tail-read cache: the answer can only change when the file grows, so a
+    // long tool run costs one read instead of one per 5s refresh tick.
+    private static var turnActivityCache: (path: String, size: UInt64, activity: TurnActivity?)?
+
+    /// Reads the last complete record of a transcript to tell "a tool is
+    /// running" from "Claude is thinking". Both look identical from the
+    /// outside — the file goes quiet either way — but the record that went
+    /// quiet says which one it is.
+    static func turnActivity(in url: URL, size: UInt64) -> TurnActivity? {
+        if let cached = turnActivityCache, cached.path == url.path, cached.size == size {
+            return cached.activity
+        }
+        let activity = readTurnActivity(in: url, size: size)
+        turnActivityCache = (url.path, size, activity)
+        return activity
+    }
+
+    private static func readTurnActivity(in url: URL, size: UInt64) -> TurnActivity? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        // 64KB is enough for several records but not for every tool result —
+        // hence walking backwards until a line parses, rather than trusting
+        // the last one.
+        let window: UInt64 = 64 * 1024
+        if size > window { try? handle.seek(toOffset: size - window) }
+        let data = handle.readDataToEndOfFile()
+        guard !data.isEmpty else { return nil }
+
+        for line in data.split(separator: 0x0A, omittingEmptySubsequences: true).reversed() {
+            guard let obj = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
+                  let type = obj["type"] as? String else { continue }
+            switch type {
+            case "assistant":
+                // A tool_use block as the newest record means Claude handed
+                // off and is waiting — that's a tool running right now.
+                let content = (obj["message"] as? [String: Any])?["content"] as? [[String: Any]] ?? []
+                return content.contains { $0["type"] as? String == "tool_use" } ? .tool : .model
+            case "user":
+                // A prompt or a tool result — either way the ball is in the
+                // model's court.
+                return .model
+            default:
+                continue  // summaries, meta records: keep walking back
+            }
+        }
+        return nil
     }
 
     private static func tokensFromLine(_ data: Data) -> Int {

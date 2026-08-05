@@ -666,6 +666,10 @@ extension AppDelegate {
             guard let self = self else { return }
             self.isDismissing = false
             self.setIdle()
+            // A denial deserves a beat of visible disappointment — but only
+            // after setIdle has put the real mood back, since it would
+            // otherwise overwrite the flash immediately.
+            if decision == "deny" { self.flashMood("sad", for: 3.0) }
             self.poll()
         }
     }

@@ -38,10 +38,12 @@ El hook hereda el entorno del host: capturar en el request JSON `cwd` completo, 
 - Verificar: 2 ventanas de VS Code en repos distintos → ⌘M enfoca la correcta; tarjeta sigue visible/pendiente.
 - Implementado: ⌘M se habilita **solo** cuando la request trae host (si no, ⌘M sigue siendo Minimize); nombre de la app vía Launch Services (`urlForApplication`) en vez de tabla hardcodeada, y ese lookup hace de check "¿sigue instalada?"; ítem `Show in <app>` también en el menú de la barra; `decisions.jsonl` ahora guarda `host`.
 
-### 1.3 Estados: thinking + sad/excited
+### 1.3 Estados: thinking + sad/excited ✅ 2026-08-05
 En `MoodEngine.swift`, prioridad nueva: `asleep(100%) > critical(85%) > thinking(turn marker) > working(transcript activo) > stressed(70%) > tired(50%) > idle`. `thinking` = turno en vuelo sin bytes nuevos (Claude procesando) vs `working` = herramientas corriendo. Flash `sad` (3s) en el completion del dismiss tras deny; `excited` cuando el refresh de 5s ve un `turn_start_*` con session id no visto (sembrar el set al arrancar para no disparar en launch).
 - Poses panda nuevas en `generate_gifs.py`: `buddy_thinking` (mano en barbilla), `buddy_sad`, `buddy_excited`. Especies: fallback a `_idle` ya existe (`gifName(for:mood:)`); stressed/critical reusan tired/sleepy hasta 2.4.
 - Verificar: prompt → thinking en ≤5s; `sleep 20` en tool → working; deny → flash sad; sesión nueva → excited una vez.
+- Implementado: thinking/working NO se distinguen por "bytes nuevos" (una herramienta larga deja el transcript igual de callado que el modelo pensando) sino leyendo el último registro del transcript más reciente — `assistant` con `tool_use` = herramienta corriendo, `user`/tool_result = el modelo es lo que se espera. Lectura de cola de 64KB cacheada por (path, size), solo cuando hay turno en vuelo. `gifName` pasó de fallback plano a cadena de candidatos (`stressed→tired`, `critical→sleepy→tired`, `excited→celebrate→heart`, `sad→tired`) para que las 18 especies degraden a algo con sentido, no a idle. Fix de paso: `TIRED`/`SLEEPY` tenían filas de 17 celdas (se renderizaban 1 celda más anchas que el resto).
+- Verificado en vivo vía selfies del pet + comparación contra los GIFs: working ✓, thinking ✓, excited ✓ (aparece ~3s y revierte solo). `sad` queda cableado — se verá en el próximo deny real.
 
 ### 1.4 Ícono template + accesibilidad
 Sustituir `🐼✏️N` por imagen template generada en código (SF Symbol pawprint o silueta 18x18 programática, `isTemplate = true`) + count como `button.title` (`variableLength`); pending = símbolo con badge naranja; auto-edits = overlay lápiz. Key de Defaults "Icon style: Emoji/Template" para conservar el look actual. `setAccessibilityLabel` en status button, tarjeta, pills, pass button, pet.

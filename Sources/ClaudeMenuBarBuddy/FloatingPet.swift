@@ -62,7 +62,7 @@ extension AppDelegate {
             let window = FloatingPetWindow(size: NSSize(width: side, height: side))
             let imageView = DraggablePetImageView(frame: NSRect(x: 0, y: 0, width: side, height: side))
             imageView.imageScaling = .scaleProportionallyUpOrDown
-            setGif(on: imageView, named: "buddy_\(lastComputedMood)")
+            setGif(on: imageView, named: gifName(for: "buddy", mood: lastComputedMood))
             window.contentView?.addSubview(imageView)
             window.delegate = self
             let saved = Defaults[.floatingPetOrigin]

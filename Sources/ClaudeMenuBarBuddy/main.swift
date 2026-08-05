@@ -170,6 +170,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     // visibly stutter — so same-mood applies are skipped.
     var displayedMood: String?
     var flashWorkItem: DispatchWorkItem?
+    // Session ids already greeted with the "excited" pose, and whether the
+    // set has had its first (seed) pass — see noticeNewSessions().
+    var seenTurnSessions: Set<String> = []
+    var seededTurnSessions = false
 
     // Codex-style floating desktop pet — panda only (Ray, 2026-07-12).
     var floatingWindow: FloatingPetWindow?
