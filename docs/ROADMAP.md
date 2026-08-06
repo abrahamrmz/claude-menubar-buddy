@@ -12,7 +12,7 @@ Decisiones ya tomadas (research + usuario):
 
 Restricciones duras: CPU idle ~0 · panel no-activante intocable · build SPM-only (`swift build`, LaunchAgent → `.build/debug`) · hooks siempre aditivos (timeout → prompt nativo).
 
-**Hallazgo del research**: `generate_species_gifs.py` apunta a `~/Downloads/claude-buddy-project/claude-desktop-buddy/` que **ya no existe** — re-clonar antes de la Fase 2.4.
+**Hallazgo del research**: `generate_species_gifs.py` apunta a `~/Downloads/claude-buddy-project/claude-desktop-buddy/` que **ya no existe** — re-clonar antes de la Fase 2.5.
 
 ---
 
@@ -40,7 +40,7 @@ El hook hereda el entorno del host: capturar en el request JSON `cwd` completo, 
 
 ### 1.3 Estados: thinking + sad/excited ✅ 2026-08-05
 En `MoodEngine.swift`, prioridad nueva: `asleep(100%) > critical(85%) > thinking(turn marker) > working(transcript activo) > stressed(70%) > tired(50%) > idle`. `thinking` = turno en vuelo sin bytes nuevos (Claude procesando) vs `working` = herramientas corriendo. Flash `sad` (3s) en el completion del dismiss tras deny; `excited` cuando el refresh de 5s ve un `turn_start_*` con session id no visto (sembrar el set al arrancar para no disparar en launch).
-- Poses panda nuevas en `generate_gifs.py`: `buddy_thinking` (mano en barbilla), `buddy_sad`, `buddy_excited`. Especies: fallback a `_idle` ya existe (`gifName(for:mood:)`); stressed/critical reusan tired/sleepy hasta 2.4.
+- Poses panda nuevas en `generate_gifs.py`: `buddy_thinking` (mano en barbilla), `buddy_sad`, `buddy_excited`. Especies: fallback a `_idle` ya existe (`gifName(for:mood:)`); stressed/critical reusan tired/sleepy hasta 2.5.
 - Verificar: prompt → thinking en ≤5s; `sleep 20` en tool → working; deny → flash sad; sesión nueva → excited una vez.
 - Implementado: thinking/working NO se distinguen por "bytes nuevos" (una herramienta larga deja el transcript igual de callado que el modelo pensando) sino leyendo el último registro del transcript más reciente — `assistant` con `tool_use` = herramienta corriendo, `user`/tool_result = el modelo es lo que se espera. Lectura de cola de 64KB cacheada por (path, size), solo cuando hay turno en vuelo. `gifName` pasó de fallback plano a cadena de candidatos (`stressed→tired`, `critical→sleepy→tired`, `excited→celebrate→heart`, `sad→tired`) para que las 18 especies degraden a algo con sentido, no a idle. Fix de paso: `TIRED`/`SLEEPY` tenían filas de 17 celdas (se renderizaban 1 celda más anchas que el resto).
 - Verificado en vivo vía selfies del pet + comparación contra los GIFs: working ✓, thinking ✓, excited ✓ (aparece ~3s y revierte solo). `sad` queda cableado — se verá en el próximo deny real.
@@ -76,20 +76,39 @@ En `UsageStats.swift`: `readPlanUsage` devuelve samples recientes (no solo `.las
 - Verificado: los 3 paneles renderizados desde la app real (nuevo flag `capture_settings` → `settings_selfie.png`, que a propósito NO abre la ventana para no robar foco), leyendo estado real (especie "cat", auto-edits on, la lista de always-allow del usuario, los 4 atajos). Instancia de prueba con la ventana abierta sobrevivió sin crash. La ventana en vivo no es capturable (TCC).
 - Gotcha documentado en SKILL.md: el primer `kickstart` justo después de `swift build` se lleva un SIGKILL de code-signing (launchd corrió contra el binario a medio reemplazar). Correrlo de nuevo basta; confirmar siempre con `pgrep`.
 
-### 2.2 Batch approve + selección de cola
+### 2.2 Decisiones a/b/c en el card (AskUserQuestion + ExitPlanMode)
+**Agregado 2026-08-05 a petición del usuario.** Hoy, cuando Claude pregunta con opciones, el buddy solo sabe allow/deny — así que esas decisiones lo mandan de vuelta a VS Code, el mismo dolor que teníamos con los comandos de `gh` antes del always-allow.
+
+**Viabilidad verificada empíricamente** (sonda con hook temporal, `settings.json` restaurado idéntico después):
+1. `AskUserQuestion` **sí** dispara `PreToolUse`. Su `tool_input` trae todo lo que el card necesita: `questions[]` con `question`, `header`, `multiSelect` y `options[]` de `{label, description}`.
+2. **Hay vía limpia, no hace falta el hack de "deny con razón".** La herramienta tiene un campo propio `answers` ("User answers collected by the permission component") y los hooks `PreToolUse` pueden devolver `updatedInput`. Un hook que responde `permissionDecision: "allow"` + `updatedInput: (tool_input + {answers: {"<pregunta>": "<label elegido>"}})` hace que la herramienta corra **con la respuesta ya puesta**: sin picker nativo, y Claude recibe un tool result normal, no un tool bloqueado. Probado end-to-end: la sonda inyectó la segunda opción y eso fue exactamente lo que volvió.
+
+Trabajo real:
+- `settings.json`: agregar el matcher `AskUserQuestion` (aditivo como siempre).
+- `hook.sh`: para ese tool, volcar `questions` al request JSON; el response file crece de `{"decision":"allow"}` a `{"decision":"answer","answers":{…}}`; emitir el `updatedInput`. Timeout → `{}` → picker nativo, igual que hoy.
+- `PendingRequest` + card: un botón por opción (label arriba, `description` como subtítulo) en vez de Allow/Deny; alto variable; ⌘1..⌘4 para elegir (**coordinar con el ⌘1-9 de 2.3**).
+- `ExitPlanMode` de paso: sus tres opciones nativas ya mapean a acciones que el buddy tiene — auto-accept = allow + flag de auto-edits, manual = allow, seguir planeando = deny. Tres botones reales en vez del ↗.
+
+Estimado: **~1 día** para el caso que cubre casi todo (1 pregunta, single-select, 2-4 opciones). Otro día para los bordes: varias preguntas por llamada (la herramienta permite hasta 4), `multiSelect` con checkboxes, y el "Other" de texto libre — ese último probablemente NO va al card y se queda con el ↗ a VS Code, que es donde se escribe cómodo.
+
+Sin verificar todavía: inyectar respuestas para **varias** preguntas en una sola llamada, y qué pasa si se responden solo algunas.
+
+- Verificar: pregunta de 3 opciones → 3 botones; elegir la 2 devuelve esa a Claude sin picker nativo; sin buddy corriendo, el picker aparece normal.
+
+### 2.3 Batch approve + selección de cola
 ⌘1..9 en **Carbon** dinámico (solo mientras `queued > 0`; no vale la pena 9 nombres remapeables). ⌘k fija `pinnedRequestId` que `poll()` ordena al frente. El badge `+N` se vuelve botón → `NSMenu.popUp` (funciona desde panel no-activante) listando la cola (`"⌘2 Bash — proyX: git push…"`) + `Allow all (N)` / `Deny all (N)`. Allow-all con confirmación de doble-click ("Really allow N?"), escribe N response files + N entradas de log, un solo dismiss.
 - Verificar: 3 requests en cola; ⌘2 intercambia tarjeta; Allow all libera los 3 hooks.
 
-### 2.3 Aprobación remota web local + QR
+### 2.4 Aprobación remota web local + QR
 `WebApprovalServer.swift` (~250 líneas) con **Network.framework NWListener** (cero deps). Rutas: `GET /?t=<token>` (HTML self-contained con JS que pollea `GET /pending` cada 2s) y `POST /decide` `{id, decision}` → hop a main queue → mismo `respond()` (anima la tarjeta también y evita double-answer vía respondedIds). Token 128-bit regenerado por enable, puerto asignado por sistema, bind LAN; QR (CoreImage CIQRCodeGenerator) en Settings/menú. **Off por defecto**; listener ni se crea si está apagado (CPU 0). Sin TLS: aceptable por token + LAN + off-by-default + peor caso = aprobar un request visible (documentarlo).
 - Riesgo: firewall de macOS puede preguntar por el binario sin firmar (documentar en SKILL.md).
 - Verificar: QR desde el cel → request aparece ≤2s; Allow en el cel dismissa la tarjeta con ✓; disable → puerto cerrado.
 
-### 2.4 Liberar poses del firmware + escalera stressed/critical
+### 2.5 Liberar poses del firmware + escalera stressed/critical
 Re-clonar `anthropics/claude-desktop-buddy`; parametrizar `SRC_DIR` en `generate_species_gifs.py`; descubrir poses: `grep -ho 'static void do[A-Za-z]*' src/buddies/*.cpp | sort -u` (hoy solo se extraen doIdle/doAttention/doBusy/doDizzy/doSleep/doHeart/doCelebrate) y mapear doSad/doThink/etc. a los moods nuevos. Extender `first_array_in_function` para tomar TODOS los arrays de cada función → GIFs de 2-4 frames reales. Escalera: 50 tired · 70 stressed (pose nueva o doBusy acelerado) · 85 critical (doDizzy) · 100 asleep. Panda: dibujar stressed/critical en `generate_gifs.py`.
 - Verificar: regeneración sin skips, build, forzar cada mood con plan-usage falso y ciclar especies.
 
-### 2.5 Onboarding first-run
+### 2.6 Onboarding first-run
 `Onboarding.swift`: SwiftUI en NSHostingView dentro de NSWindow normal (puede activar la app, ok). 3-4 páginas: qué es → check de instalación del hook (verifica settings.json + hook.sh, botón "copy snippet", NUNCA auto-edita config de Claude) → hotkeys → tour del pet. Gate: `Defaults[.onboardingCompleted]`.
 - Verificar: borrar la key → aparece una vez; check del hook refleja realidad.
 
@@ -108,15 +127,18 @@ Accesibilidad de la página web (botones reales, aria-live), campo `"via":"web"`
 ## Grafo de dependencias
 
 ```
-Fase 0 ─► 1.1 ─► 2.1 ─► 2.5
-      ├─► 1.3 ─► 2.4 ─► 3.1
-      ├─► 1.4 ─► 3.2
-      ├─► 1.5 ─► 2.1 (config umbrales)
-      └─► 1.2 (campos hook) ─► 2.3 (JSON más rico)
-2.2 solo depende de 1.1 · 2.3 independiente salvo QR-en-Settings (interino: QR en menú)
-2.4 bloqueado por re-clone del firmware
+Fase 0 ✅ ─► 1.1 ✅ ─► 2.1 ✅ ─► 2.6
+        ├─► 1.3 ✅ ─► 2.5 ─► 3.1
+        ├─► 1.4 ✅ ─► 3.2
+        ├─► 1.5 ✅ ─► 2.1 (config umbrales) ✅
+        └─► 1.2 ✅ (campos hook) ─► 2.2, 2.4 (JSON más rico)
+2.2 depende de 1.2 (el request JSON crece otra vez) · comparte espacio de atajos con 2.3
+2.3 solo depende de 1.1 · 2.4 independiente salvo QR-en-Settings
+2.5 bloqueado por re-clone del firmware
 ```
-Camino crítico: 0 → 1.1 → 2.1 → 2.5. Esfuerzo total: **~14-18 días** (2.2/2.3/2.4 paralelizables tras Fase 1).
+Camino crítico: 0 → 1.1 → 2.1 → 2.6 (los tres primeros ya cerrados). Restante: **~9-12 días** (2.3/2.4/2.5 paralelizables).
+
+**Renumeración 2026-08-05**: entró 2.2 (decisiones a/b/c) a petición del usuario y todo lo que seguía corrió un lugar (batch approve 2.2→2.3, web+QR 2.3→2.4, firmware 2.4→2.5, onboarding 2.5→2.6).
 
 ## Verificación end-to-end (por fase)
 
