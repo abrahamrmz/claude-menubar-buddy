@@ -132,30 +132,4 @@ extension AppDelegate {
         }
     }
 
-    @objc func chooseIconStyle(_ sender: NSMenuItem) {
-        guard let style = sender.representedObject as? String, style != iconStyle else { return }
-        iconStyle = style
-        buildIdleMenu()
-        if currentRequestId == nil {
-            setIdle()
-        } else if let req = currentRequest {
-            // Just the icon — a full setPending would rebuild the card and
-            // replay the Ping for a request already on screen.
-            applyPendingStatusIcon(for: req, queued: lastQueuedCount)
-        }
-    }
-
-    func buildIconStyleSubmenuItem() -> NSMenuItem {
-        let top = NSMenuItem(title: "Menu Bar Icon", action: nil, keyEquivalent: "")
-        let sub = NSMenu()
-        for (style, title) in [("template", "Monochrome (adapts)"), ("emoji", "Panda emoji")] {
-            let item = NSMenuItem(title: title, action: #selector(chooseIconStyle(_:)), keyEquivalent: "")
-            item.representedObject = style
-            item.target = self
-            item.state = (style == iconStyle) ? .on : .off
-            sub.addItem(item)
-        }
-        top.submenu = sub
-        return top
-    }
 }

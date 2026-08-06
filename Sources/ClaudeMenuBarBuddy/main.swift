@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import Settings
 
 // Claude Menu Bar Buddy — hardware-free stand-in for the M5Stick Hardware
 // Buddy. A PreToolUse hook (~/.config/claude-menubar-buddy/hook.sh) writes
@@ -153,6 +154,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     var fiveHourLineItem: NSMenuItem!
     var weeklyLineItem: NSMenuItem!
     var burnLineItem: NSMenuItem!
+    // Settings window (see SettingsWindow.swift). Built lazily and kept, so
+    // reopening it returns to the tab you were on.
+    var settingsWindowController: SettingsWindowController?
+    weak var toastThresholdReadout: NSTextField?
+    var alwaysAllowTable: AlwaysAllowTable?
     // (sampled-at, tokens-today) for the fallback burn rate, pruned to 2h.
     // In memory on purpose: it measures the pace of the session you're in,
     // and a rate stitched across a restart would be measuring a gap.
@@ -164,7 +170,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     var lastProjectionPct = 0
     var sessionsSubmenuTop: NSMenuItem!
     var historySubmenuTop: NSMenuItem!
-    var alwaysSubmenuTop: NSMenuItem!
     var petImageView: NSImageView!
     var petMoodLineItem: NSMenuItem!
     // Tracks the last mood actually computed from usage, separate from
@@ -231,10 +236,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     // Turn-finished toast (see Toast.swift).
     var toastWindow: NSPanel?
     var toastDismissWorkItem: DispatchWorkItem?
-    // Turns shorter than this don't get a toast — you were watching anyway.
-    // (The macOS banner threshold lives in notify-done.sh; this one is
-    // deliberately lower because a toast at the pet is much less intrusive.)
-    let toastMinSeconds = 15
+    // Toast minimum duration now lives in Defaults (Settings ▸ Behavior);
+    // see Prefs.swift.
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         try? FileManager.default.createDirectory(at: dirURL, withIntermediateDirectories: true)
@@ -292,12 +295,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         historySubmenuTop = NSMenuItem(title: "Decision History", action: nil, keyEquivalent: "")
         historySubmenuTop.submenu = NSMenu()
         menu.addItem(historySubmenuTop)
-        alwaysSubmenuTop = NSMenuItem(title: "Auto-allowed Commands", action: nil, keyEquivalent: "")
-        alwaysSubmenuTop.submenu = NSMenu()
-        menu.addItem(alwaysSubmenuTop)
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(buildSpeciesSubmenuItem())
-        menu.addItem(buildIconStyleSubmenuItem())
+        // The two standing grants stay one click away — they change what the
+        // buddy will do without asking, so burying them behind a Settings
+        // window would be the wrong kind of tidy. Everything else that used
+        // to live here (species, icon style, the always-allow list) moved
+        // there in Fase 2.1.
         let floatingItem = NSMenuItem(title: "Floating Pet", action: #selector(toggleFloatingPet), keyEquivalent: "")
         floatingItem.target = self
         floatingItem.state = floatingPetVisible ? .on : .off
@@ -307,33 +310,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         autoEditsItem.state = autoEditsEnabled ? .on : .off
         autoEditsItem.toolTip = "While on, Edit/Write/NotebookEdit are approved instantly with no card. Uncheck to go back to ask-before-each-edit."
         menu.addItem(autoEditsItem)
+        menu.addItem(NSMenuItem.separator())
+        let settingsItem = NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
+        settingsItem.target = self
+        menu.addItem(settingsItem)
         menu.addItem(withTitle: "Quit", action: #selector(quit), keyEquivalent: "q")
         idleMenu = menu
         // petImageView was just recreated with the idle GIF — invalidate the
         // same-mood skip so the next applyMoodGif really loads its GIF.
         displayedMood = nil
-    }
-
-    func buildSpeciesSubmenuItem() -> NSMenuItem {
-        let top = NSMenuItem(title: "Choose Buddy", action: nil, keyEquivalent: "")
-        let sub = NSMenu()
-        for species in availableSpecies() {
-            let item = NSMenuItem(title: species.capitalized, action: #selector(chooseSpecies(_:)), keyEquivalent: "")
-            item.representedObject = species
-            item.target = self
-            item.state = (species == selectedSpecies) ? .on : .off
-            sub.addItem(item)
-        }
-        top.submenu = sub
-        return top
-    }
-
-    @objc func chooseSpecies(_ sender: NSMenuItem) {
-        guard let species = sender.representedObject as? String else { return }
-        selectedSpecies = species
-        buildIdleMenu()
-        setIdle()
-        updatePetMood()
     }
 
     // Fires right before the dropdown is shown to the user — usage/status
@@ -384,33 +369,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         updatePetMood()
         updateSessionsSubmenu()
         updateHistorySubmenu()
-        updateAlwaysSubmenu()
-    }
-
-    /// One item per always-allowed base command; clicking removes it, so the
-    /// card comes back for that command from then on.
-    func updateAlwaysSubmenu() {
-        guard let submenu = alwaysSubmenuTop.submenu else { return }
-        submenu.removeAllItems()
-        let list = readAlwaysAllow()
-        if list.isEmpty {
-            alwaysSubmenuTop.title = "Auto-allowed Commands"
-            submenu.addItem(withTitle: "None yet — ⚡ on a Bash card adds one", action: nil, keyEquivalent: "")
-            return
-        }
-        alwaysSubmenuTop.title = "Auto-allowed Commands (\(list.count))"
-        for base in list {
-            let item = NSMenuItem(title: "⚡ \(base) — click to remove",
-                                  action: #selector(removeAlwaysAllow(_:)), keyEquivalent: "")
-            item.representedObject = base
-            item.target = self
-            submenu.addItem(item)
-        }
-    }
-
-    @objc func removeAlwaysAllow(_ sender: NSMenuItem) {
-        guard let base = sender.representedObject as? String else { return }
-        writeAlwaysAllow(readAlwaysAllow().filter { $0 != base })
+        // The always-allow list lives in Settings ▸ Safety now; refresh it
+        // there if that window happens to be open.
+        alwaysAllowTable?.reload()
     }
 
     /// Last 10 decisions, newest first, from decisions.jsonl (appended by
@@ -631,6 +592,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         captureCardSelfieIfRequested()
         capturePetSelfieIfRequested()
         captureIconSelfieIfRequested()
+        captureSettingsSelfieIfRequested()
         // Mid-verdict-animation: don't touch the card or surface the next
         // request; respond()'s completion re-runs poll() the moment the
         // exit finishes.

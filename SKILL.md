@@ -203,6 +203,13 @@ status when clicked. It stays that way until a permission request comes in.
   if `com.claudemenubarbuddy.app` is already loaded, `launchctl bootstrap`
   will error; use `launchctl kickstart -k gui/$(id -u)/com.claudemenubarbuddy.app`
   to restart an existing install instead.
+- Kickstarting immediately after `swift build` usually gets SIGKILLed once
+  ("Code Signature Invalid" / "Launch Constraint Violation" in
+  `~/Library/Logs/DiagnosticReports/`): launchd raced the linker replacing
+  the binary, and the ad-hoc signature it read no longer matched the file.
+  Nothing is wrong with the build — run the same `kickstart` a second time,
+  or sleep a second between the two. Always confirm with `pgrep -f
+  ClaudeMenuBarBuddy` rather than assuming the first one took.
 - Don't skip the "merge, don't overwrite" step on settings.json — a naive
   overwrite would silently delete whatever permissions/hooks the user
   already had configured. Read first, merge, write.

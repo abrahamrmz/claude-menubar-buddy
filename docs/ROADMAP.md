@@ -66,9 +66,15 @@ En `UsageStats.swift`: `readPlanUsage` devuelve samples recientes (no solo `.las
 
 ## Fase 2 — Features grandes (~7-10 días)
 
-### 2.1 Settings window + adelgazar menú
+### 2.1 Settings window + adelgazar menú ✅ 2026-08-05
 `sindresorhus/Settings`, 3 tabs: **Behavior** (recorders de hotkeys, umbral de toast, umbrales burn-rate, Start at login vía LaunchAgent plist de SKILL.md con `launchctl bootstrap`), **Appearance** (especie, floating pet, icon style, fidgets on/off), **Safety** (auto-edits, tabla de always-allow con remove, log de decisiones, web approval + QR). El menú conserva: pet+mood, líneas de status/uso/burn, Active Sessions, Decision History, los 2 toggles de seguridad (visibles a un click: Floating Pet, Auto-approve Edits), `Settings…`, `Quit`. Fallback si Settings falla sin bundle: NSWindow + NSTabViewController.
 - Verificar: cada toggle migrado hace round-trip (flag files siguen moviendo hook.sh); remap de hotkey aplica a la siguiente tarjeta.
+- No hizo falta el fallback: `SettingsPane` es un protocolo sobre `NSViewController` y `KeyboardShortcuts.RecorderCocoa` es un `NSSearchField` — o sea, paneles AppKit puros, cero SwiftUI, consistente con el resto de la app. Los resource bundles del paquete quedan junto al binario en `.build/debug`, así que `Bundle.module` resuelve sin `.app`. Solo se sobrescribe el título de la ventana (sin bundle no hay `CFBundleName` de dónde armarlo).
+- **Start at login solo escribe/borra el plist, sin `launchctl`.** `bootout` mataría al proceso que ejecuta ese mismo código (la app *es* ese job), y `bootstrap` sobre una copia lanzada a mano pondría dos pandas en la barra. El archivo es lo que launchd lee en el próximo login, que es exactamente lo que el toggle promete.
+- Fuera de alcance por no existir aún: fidgets on/off (Fase 3.1) y web approval + QR (2.3) — un toggle muerto sería peor que su ausencia.
+- Adelgazado: se fueron `Choose Buddy`, `Menu Bar Icon` y `Auto-allowed Commands`; entró `Settings…` (⌘,). Los 2 grants permanentes se quedan en el menú a propósito: cambian lo que la app hace *sin preguntar*.
+- Verificado: los 3 paneles renderizados desde la app real (nuevo flag `capture_settings` → `settings_selfie.png`, que a propósito NO abre la ventana para no robar foco), leyendo estado real (especie "cat", auto-edits on, la lista de always-allow del usuario, los 4 atajos). Instancia de prueba con la ventana abierta sobrevivió sin crash. La ventana en vivo no es capturable (TCC).
+- Gotcha documentado en SKILL.md: el primer `kickstart` justo después de `swift build` se lleva un SIGKILL de code-signing (launchd corrió contra el binario a medio reemplazar). Correrlo de nuevo basta; confirmar siempre con `pgrep`.
 
 ### 2.2 Batch approve + selección de cola
 ⌘1..9 en **Carbon** dinámico (solo mientras `queued > 0`; no vale la pena 9 nombres remapeables). ⌘k fija `pinnedRequestId` que `poll()` ordena al frente. El badge `+N` se vuelve botón → `NSMenu.popUp` (funciona desde panel no-activante) listando la cola (`"⌘2 Bash — proyX: git push…"`) + `Allow all (N)` / `Deny all (N)`. Allow-all con confirmación de doble-click ("Really allow N?"), escribe N response files + N entradas de log, un solo dismiss.

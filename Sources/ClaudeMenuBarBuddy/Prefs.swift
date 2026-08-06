@@ -20,6 +20,13 @@ extension Defaults.Keys {
     // appearance; "emoji" = the literal 🐼 the app shipped with, for anyone
     // who wants the color back.
     static let iconStyle = Key<String>("iconStyle", default: "template")
+    // Turns shorter than this don't get a finish toast — you were watching
+    // anyway. (The macOS banner threshold lives in notify-done.sh; this one
+    // is deliberately lower because a toast at the pet is less intrusive.)
+    static let toastMinSeconds = Key<Int>("toastMinSeconds", default: 15)
+    // Whether the burn rate is allowed to warn about a limit you haven't hit
+    // yet but are on pace for.
+    static let projectedWarnings = Key<Bool>("projectedWarnings", default: true)
 }
 
 extension AppDelegate {
@@ -46,6 +53,54 @@ extension AppDelegate {
     var iconStyle: String {
         get { Defaults[.iconStyle] }
         set { Defaults[.iconStyle] = newValue }
+    }
+
+    var toastMinSeconds: Int {
+        get { Defaults[.toastMinSeconds] }
+        set { Defaults[.toastMinSeconds] = newValue }
+    }
+
+    var projectedWarnings: Bool {
+        get { Defaults[.projectedWarnings] }
+        set { Defaults[.projectedWarnings] = newValue }
+    }
+
+    // MARK: - Start at login
+
+    /// The LaunchAgent that starts the buddy at login. Written/removed by the
+    /// Settings toggle; the same plist SKILL.md installs.
+    var launchAgentURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/LaunchAgents/com.claudemenubarbuddy.app.plist")
+    }
+
+    var startsAtLogin: Bool { FileManager.default.fileExists(atPath: launchAgentURL.path) }
+
+    /// Writes or removes the plist and nothing else — deliberately no
+    /// `launchctl`. Booting the job out would kill the very process running
+    /// this code (the app IS that job), and bootstrapping it while an
+    /// already-running copy was started by hand would put two pandas in the
+    /// menu bar. The file alone is what launchd reads at the next login,
+    /// which is exactly what the toggle claims to control.
+    func setStartsAtLogin(_ enabled: Bool) {
+        guard enabled else {
+            try? FileManager.default.removeItem(at: launchAgentURL)
+            return
+        }
+        guard let executable = Bundle.main.executablePath else { return }
+        let plist: [String: Any] = [
+            "Label": "com.claudemenubarbuddy.app",
+            "ProgramArguments": [executable],
+            "RunAtLoad": true,
+            "KeepAlive": false,
+            "StandardOutPath": "/tmp/menubar_buddy.log",
+            "StandardErrorPath": "/tmp/menubar_buddy.log",
+        ]
+        try? FileManager.default.createDirectory(
+            at: launchAgentURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        guard let data = try? PropertyListSerialization.data(
+            fromPropertyList: plist, format: .xml, options: 0) else { return }
+        try? data.write(to: launchAgentURL, options: [.atomic])
     }
 
     // MARK: - Buddy-managed flag files (shared with hook.sh)
