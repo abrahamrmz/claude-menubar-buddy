@@ -52,11 +52,30 @@ struct PendingRequest: Decodable {
     let hostBundle: String?
     let termProgram: String?
 
+    // Present only for AskUserQuestion: the questions Claude wants answered,
+    // verbatim from the tool call, so the card can offer the same options the
+    // native picker would.
+    let choices: [ChoiceQuestion]?
+
     enum CodingKeys: String, CodingKey {
-        case id, tool, hint, project, ts, cwd
+        case id, tool, hint, project, ts, cwd, choices
         case hostBundle = "host_bundle"
         case termProgram = "term_program"
     }
+}
+
+struct ChoiceQuestion: Decodable {
+    let question: String
+    let header: String?
+    let options: [ChoiceOption]
+}
+
+struct ChoiceOption: Decodable {
+    let label: String
+    // Optional purely defensively — the tool schema requires it, but a card
+    // that silently vanishes because one field was missing would be worse
+    // than one with a bare label.
+    let description: String?
 }
 
 // Returns the menu item plus the NSImageView inside it, so callers that need
@@ -232,6 +251,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     // the next queued request (or rebuild the card) mid-animation, and a
     // second ⌘⏎ mash must not double-respond.
     var isDismissing = false
+    // Multiple-choice cards (AskUserQuestion): which question of the call is
+    // on screen, and the labels picked so far. A call can carry up to four
+    // questions, so the card walks them one at a time and answers all at once
+    // at the end — the tool takes a single answers map.
+    var choiceIndex = 0
+    var collectedAnswers: [String: String] = [:]
 
     // Turn-finished toast (see Toast.swift).
     var toastWindow: NSPanel?
@@ -246,6 +271,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         approvalHotKeys.onDeny = { [weak self] in self?.decideViaHotKey("deny") }
         approvalHotKeys.onAlwaysAllow = { [weak self] in self?.decideViaHotKey("always") }
         approvalHotKeys.onJumpToHost = { [weak self] in self?.jumpToHost() }
+        approvalHotKeys.onChoice = { [weak self] index in self?.chooseOptionViaHotKey(index) }
 
         // variableLength, not squareLength: the icon grows a count and (in
         // auto-edits mode) a pencil beside the panda.
@@ -552,6 +578,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         currentRequest = nil
         currentCommandBase = nil
         currentQuietAction = nil
+        choiceIndex = 0
+        collectedAnswers = [:]
         approvalHotKeys.disable()
         updateIdleTitle()
         statusItem.menu = idleMenu

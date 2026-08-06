@@ -67,6 +67,7 @@ extension AppDelegate {
         case "WebFetch", "WebSearch": return .systemBlue
         case "NotebookEdit": return .systemYellow
         case "ExitPlanMode": return .systemPink
+        case "AskUserQuestion": return .systemIndigo
         default: return .systemGray
         }
     }
@@ -79,6 +80,7 @@ extension AppDelegate {
         case "WebFetch", "WebSearch": return "globe"
         case "NotebookEdit": return "text.book.closed.fill"
         case "ExitPlanMode": return "list.bullet.clipboard.fill"
+        case "AskUserQuestion": return "questionmark.bubble.fill"
         default: return "questionmark.circle.fill"
         }
     }
@@ -145,8 +147,14 @@ extension AppDelegate {
         let contentX = pad + stripeWidth
         let blockInset: CGFloat = 8
         let accent = toolAccent(req.tool)
-        let bodyFont = NSFont.monospacedSystemFont(ofSize: 12.5, weight: .regular)
-        let body = String(req.hint.prefix(2000))
+        // Multiple-choice card: the body is the question being asked, and the
+        // action rows are its options instead of Allow/Deny. Questions are
+        // walked one at a time (see choiceIndex).
+        let question = req.choices?.indices.contains(choiceIndex) == true ? req.choices![choiceIndex] : nil
+        let bodyFont = question != nil
+            ? NSFont.systemFont(ofSize: 13)
+            : NSFont.monospacedSystemFont(ofSize: 12.5, weight: .regular)
+        let body = String((question?.question ?? req.hint).prefix(2000))
         let bodyMaxHeight: CGFloat = 200
 
         let measured = (body as NSString).boundingRect(
@@ -166,9 +174,29 @@ extension AppDelegate {
         currentCommandBase = base
         let isEditTool = ["Edit", "MultiEdit", "Write", "NotebookEdit"].contains(req.tool)
         let isPlan = req.tool == "ExitPlanMode"
-        let hasQuietRow = base != nil || isEditTool || isPlan
+        let hasQuietRow = question == nil && (base != nil || isEditTool || isPlan)
         let alwaysRowHeight: CGFloat = hasQuietRow ? 26 + 8 : 0
-        let cardHeight = pad + buttonRowHeight + alwaysRowHeight + 10 + blockHeight + 10 + headerHeight + pad
+
+        // Option buttons stack vertically and size to their own text: the
+        // description is what you actually choose on, so it gets up to two
+        // lines rather than a "…" at the point it starts being useful.
+        let optionGap: CGFloat = 6
+        let optionTextWidth = cardWidth - contentX - pad - 24
+        let optionHeights: [CGFloat] = (question?.options ?? []).map { option in
+            var height: CGFloat = 8 + 17 + 8   // padding + label line + padding
+            if let detail = option.description, !detail.isEmpty {
+                let measured = (detail as NSString).boundingRect(
+                    with: NSSize(width: optionTextWidth, height: .greatestFiniteMagnitude),
+                    options: [.usesLineFragmentOrigin],
+                    attributes: [.font: NSFont.systemFont(ofSize: 11)])
+                height += 2 + min(30, ceil(measured.height))  // two lines, then truncate
+            }
+            return height
+        }
+        let actionsHeight: CGFloat = question != nil
+            ? optionHeights.reduce(0, +) + CGFloat(max(0, optionHeights.count - 1)) * optionGap
+            : buttonRowHeight + alwaysRowHeight
+        let cardHeight = pad + actionsHeight + 10 + blockHeight + 10 + headerHeight + pad
 
         let window: NSWindow
         if let existing = statusBubbleWindow {
@@ -281,7 +309,17 @@ extension AppDelegate {
             rightEdge -= 28
         }
 
-        let titleField = NSTextField(labelWithString: req.tool)
+        // For a question, the tool name means nothing to the reader — its own
+        // header does ("Prioridad", "Approach"), plus which of several
+        // questions this is.
+        var title = req.tool
+        if let question = question {
+            title = question.header ?? "Question"
+            if let all = req.choices, all.count > 1 {
+                title += "  ·  \(choiceIndex + 1) of \(all.count)"
+            }
+        }
+        let titleField = NSTextField(labelWithString: title)
         titleField.font = NSFont.boldSystemFont(ofSize: 14)
         titleField.textColor = .labelColor
         titleField.lineBreakMode = .byTruncatingTail
@@ -290,7 +328,7 @@ extension AppDelegate {
         card.addSubview(titleField)
 
         // Body: the full command / mini-diff inside a code-block well.
-        let block = NSView(frame: NSRect(x: contentX, y: pad + buttonRowHeight + alwaysRowHeight + 10,
+        let block = NSView(frame: NSRect(x: contentX, y: pad + actionsHeight + 10,
                                          width: cardWidth - contentX - pad, height: blockHeight))
         block.wantsLayer = true
         block.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.28).cgColor
@@ -312,22 +350,50 @@ extension AppDelegate {
         textView.textContainer?.widthTracksTextView = true
         textView.minSize = NSSize(width: 0, height: 0)
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-        textView.setAccessibilityLabel(req.tool == "ExitPlanMode" ? "Proposed plan" : "Request details")
+        textView.setAccessibilityLabel(question != nil ? "The question being asked"
+                                       : (req.tool == "ExitPlanMode" ? "Proposed plan" : "Request details"))
         scroll.documentView = textView
         block.addSubview(scroll)
 
+        // Multiple choice: the options replace Allow/Deny entirely. Answering
+        // isn't approving — there's no "no" to give here, so offering one
+        // would only be a way to get the question asked again. The ↗ in the
+        // header is still the way out to the native picker (free-text
+        // "Other", for one).
+        if let question = question {
+            var y = pad + actionsHeight
+            for (index, option) in question.options.enumerated() {
+                let height = optionHeights[index]
+                y -= height
+                let button = optionButton(option, index: index, accent: accent)
+                button.frame = NSRect(x: contentX, y: y, width: cardWidth - contentX - pad, height: height)
+                card.addSubview(button)
+                if index == 0 { allowButtonRef = button }
+                y -= optionGap
+            }
+            currentQuietAction = nil
+            finishStatusBubble(window: window, petWindow: petWindow)
+            return
+        }
+
         let buttonWidth: CGFloat = (cardWidth - contentX - pad - 8) / 2
-        let allowButton = pillButton(title: "✓ Allow", shortcut: "⌘⏎",
+        // A plan's three native options map onto the three the card already
+        // has, so plans get the real choices instead of a hand-off: ⌘⏎ is the
+        // careful yes, ⌥⌘⏎ the one that also flips auto-edits on, ⇧⌘⏎ "keep
+        // planning" (a deny that says why).
+        let allowButton = pillButton(title: isPlan ? "✓ Yes — approve each edit" : "✓ Allow", shortcut: "⌘⏎",
                                      fill: .systemGreen, textColor: .white, action: #selector(allow),
-                                     accessibility: "Allow \(req.tool)")
+                                     accessibility: isPlan ? "Approve the plan, approving each edit as it comes"
+                                                           : "Allow \(req.tool)")
         allowButton.frame = NSRect(x: contentX, y: pad, width: buttonWidth, height: buttonRowHeight)
         card.addSubview(allowButton)
         allowButtonRef = allowButton
 
-        let denyButton = pillButton(title: "✕ Deny", shortcut: "⇧⌘⏎",
+        let denyButton = pillButton(title: isPlan ? "✕ No — keep planning" : "✕ Deny", shortcut: "⇧⌘⏎",
                                     fill: NSColor.white.withAlphaComponent(0.10),
                                     textColor: .systemRed, action: #selector(deny),
-                                    accessibility: "Deny \(req.tool)")
+                                    accessibility: isPlan ? "Don't implement yet — keep planning"
+                                                          : "Deny \(req.tool)")
         denyButton.frame = NSRect(x: contentX + buttonWidth + 8, y: pad, width: buttonWidth, height: buttonRowHeight)
         card.addSubview(denyButton)
         denyButtonRef = denyButton
@@ -348,11 +414,11 @@ extension AppDelegate {
                                          accessibility: "Allow, and auto-approve edits from now on")
                 currentQuietAction = { [weak self] in self?.autoApproveEditsFromCard() }
             } else {
-                quietButton = pillButton(title: "↗ Review in VS Code — auto-accept, manual, tell Claude…", shortcut: "⌥⌘⏎",
+                quietButton = pillButton(title: "⚡ Yes — and auto-accept edits from here", shortcut: "⌥⌘⏎",
                                          fill: NSColor.white.withAlphaComponent(0.07),
-                                         textColor: accent, action: #selector(passToNative),
-                                         accessibility: "Review in VS Code with the full native options")
-                currentQuietAction = { [weak self] in self?.passToNative() }
+                                         textColor: accent, action: #selector(autoApproveEditsFromCard),
+                                         accessibility: "Approve the plan and auto-approve its edits from now on")
+                currentQuietAction = { [weak self] in self?.autoApproveEditsFromCard() }
             }
             quietButton.layer?.cornerRadius = 13
             quietButton.frame = NSRect(x: contentX, y: pad + buttonRowHeight + 8,
@@ -363,6 +429,12 @@ extension AppDelegate {
             currentQuietAction = nil
         }
 
+        finishStatusBubble(window: window, petWindow: petWindow)
+    }
+
+    /// Position and reveal — shared by both card shapes, since the choice
+    /// branch returns before the Allow/Deny rows are built.
+    func finishStatusBubble(window: NSWindow, petWindow: NSWindow) {
         let wasVisible = window.isVisible
         positionStatusBubble(above: petWindow)
         if wasVisible {
@@ -381,6 +453,51 @@ extension AppDelegate {
                 window.animator().setFrame(target, display: true)
             }
         }
+    }
+
+    /// One option of a multiple-choice question: its label, and underneath in
+    /// smaller type what picking it actually means. Both come verbatim from
+    /// the tool call — a card that paraphrased the options would be putting
+    /// words in the user's mouth.
+    func optionButton(_ option: ChoiceOption, index: Int, accent: NSColor) -> PressablePillButton {
+        let button = PressablePillButton(title: "", target: self, action: #selector(chooseOption(_:)))
+        button.tag = index
+        button.isBordered = false
+        button.wantsLayer = true
+        button.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.07).cgColor
+        button.layer?.cornerRadius = 10
+        button.layer?.borderWidth = 1
+        button.layer?.borderColor = accent.withAlphaComponent(0.35).cgColor
+
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .left
+        paragraph.lineBreakMode = .byTruncatingTail
+        paragraph.firstLineHeadIndent = 12
+        paragraph.headIndent = 12
+        paragraph.tailIndent = -12
+
+        let text = NSMutableAttributedString(string: "\(index + 1). \(option.label)", attributes: [
+            .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
+            .foregroundColor: NSColor.labelColor,
+            .paragraphStyle: paragraph,
+        ])
+        text.append(NSAttributedString(string: "   ⌘\(index + 1)", attributes: [
+            .font: NSFont.systemFont(ofSize: 11),
+            .foregroundColor: NSColor.secondaryLabelColor,
+            .paragraphStyle: paragraph,
+        ]))
+        if let detail = option.description, !detail.isEmpty {
+            let detailParagraph = paragraph.mutableCopy() as! NSMutableParagraphStyle
+            detailParagraph.lineBreakMode = .byWordWrapping
+            text.append(NSAttributedString(string: "\n\(detail)", attributes: [
+                .font: NSFont.systemFont(ofSize: 11),
+                .foregroundColor: NSColor.secondaryLabelColor,
+                .paragraphStyle: detailParagraph,
+            ]))
+        }
+        button.attributedTitle = text
+        button.setAccessibilityLabel(option.description.map { "\(option.label). \($0)" } ?? option.label)
+        return button
     }
 
     func hideStatusBubble() {
@@ -432,6 +549,8 @@ extension AppDelegate {
         currentRequestId = req.id
         currentRequest = req
         lastQueuedCount = queued
+        choiceIndex = 0
+        collectedAnswers = [:]
 
         let menu = NSMenu()
         menu.addItem(gifMenuItem(named: "\(selectedSpecies)_pending").0)
@@ -469,8 +588,21 @@ extension AppDelegate {
             menu.addItem(statusMenuItem("\(queued) more request\(queued == 1 ? "" : "s") waiting…"))
         }
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(withTitle: "Allow", action: #selector(allow), keyEquivalent: "a")
-        menu.addItem(withTitle: "Deny", action: #selector(deny), keyEquivalent: "d")
+        if let question = req.choices?.first {
+            // A question has no allow/deny — the dropdown gets the same
+            // options the card shows.
+            for (index, option) in question.options.enumerated() {
+                let item = NSMenuItem(title: option.label, action: #selector(chooseOptionFromMenu(_:)),
+                                      keyEquivalent: "\(index + 1)")
+                item.tag = index
+                item.target = self
+                item.toolTip = option.description
+                menu.addItem(item)
+            }
+        } else {
+            menu.addItem(withTitle: "Allow", action: #selector(allow), keyEquivalent: "a")
+            menu.addItem(withTitle: "Deny", action: #selector(deny), keyEquivalent: "d")
+        }
         if let target = jumpTarget(for: req) {
             menu.addItem(withTitle: "Show in \(target.name)", action: #selector(jumpToHost), keyEquivalent: "m")
         }
@@ -485,7 +617,8 @@ extension AppDelegate {
         if let floatingImageView = floatingImageView {
             setGif(on: floatingImageView, named: "buddy_pending")
         }
-        approvalHotKeys.enable(jump: jumpTarget(for: req) != nil)
+        approvalHotKeys.enable(jump: jumpTarget(for: req) != nil,
+                               choices: req.choices?.first?.options.count ?? 0)
         NSSound(named: "Ping")?.play()
     }
 
@@ -568,6 +701,46 @@ extension AppDelegate {
         respond("pass")
     }
 
+    @objc func chooseOption(_ sender: NSButton) { pickOption(at: sender.tag) }
+    @objc func chooseOptionFromMenu(_ sender: NSMenuItem) { pickOption(at: sender.tag) }
+
+    /// Hotkey path (⌘1..⌘4): flash the button first, same as ⌘⏎ does, so the
+    /// shortcut feels like pressing the option rather than the card obeying.
+    func chooseOptionViaHotKey(_ index: Int) {
+        guard currentRequestId != nil, !isDismissing else { return }
+        guard let card = statusBubbleWindow?.contentView, statusBubbleWindow?.isVisible == true,
+              let button = card.subviews.compactMap({ $0 as? PressablePillButton })
+                  .first(where: { $0.tag == index && $0.action == #selector(chooseOption(_:)) }) else {
+            pickOption(at: index)
+            return
+        }
+        button.setPressed(true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            button.setPressed(false)
+            self?.pickOption(at: index)
+        }
+    }
+
+    /// Records one answer. A call can hold several questions and the tool
+    /// takes them as a single map, so the card walks to the next question
+    /// instead of answering early — only the last pick actually responds.
+    func pickOption(at index: Int) {
+        guard !isDismissing, let req = currentRequest,
+              let questions = req.choices, questions.indices.contains(choiceIndex) else { return }
+        let question = questions[choiceIndex]
+        guard question.options.indices.contains(index) else { return }
+        collectedAnswers[question.question] = question.options[index].label
+
+        if choiceIndex + 1 < questions.count {
+            choiceIndex += 1
+            let next = questions[choiceIndex]
+            approvalHotKeys.enable(jump: jumpTarget(for: req) != nil, choices: next.options.count)
+            showStatusBubble(for: req, queued: lastQueuedCount)
+            return
+        }
+        respond("answer")
+    }
+
     /// Verdict flash + exit: a green ✓ / red ✕ pops over a tinted wash,
     /// then the whole card fades away. The response file was already
     /// written by then — the animation only delays the NEXT card, never
@@ -590,7 +763,9 @@ extension AppDelegate {
             })
             return
         }
-        let isAllow = decision == "allow"
+        // Answering a question is an affirmative act, not an approval — but
+        // it's certainly not a rejection, so it gets the green ✓.
+        let isAllow = decision == "allow" || decision == "answer"
         let color: NSColor = isAllow ? .systemGreen : .systemRed
 
         let overlay = NSView(frame: card.bounds)
@@ -631,17 +806,25 @@ extension AppDelegate {
         })
     }
 
-    func respond(_ decision: String) {
+    /// `decision` is allow / deny / pass / answer. `reason` rides along to the
+    /// hook as the permissionDecisionReason, so a card that offers a specific
+    /// choice ("keep planning") can say which one was taken instead of a
+    /// generic "denied".
+    func respond(_ decision: String, reason: String? = nil) {
         guard let id = currentRequestId, !isDismissing else { return }
         let responseURL = dirURL.appendingPathComponent("response_\(id).json")
-        let payload = "{\"decision\":\"\(decision)\"}"
-        try? payload.write(to: responseURL, atomically: true, encoding: .utf8)
+        var payload: [String: Any] = ["decision": decision]
+        if let reason = reason { payload["reason"] = reason }
+        if decision == "answer" { payload["answers"] = collectedAnswers }
+        if let data = try? JSONSerialization.data(withJSONObject: payload) {
+            try? data.write(to: responseURL, options: [.atomic])
+        }
 
         // Append to the decision audit trail (shown in the Decision History
         // submenu). Hint is capped — the log records what was decided, not
         // full file contents.
         if let req = currentRequest {
-            let entry: [String: Any] = [
+            var entry: [String: Any] = [
                 "ts": Date().timeIntervalSince1970,
                 "tool": req.tool,
                 "project": req.project ?? "",
@@ -651,6 +834,9 @@ extension AppDelegate {
                 // say where a decision came from, not just what it was.
                 "host": req.hostBundle ?? "",
             ]
+            // For a question, "answer" alone says nothing — the log needs to
+            // record what was actually chosen on the user's behalf.
+            if decision == "answer" { entry["answers"] = collectedAnswers }
             if let line = try? JSONSerialization.data(withJSONObject: entry) {
                 let logURL = dirURL.appendingPathComponent("decisions.jsonl")
                 if let handle = try? FileHandle(forWritingTo: logURL) {
@@ -691,7 +877,17 @@ extension AppDelegate {
     }
 
     @objc func allow() { respond("allow") }
-    @objc func deny() { respond("deny") }
+
+    @objc func deny() {
+        // On a plan card the deny button doesn't say "no", it says "keep
+        // planning" — so the hook should pass that on rather than a bare
+        // rejection Claude has to guess the meaning of.
+        guard currentRequest?.tool == "ExitPlanMode" else {
+            respond("deny")
+            return
+        }
+        respond("deny", reason: "Not yet — keep planning. The user wants the plan refined before any of it is implemented.")
+    }
 
     /// Debug/docs helper: `touch ~/.config/claude-menubar-buddy/capture_card`
     /// while a card is showing and the app renders it to card_selfie.png in

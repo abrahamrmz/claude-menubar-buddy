@@ -44,11 +44,29 @@ if [ "$TOOL" = "Bash" ] && [ -f "$ALLOW_FILE" ]; then
   fi
 fi
 
+# AskUserQuestion isn't a permission decision — it's Claude asking the user
+# something with named options. The card can present those and answer with
+# them (see the response handling below), so the questions ride along in the
+# request file verbatim.
+CHOICES="null"
+if [ "$TOOL" = "AskUserQuestion" ]; then
+  # Multi-select and free-text "Other" need an interaction the card doesn't
+  # have. Hand those straight back to the native picker instead of showing a
+  # card that can only express part of the answer.
+  if echo "$INPUT" | jq -e '[.tool_input.questions[]? | select(.multiSelect == true)] | length > 0' >/dev/null 2>&1; then
+    echo '{}'
+    exit 0
+  fi
+  CHOICES="$(echo "$INPUT" | jq -c '.tool_input.questions // []' 2>/dev/null || echo "null")"
+fi
+
 # Full content, not a teaser: the whole command for Bash, a mini-diff for
 # Edit, path + content preview for Write. The app decides how much fits on
 # screen (scrolls beyond that); truncation here is only a payload safety cap.
 HINT="$(echo "$INPUT" | jq -r '
-  (if .tool_name == "ExitPlanMode" and .tool_input.plan != null then
+  (if .tool_name == "AskUserQuestion" then
+    ([.tool_input.questions[]? | .question] | join("\n\n"))
+  elif .tool_name == "ExitPlanMode" and .tool_input.plan != null then
     "PLAN PROPUESTO\n" + .tool_input.plan
   elif .tool_name == "Edit" and .tool_input.old_string != null then
     (.tool_input.file_path // "?") + "\n--- quita\n" + .tool_input.old_string + "\n+++ pone\n" + .tool_input.new_string
@@ -83,8 +101,9 @@ REQUEST_FILE="$DIR/request_${ID}.json"
 
 jq -n --arg id "$ID" --arg tool "$TOOL" --arg hint "$HINT" --arg project "$PROJECT_NAME" \
   --arg cwd "$CWD" --arg host_bundle "$HOST_BUNDLE" --arg term_program "$TERM_PROG" \
+  --argjson choices "$CHOICES" \
   '{id: $id, tool: $tool, hint: $hint, project: $project, cwd: $cwd,
-    host_bundle: $host_bundle, term_program: $term_program, ts: now}' > "$REQUEST_FILE"
+    host_bundle: $host_bundle, term_program: $term_program, choices: $choices, ts: now}' > "$REQUEST_FILE"
 
 RESPONSE_FILE="$DIR/response_${ID}.json"
 
@@ -96,13 +115,30 @@ trap 'rm -f "$REQUEST_FILE" "$RESPONSE_FILE"; exit 0' TERM HUP INT
 # Poll for up to 55s (keep under the hook's own timeout, set to 60s in settings.json)
 for i in $(seq 1 110); do
   if [ -f "$RESPONSE_FILE" ]; then
-    DECISION="$(jq -r '.decision' "$RESPONSE_FILE" 2>/dev/null || echo "")"
+    RESPONSE="$(cat "$RESPONSE_FILE" 2>/dev/null || echo '{}')"
+    DECISION="$(echo "$RESPONSE" | jq -r '.decision // ""' 2>/dev/null || echo "")"
+    # The card can say WHICH choice was taken, not just yes/no — e.g. a plan's
+    # "keep planning" is a deny whose reason is the whole point.
+    REASON="$(echo "$RESPONSE" | jq -r '.reason // ""' 2>/dev/null || echo "")"
     rm -f "$RESPONSE_FILE" "$REQUEST_FILE"
-    if [ "$DECISION" = "allow" ]; then
-      echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","permissionDecisionReason":"Approved via Claude Menu Bar Buddy"}}'
+    if [ "$DECISION" = "answer" ]; then
+      # The user picked options on the card. AskUserQuestion collects answers
+      # into its own `answers` field, and PreToolUse hooks may rewrite the
+      # tool input — so allow the tool to run with the answer already in it.
+      # Claude then gets an ordinary tool result rather than a blocked tool.
+      ANSWERS="$(echo "$RESPONSE" | jq -c '.answers // {}' 2>/dev/null || echo '{}')"
+      jq -n --argjson input "$INPUT" --argjson answers "$ANSWERS" \
+        '{hookSpecificOutput: {hookEventName: "PreToolUse", permissionDecision: "allow",
+          permissionDecisionReason: "Answered on the Claude Menu Bar Buddy card",
+          updatedInput: ($input.tool_input + {answers: $answers})}}'
+      exit 0
+    elif [ "$DECISION" = "allow" ]; then
+      jq -n --arg r "${REASON:-Approved via Claude Menu Bar Buddy}" \
+        '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"allow",permissionDecisionReason:$r}}'
       exit 0
     elif [ "$DECISION" = "deny" ]; then
-      echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Denied via Claude Menu Bar Buddy"}}'
+      jq -n --arg r "${REASON:-Denied via Claude Menu Bar Buddy}" \
+        '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
       exit 0
     elif [ "$DECISION" = "pass" ]; then
       # Hand off to the normal interactive prompt RIGHT NOW (no decision =

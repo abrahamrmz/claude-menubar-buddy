@@ -76,7 +76,7 @@ En `UsageStats.swift`: `readPlanUsage` devuelve samples recientes (no solo `.las
 - Verificado: los 3 paneles renderizados desde la app real (nuevo flag `capture_settings` → `settings_selfie.png`, que a propósito NO abre la ventana para no robar foco), leyendo estado real (especie "cat", auto-edits on, la lista de always-allow del usuario, los 4 atajos). Instancia de prueba con la ventana abierta sobrevivió sin crash. La ventana en vivo no es capturable (TCC).
 - Gotcha documentado en SKILL.md: el primer `kickstart` justo después de `swift build` se lleva un SIGKILL de code-signing (launchd corrió contra el binario a medio reemplazar). Correrlo de nuevo basta; confirmar siempre con `pgrep`.
 
-### 2.2 Decisiones a/b/c en el card (AskUserQuestion + ExitPlanMode)
+### 2.2 Decisiones a/b/c en el card (AskUserQuestion + ExitPlanMode) ✅ 2026-08-05
 **Agregado 2026-08-05 a petición del usuario.** Hoy, cuando Claude pregunta con opciones, el buddy solo sabe allow/deny — así que esas decisiones lo mandan de vuelta a VS Code, el mismo dolor que teníamos con los comandos de `gh` antes del always-allow.
 
 **Viabilidad verificada empíricamente** (sonda con hook temporal, `settings.json` restaurado idéntico después):
@@ -94,6 +94,18 @@ Estimado: **~1 día** para el caso que cubre casi todo (1 pregunta, single-selec
 Sin verificar todavía: inyectar respuestas para **varias** preguntas en una sola llamada, y qué pasa si se responden solo algunas.
 
 - Verificar: pregunta de 3 opciones → 3 botones; elegir la 2 devuelve esa a Claude sin picker nativo; sin buddy corriendo, el picker aparece normal.
+
+**Implementado 2026-08-05** (salió en un día, no dos — el caso de varias preguntas resultó barato):
+- La tarjeta de opciones **no lleva Allow/Deny**. Responder no es aprobar: no hay un "no" que dar, y ofrecerlo solo serviría para que te vuelvan a preguntar. La salida sigue siendo el ↗ del header (que es donde además se escribe el "Other" de texto libre).
+- Varias preguntas por llamada: se recorren de una en una (`choiceIndex` + `collectedAnswers`), el título muestra "2 of 3", y **solo la última responde** — la herramienta toma un único mapa de respuestas.
+- `multiSelect` no llega a la tarjeta: `hook.sh` devuelve `{}` de inmediato y sale el picker nativo. Checkboxes + confirmar es otra interacción; media respuesta habría sido peor que ninguna.
+- El response file creció de `{"decision":"allow"}` a admitir `reason` (que el hook pasa como `permissionDecisionReason`) y `answers`. `respond()` ya arma JSON de verdad en vez de concatenar strings.
+- **ExitPlanMode salió casi gratis**: sus tres opciones caen en los tres atajos que ya existían — ⌘⏎ "sí, apruebo cada edit", ⌥⌘⏎ "sí, y auto-accept desde aquí" (el quiet row, que antes mandaba a VS Code), ⇧⌘⏎ "no, sigamos planeando" — este último un deny con razón, para que Claude sepa que refine el plan en vez de adivinar por qué lo rechazaron.
+- Atajos ⌘1-⌘4 solo mientras hay tarjeta de opciones (⌘1-9 de la 2.3 tendrá que convivir: mismo espacio de teclas).
+- `decisions.jsonl` guarda `answers` — "answer" a secas no diría nada sobre qué se eligió en nombre del usuario.
+- Ajustes tras ver la primera captura: chip índigo + `questionmark.bubble.fill` propios (salía el "?" genérico), y alto de cada botón calculado con su descripción medida — se cortaban con "…" justo donde empiezan a servir para decidir.
+- **Verificado en vivo, dos rondas**: 1 pregunta / 2 opciones ✓ y 2 preguntas / 3 y 2 opciones ✓ (el usuario confirmó que encadenaron sin volver al picker), con las respuestas correctas en `decisions.jsonl` y capturas de la tarjeta en ambas. Round-trip del hook probado aislado (request con `choices` → response `answer` → `updatedInput` correcto) y el bypass de `multiSelect` → `{}`.
+- Sin verificar todavía: la tarjeta de tres vías de `ExitPlanMode` (hace falta entrar en modo plan).
 
 ### 2.3 Batch approve + selección de cola
 ⌘1..9 en **Carbon** dinámico (solo mientras `queued > 0`; no vale la pena 9 nombres remapeables). ⌘k fija `pinnedRequestId` que `poll()` ordena al frente. El badge `+N` se vuelve botón → `NSMenu.popUp` (funciona desde panel no-activante) listando la cola (`"⌘2 Bash — proyX: git push…"`) + `Allow all (N)` / `Deny all (N)`. Allow-all con confirmación de doble-click ("Really allow N?"), escribe N response files + N entradas de log, un solo dismiss.

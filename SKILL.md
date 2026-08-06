@@ -107,11 +107,19 @@ already exists — append to it, don't replace):
       { "matcher": "Write", "hooks": [{ "type": "command", "command": "ABSOLUTE_HOME/.config/claude-menubar-buddy/hook.sh", "timeout": 60, "statusMessage": "Waiting for Claude Menu Bar Buddy..." }] },
       { "matcher": "Edit", "hooks": [{ "type": "command", "command": "ABSOLUTE_HOME/.config/claude-menubar-buddy/hook.sh", "timeout": 60, "statusMessage": "Waiting for Claude Menu Bar Buddy..." }] },
       { "matcher": "WebFetch", "hooks": [{ "type": "command", "command": "ABSOLUTE_HOME/.config/claude-menubar-buddy/hook.sh", "timeout": 60, "statusMessage": "Waiting for Claude Menu Bar Buddy..." }] },
-      { "matcher": "NotebookEdit", "hooks": [{ "type": "command", "command": "ABSOLUTE_HOME/.config/claude-menubar-buddy/hook.sh", "timeout": 60, "statusMessage": "Waiting for Claude Menu Bar Buddy..." }] }
+      { "matcher": "NotebookEdit", "hooks": [{ "type": "command", "command": "ABSOLUTE_HOME/.config/claude-menubar-buddy/hook.sh", "timeout": 60, "statusMessage": "Waiting for Claude Menu Bar Buddy..." }] },
+      { "matcher": "ExitPlanMode", "hooks": [{ "type": "command", "command": "ABSOLUTE_HOME/.config/claude-menubar-buddy/hook.sh", "timeout": 60, "statusMessage": "Waiting for Claude Menu Bar Buddy..." }] },
+      { "matcher": "AskUserQuestion", "hooks": [{ "type": "command", "command": "ABSOLUTE_HOME/.config/claude-menubar-buddy/hook.sh", "timeout": 60, "statusMessage": "Waiting for Claude Menu Bar Buddy..." }] }
     ]
   }
 }
 ```
+
+The last two aren't permission decisions — `ExitPlanMode` is a plan to accept
+three different ways, and `AskUserQuestion` is Claude asking the user
+something with named options. The card presents both properly (see the
+"Answering questions" section of README.md); as always, if the app isn't
+running the hook times out and the normal prompt takes over.
 
 Replace `ABSOLUTE_HOME` with this user's actual resolved home directory
 (e.g. from `echo $HOME`) — **do not use a literal `~`** in the `command`
