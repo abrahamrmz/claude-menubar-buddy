@@ -265,12 +265,26 @@ extension AppDelegate {
             rightEdge -= badge.frame.width + 6
         }
         if queued > 0 {
-            let badge = pillLabel("+\(queued)", textColor: .black,
-                                  background: NSColor.systemOrange)
-            badge.toolTip = "\(queued) more request\(queued == 1 ? "" : "s") waiting"
-            badge.setFrameOrigin(NSPoint(x: rightEdge - badge.frame.width, y: headerY + 4))
+            // The badge is a button: the line behind the card is reachable,
+            // not just countable.
+            let badge = PressablePillButton(title: "", target: self, action: #selector(showQueueMenu(_:)))
+            badge.isBordered = false
+            badge.wantsLayer = true
+            badge.layer?.backgroundColor = NSColor.systemOrange.cgColor
+            badge.layer?.cornerRadius = 9
+            let paragraph = NSMutableParagraphStyle()
+            paragraph.alignment = .center
+            badge.attributedTitle = NSAttributedString(string: "+\(queued) ▾", attributes: [
+                .font: NSFont.systemFont(ofSize: 11, weight: .medium),
+                .foregroundColor: NSColor.black,
+                .paragraphStyle: paragraph,
+            ])
+            let badgeWidth = ceil(badge.attributedTitle.size().width) + 16
+            badge.frame = NSRect(x: rightEdge - badgeWidth, y: headerY + 4, width: badgeWidth, height: 18)
+            badge.toolTip = "\(queued) more request\(queued == 1 ? "" : "s") waiting — click to pick one, or answer them all"
+            badge.setAccessibilityLabel("\(queued) more requests waiting. Show the queue.")
             card.addSubview(badge)
-            rightEdge -= badge.frame.width + 6
+            rightEdge -= badgeWidth + 6
         }
 
         // Hand-off: answer this one in VS Code / the terminal instead. The
@@ -584,8 +598,11 @@ extension AppDelegate {
         let hintItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         hintItem.view = hintContainer
         menu.addItem(hintItem)
-        if queued > 0 {
-            menu.addItem(statusMenuItem("\(queued) more request\(queued == 1 ? "" : "s") waiting…"))
+        if queued > 0, let queueMenu = buildQueueMenu() {
+            let top = NSMenuItem(title: "\(queued) more request\(queued == 1 ? "" : "s") waiting",
+                                 action: nil, keyEquivalent: "")
+            top.submenu = queueMenu
+            menu.addItem(top)
         }
         menu.addItem(NSMenuItem.separator())
         if let question = req.choices?.first {
@@ -618,8 +635,15 @@ extension AppDelegate {
             setGif(on: floatingImageView, named: "buddy_pending")
         }
         approvalHotKeys.enable(jump: jumpTarget(for: req) != nil,
-                               choices: req.choices?.first?.options.count ?? 0)
-        NSSound(named: "Ping")?.play()
+                               choices: req.choices?.first?.options.count ?? 0,
+                               queue: queued > 0 ? min(9, queued + 1) : 0)
+        // No sound when the user is the one flipping through the queue —
+        // they know the card changed, they asked for it.
+        if switchingCardByHand {
+            switchingCardByHand = false
+        } else {
+            NSSound(named: "Ping")?.play()
+        }
     }
 
     /// First token of the command that isn't an env assignment — must match
@@ -806,16 +830,15 @@ extension AppDelegate {
         })
     }
 
-    /// `decision` is allow / deny / pass / answer. `reason` rides along to the
-    /// hook as the permissionDecisionReason, so a card that offers a specific
-    /// choice ("keep planning") can say which one was taken instead of a
-    /// generic "denied".
-    func respond(_ decision: String, reason: String? = nil) {
-        guard let id = currentRequestId, !isDismissing else { return }
+    /// Everything a decision does on disk — the response file the hook is
+    /// waiting on, the audit line, and clearing the request. Split out from
+    /// respond() because a batch does this N times but animates once.
+    func writeDecision(id: String, request: PendingRequest?, decision: String,
+                       reason: String? = nil, answers: [String: String]? = nil) {
         let responseURL = dirURL.appendingPathComponent("response_\(id).json")
         var payload: [String: Any] = ["decision": decision]
         if let reason = reason { payload["reason"] = reason }
-        if decision == "answer" { payload["answers"] = collectedAnswers }
+        if let answers = answers { payload["answers"] = answers }
         if let data = try? JSONSerialization.data(withJSONObject: payload) {
             try? data.write(to: responseURL, options: [.atomic])
         }
@@ -823,7 +846,7 @@ extension AppDelegate {
         // Append to the decision audit trail (shown in the Decision History
         // submenu). Hint is capped — the log records what was decided, not
         // full file contents.
-        if let req = currentRequest {
+        if let req = request {
             var entry: [String: Any] = [
                 "ts": Date().timeIntervalSince1970,
                 "tool": req.tool,
@@ -836,7 +859,7 @@ extension AppDelegate {
             ]
             // For a question, "answer" alone says nothing — the log needs to
             // record what was actually chosen on the user's behalf.
-            if decision == "answer" { entry["answers"] = collectedAnswers }
+            if let answers = answers { entry["answers"] = answers }
             if let line = try? JSONSerialization.data(withJSONObject: entry) {
                 let logURL = dirURL.appendingPathComponent("decisions.jsonl")
                 if let handle = try? FileHandle(forWritingTo: logURL) {
@@ -859,6 +882,16 @@ extension AppDelegate {
         try? FileManager.default.removeItem(at: dirURL.appendingPathComponent("request_\(id).json"))
         try? FileManager.default.removeItem(at: legacyRequestURL)
         respondedIds.insert(id)
+    }
+
+    /// `decision` is allow / deny / pass / answer. `reason` rides along to the
+    /// hook as the permissionDecisionReason, so a card that offers a specific
+    /// choice ("keep planning") can say which one was taken instead of a
+    /// generic "denied".
+    func respond(_ decision: String, reason: String? = nil) {
+        guard let id = currentRequestId, !isDismissing else { return }
+        writeDecision(id: id, request: currentRequest, decision: decision, reason: reason,
+                      answers: decision == "answer" ? collectedAnswers : nil)
         // Verdict animation first — the decision is already on disk, so the
         // hook isn't waiting on this. setIdle + surfacing the next queued
         // request happen when the card finishes leaving, so back-to-back

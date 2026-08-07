@@ -257,6 +257,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     // at the end — the tool takes a single answers map.
     var choiceIndex = 0
     var collectedAnswers: [String: String] = [:]
+    // A request the user reached past the front of the line for. poll()
+    // re-sorts by age every second, so without this the oldest would take the
+    // card straight back (see Queue.swift).
+    var pinnedRequestId: String?
+    // Set when the card change is the user's own doing — they don't need to
+    // be pinged about a card they just asked for.
+    var switchingCardByHand = false
 
     // Turn-finished toast (see Toast.swift).
     var toastWindow: NSPanel?
@@ -272,6 +279,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         approvalHotKeys.onAlwaysAllow = { [weak self] in self?.decideViaHotKey("always") }
         approvalHotKeys.onJumpToHost = { [weak self] in self?.jumpToHost() }
         approvalHotKeys.onChoice = { [weak self] index in self?.chooseOptionViaHotKey(index) }
+        approvalHotKeys.onQueuePick = { [weak self] index in self?.selectQueued(index) }
 
         // variableLength, not squareLength: the icon grows a count and (in
         // auto-edits mode) a pencil beside the panda.
@@ -645,7 +653,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             updatePetMood()
         }
 
-        let requests = scanRequests()
+        let requests = orderedRequests()
         guard let first = requests.first else {
             if currentRequestId != nil {
                 // Resolved WITHOUT an app decision — hook timeout, answered
@@ -677,6 +685,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             // menu here could glitch it mid-open.
             lastQueuedCount = requests.count - 1
             applyPendingStatusIcon(for: first, queued: lastQueuedCount)
+            // The line got longer or shorter, so how many ⌘-numbers are worth
+            // borrowing changed with it.
+            approvalHotKeys.enable(jump: jumpTarget(for: first) != nil,
+                                   choices: first.choices?.first?.options.count ?? 0,
+                                   queue: lastQueuedCount > 0 ? min(9, requests.count) : 0)
             showStatusBubble(for: first, queued: lastQueuedCount)
         }
     }

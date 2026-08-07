@@ -107,9 +107,19 @@ Sin verificar todavía: inyectar respuestas para **varias** preguntas en una sol
 - **Verificado en vivo, dos rondas**: 1 pregunta / 2 opciones ✓ y 2 preguntas / 3 y 2 opciones ✓ (el usuario confirmó que encadenaron sin volver al picker), con las respuestas correctas en `decisions.jsonl` y capturas de la tarjeta en ambas. Round-trip del hook probado aislado (request con `choices` → response `answer` → `updatedInput` correcto) y el bypass de `multiSelect` → `{}`.
 - Sin verificar todavía: la tarjeta de tres vías de `ExitPlanMode` (hace falta entrar en modo plan).
 
-### 2.3 Batch approve + selección de cola
+### 2.3 Batch approve + selección de cola ✅ 2026-08-06
 ⌘1..9 en **Carbon** dinámico (solo mientras `queued > 0`; no vale la pena 9 nombres remapeables). ⌘k fija `pinnedRequestId` que `poll()` ordena al frente. El badge `+N` se vuelve botón → `NSMenu.popUp` (funciona desde panel no-activante) listando la cola (`"⌘2 Bash — proyX: git push…"`) + `Allow all (N)` / `Deny all (N)`. Allow-all con confirmación de doble-click ("Really allow N?"), escribe N response files + N entradas de log, un solo dismiss.
 - Verificar: 3 requests en cola; ⌘2 intercambia tarjeta; Allow all libera los 3 hooks.
+
+**Implementado 2026-08-06:**
+- **Sin Carbon crudo.** El plan sugería Carbon dinámico para no meter 9 nombres remapeables, pero los nombres de KeyboardShortcuts no tienen por qué salir en la ventana de Settings — se agregaron `queue1..queue9` y simplemente no se exponen en los recorders. Un solo mecanismo de atajos en toda la app.
+- **El choque ⌘1-4 se resolvió por exclusión, no por teclas nuevas**: `enable(jump:choices:queue:)` fuerza `queue = 0` cuando hay opciones en pantalla. Nunca están vivos los dos sentidos a la vez, y con tarjeta de opciones la cola sigue accesible por el badge.
+- **Sin ⌘K.** El plan lo pedía para fijar la tarjeta actual, pero `poll()` ordena por antigüedad y solo reemplaza si `first.id != currentRequestId` — una request nueva jamás puede desplazar a la de enfrente. No arreglaba nada; elegir de la cola ya fija (`pinnedRequestId`).
+- **Confirmación por submenú, no por diálogo.** Un `NSAlert` activaría la app y robaría el foco, que es justo lo que la tarjeta existe para evitar. El submenú pregunta lo mismo sin nada de eso. Los títulos llevan "…" (convención de macOS para "falta un paso") porque un ítem con submenú ignora el click directo y sin eso se siente roto.
+- `respond()` se partió en `writeDecision()` (archivo de respuesta + línea de log + limpieza) y la animación: el lote hace lo primero N veces y lo segundo una sola.
+- Sin Ping al cambiar de tarjeta a mano (`switchingCardByHand`) — no hay que avisarle de una tarjeta que acaba de pedir.
+- **Verificado en vivo con 3 requests reales concurrentes** (llamadas paralelas de verdad, no archivos inyectados): badge `+2 ▾` ✓, el menú emerge desde el panel no-activante sin robar foco ✓ (era el riesgo técnico del plan), y `Allow all` dejó las 3 en `decisions.jsonl` **con 1 ms entre ellas** — a mano habían sido 4 s y 1.4 s.
+- Sin verificar: ⌘2/⌘3 para intercambiar tarjeta (el usuario usó el menú).
 
 ### 2.4 Aprobación remota web local + QR
 `WebApprovalServer.swift` (~250 líneas) con **Network.framework NWListener** (cero deps). Rutas: `GET /?t=<token>` (HTML self-contained con JS que pollea `GET /pending` cada 2s) y `POST /decide` `{id, decision}` → hop a main queue → mismo `respond()` (anima la tarjeta también y evita double-answer vía respondedIds). Token 128-bit regenerado por enable, puerto asignado por sistema, bind LAN; QR (CoreImage CIQRCodeGenerator) en Settings/menú. **Off por defecto**; listener ni se crea si está apagado (CPU 0). Sin TLS: aceptable por token + LAN + off-by-default + peor caso = aprobar un request visible (documentarlo).
