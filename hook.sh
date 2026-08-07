@@ -35,8 +35,32 @@ TOOL="$(echo "$INPUT" | jq -r '.tool_name // "unknown"')"
 if [ -f "$DIR/auto_approve_edits" ]; then
   case "$TOOL" in
     Edit|MultiEdit|Write|NotebookEdit)
-      jq -n '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"allow",permissionDecisionReason:"Auto-approved edit via Claude Menu Bar Buddy"}}'
-      exit 0
+      EDIT_PATH="$(echo "$INPUT" | jq -r '.tool_input.file_path // .tool_input.notebook_path // ""')"
+      # "Stop asking about edits" means the edits you were watching go by, not
+      # the handful of files that decide what runs on this machine tomorrow.
+      # These always get a card, however tired of clicking you are:
+      #   - credentials, and the launchd/git-hook paths that are code
+      #     execution on the next login or the next commit;
+      #   - Claude Code's own configuration;
+      #   - the buddy's own config, which is the important one — without it an
+      #     auto-approved Write could append to always_allow.json and quietly
+      #     widen the very grant that let it through;
+      #   - anything not absolute or containing "..", because a glob can't
+      #     tell where those land, and "can't tell" has to mean "ask".
+      case "$EDIT_PATH" in
+        ""|[!/]*|*..*) ;;
+        */.ssh/*|*/.gnupg/*) ;;
+        */Library/LaunchAgents/*|*/Library/LaunchDaemons/*) ;;
+        */.git/hooks/*) ;;
+        "$HOME"/.claude/*|"$HOME"/.config/claude-menubar-buddy/*) ;;
+        "$HOME"/Library/"Application Support"/Claude/*) ;;
+        */.zshrc|*/.zshenv|*/.zprofile|*/.bashrc|*/.bash_profile|*/.profile) ;;
+        /etc/*|/usr/*|/bin/*|/sbin/*|/Library/*) ;;
+        *)
+          jq -n '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"allow",permissionDecisionReason:"Auto-approved edit via Claude Menu Bar Buddy"}}'
+          exit 0
+          ;;
+      esac
       ;;
   esac
 fi
