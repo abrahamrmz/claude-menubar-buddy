@@ -46,6 +46,7 @@ When a permission request comes in, the icon changes, a sound plays, and the dro
 - **Turn-finished toast** — when a turn that took 15+ seconds finishes, a compact green card pops up at the pet with the project and duration (and the pet celebrates); quick back-and-forth stays silent, and the plain macOS banner only fires as a fallback when the app isn't running
 - **Login item** — starts automatically, no manual launch needed
 - Stats refresh in the background every ~5s, kept cheap by a per-file token cache that stats each transcript and reads only newly appended bytes (plus a fresh compute every time the menu opens)
+- **Quiet when nobody's looking** — the pets stop animating while the screen is locked or the display is asleep, and the dropdown's pet only animates while the dropdown is actually open. A looping GIF redraws whether or not anyone can see it, and that was most of the app's idle wakeups: ~155/s down to ~36/s, which is the difference between a desk pet and a desk pet you notice in your battery
 
 ## How it works
 

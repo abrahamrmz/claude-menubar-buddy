@@ -128,8 +128,8 @@ extension AppDelegate {
     /// the window — this way the layout can be checked without stealing focus
     /// from whatever you're doing.
     func captureSettingsSelfieIfRequested() {
+        guard flagIsSet("capture_settings") else { return }
         let flagURL = dirURL.appendingPathComponent("capture_settings")
-        guard FileManager.default.fileExists(atPath: flagURL.path) else { return }
         try? FileManager.default.removeItem(at: flagURL)
 
         let panes = [behaviorPane(), appearancePane(), safetyPane()]

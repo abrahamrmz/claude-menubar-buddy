@@ -55,14 +55,19 @@ enum UsageReader {
         let weekly: Int
     }
 
-    /// Samples from the last `within` seconds, oldest first. Everything past
-    /// that is history no burn-rate should be reading from.
-    static func readPlanSamples(within: TimeInterval = 3 * 3600) -> [PlanSample] {
+    /// The latest reading AND the recent samples, from ONE read of the file.
+    /// Both come out of the same JSON and snapshot() runs every ~5s, so
+    /// opening and parsing it twice per refresh was paying double for the
+    /// same bytes. Samples are the last `within` seconds, oldest first —
+    /// anything older is history no burn rate should be fitting through.
+    static func readPlanHistory(within: TimeInterval = 3 * 3600)
+        -> (fiveHour: Int?, weekly: Int?, sampled: Date?, samples: [PlanSample]) {
         guard let data = try? Data(contentsOf: planUsageURL),
               let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let samples = obj["samples"] as? [[String: Any]] else { return [] }
+              let samples = obj["samples"] as? [[String: Any]] else { return (nil, nil, nil, []) }
+
         let cutoff = Date().addingTimeInterval(-within)
-        var result: [PlanSample] = []
+        var recent: [PlanSample] = []
         for sample in samples {
             // "t" is epoch milliseconds.
             guard let t = sample["t"] as? Double,
@@ -70,20 +75,14 @@ enum UsageReader {
                   let fh = u["fh"] as? Int else { continue }
             let date = Date(timeIntervalSince1970: t / 1000)
             guard date >= cutoff else { continue }
-            result.append(PlanSample(date: date, fiveHour: fh, weekly: u["sd"] as? Int ?? 0))
+            recent.append(PlanSample(date: date, fiveHour: fh, weekly: u["sd"] as? Int ?? 0))
         }
-        return result.sorted { $0.date < $1.date }
-    }
 
-    static func readPlanUsage() -> (fiveHour: Int?, weekly: Int?, sampled: Date?) {
-        guard let data = try? Data(contentsOf: planUsageURL),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let samples = obj["samples"] as? [[String: Any]],
-              let last = samples.last,
-              let u = last["u"] as? [String: Any] else { return (nil, nil, nil) }
-        // "t" is epoch milliseconds.
+        guard let last = samples.last, let u = last["u"] as? [String: Any] else {
+            return (nil, nil, nil, recent.sorted { $0.date < $1.date })
+        }
         let sampled = (last["t"] as? Double).map { Date(timeIntervalSince1970: $0 / 1000) }
-        return (u["fh"] as? Int, u["sd"] as? Int, sampled)
+        return (u["fh"] as? Int, u["sd"] as? Int, sampled, recent.sorted { $0.date < $1.date })
     }
 
     /// Claude Code encodes a session's working directory into its project
@@ -135,11 +134,11 @@ enum UsageReader {
                 }
             }
         }
-        let plan = readPlanUsage()
+        let plan = readPlanHistory()
         result.fiveHourPct = plan.fiveHour
         result.weeklyPct = plan.weekly
         result.planUsageDate = plan.sampled
-        result.planSamples = readPlanSamples()
+        result.planSamples = plan.samples
         return result
     }
 
