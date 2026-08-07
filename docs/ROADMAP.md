@@ -121,7 +121,9 @@ Sin verificar todavía: inyectar respuestas para **varias** preguntas en una sol
 - **Verificado en vivo con 3 requests reales concurrentes** (llamadas paralelas de verdad, no archivos inyectados): badge `+2 ▾` ✓, el menú emerge desde el panel no-activante sin robar foco ✓ (era el riesgo técnico del plan), y `Allow all` dejó las 3 en `decisions.jsonl` **con 1 ms entre ellas** — a mano habían sido 4 s y 1.4 s.
 - Sin verificar: ⌘2/⌘3 para intercambiar tarjeta (el usuario usó el menú).
 
-### 2.4 Aprobación remota web local + QR
+### 2.4 Aprobación remota web local + QR — ⏸ pospuesta (2026-08-06, decisión del usuario)
+Sigue viva y sin cambios; solo deja de ser la siguiente en la fila. Es la más independiente de todas, así que puede retomarse en cualquier momento sin arrastrar nada.
+
 `WebApprovalServer.swift` (~250 líneas) con **Network.framework NWListener** (cero deps). Rutas: `GET /?t=<token>` (HTML self-contained con JS que pollea `GET /pending` cada 2s) y `POST /decide` `{id, decision}` → hop a main queue → mismo `respond()` (anima la tarjeta también y evita double-answer vía respondedIds). Token 128-bit regenerado por enable, puerto asignado por sistema, bind LAN; QR (CoreImage CIQRCodeGenerator) en Settings/menú. **Off por defecto**; listener ni se crea si está apagado (CPU 0). Sin TLS: aceptable por token + LAN + off-by-default + peor caso = aprobar un request visible (documentarlo).
 - Riesgo: firewall de macOS puede preguntar por el binario sin firmar (documentar en SKILL.md).
 - Verificar: QR desde el cel → request aparece ≤2s; Allow en el cel dismissa la tarjeta con ✓; disable → puerto cerrado.
@@ -129,6 +131,17 @@ Sin verificar todavía: inyectar respuestas para **varias** preguntas en una sol
 ### 2.5 Liberar poses del firmware + escalera stressed/critical
 Re-clonar `anthropics/claude-desktop-buddy`; parametrizar `SRC_DIR` en `generate_species_gifs.py`; descubrir poses: `grep -ho 'static void do[A-Za-z]*' src/buddies/*.cpp | sort -u` (hoy solo se extraen doIdle/doAttention/doBusy/doDizzy/doSleep/doHeart/doCelebrate) y mapear doSad/doThink/etc. a los moods nuevos. Extender `first_array_in_function` para tomar TODOS los arrays de cada función → GIFs de 2-4 frames reales. Escalera: 50 tired · 70 stressed (pose nueva o doBusy acelerado) · 85 critical (doDizzy) · 100 asleep. Panda: dibujar stressed/critical en `generate_gifs.py`.
 - Verificar: regeneración sin skips, build, forzar cada mood con plan-usage falso y ciclar especies.
+
+**Reconocimiento previo 2026-08-06** (leído `cat.cpp` vía la API de GitHub, sin clonar todavía). El repo sigue público y tiene los 18 `.cpp`, pero **el supuesto del plan es falso**:
+- Poses que existen: `doIdle`, `doAttention`, `doBusy`, `doCelebrate`, `doDizzy`, `doHeart`, `doSleep`. **No hay `doSad` ni `doThink`** — no hay poses nuevas que "liberar". Working/thinking/sad/excited para las 17 especies no salen de aquí: o se dibujan a mano, o se mapean con criterio (`doBusy`→working es el candidato natural).
+- Lo que sí hay y estamos tirando: **5 a 10 arrays de frames por pose** (45 en total en `cat.cpp`), de los que `first_array_in_function` toma uno. Peor aún, el guardado es `append_images=[img]` — el mismo frame dos veces. **Las 17 mascotas ASCII hoy son estampas, no animaciones.**
+
+Así que el objetivo real se reordena, y el primer punto es el grande:
+1. **Que las 17 se muevan.** No agrega un mood: mejora de golpe los siete que ya tienen.
+2. **Cerrar la escalera**: dibujar stressed/critical para el panda, y reacomodar el mapeo de especies — hoy `doBusy`=tired y `doDizzy`=sleepy es arbitrario; `doDizzy` (mareado) describe mucho mejor a `critical`.
+3. Aceptar que working/thinking/sad/excited seguirán siendo exclusivos del panda salvo que se dibujen. **Importante para el usuario: usa "cat", así que hoy no ve nada de la Fase 1.3.**
+
+Prerequisitos: re-clonar, parametrizar `SRC_DIR` (para que no vuelva a pudrirse), y Pillow — no está instalado en la máquina del usuario; en 1.3 se usó un venv desechable.
 
 ### 2.6 Onboarding first-run
 `Onboarding.swift`: SwiftUI en NSHostingView dentro de NSWindow normal (puede activar la app, ok). 3-4 páginas: qué es → check de instalación del hook (verifica settings.json + hook.sh, botón "copy snippet", NUNCA auto-edita config de Claude) → hotkeys → tour del pet. Gate: `Defaults[.onboardingCompleted]`.
@@ -161,6 +174,8 @@ Fase 0 ✅ ─► 1.1 ✅ ─► 2.1 ✅ ─► 2.6
 Camino crítico: 0 → 1.1 → 2.1 → 2.6 (los tres primeros ya cerrados). Restante: **~9-12 días** (2.3/2.4/2.5 paralelizables).
 
 **Renumeración 2026-08-05**: entró 2.2 (decisiones a/b/c) a petición del usuario y todo lo que seguía corrió un lugar (batch approve 2.2→2.3, web+QR 2.3→2.4, firmware 2.4→2.5, onboarding 2.5→2.6).
+
+**Orden 2026-08-06**: el usuario pospuso la 2.4 (web+QR). Los números se quedan como están — renumerar dos veces en dos días vuelve ilegible el historial. Orden real de aquí en adelante: **2.5 → 2.6 → 3.1 → 3.2**, con la 2.4 disponible para retomarse cuando quiera (no bloquea a nadie).
 
 ## Verificación end-to-end (por fase)
 
