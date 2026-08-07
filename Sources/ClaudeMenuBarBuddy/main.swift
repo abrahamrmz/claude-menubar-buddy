@@ -738,14 +738,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     func poll() {
         refreshDirEntries()
+        // Mid-verdict-animation: don't touch the card or surface the next
+        // request; respond()'s completion re-runs poll() the moment the exit
+        // finishes.
+        //
+        // The capture helpers moved below this line rather than above it. A
+        // screenshot taken mid-verdict catches the card still wearing the ✓
+        // wash of the decision that is on its way out — which, on a card whose
+        // content has already been rebuilt for the NEXT request, reads as a
+        // pending request that was somehow approved before anyone saw it.
+        if isDismissing { return }
+
         captureCardSelfieIfRequested()
         capturePetSelfieIfRequested()
         captureIconSelfieIfRequested()
         captureSettingsSelfieIfRequested()
-        // Mid-verdict-animation: don't touch the card or surface the next
-        // request; respond()'s completion re-runs poll() the moment the
-        // exit finishes.
-        if isDismissing { return }
 
         processDoneMarkers()
         // Background usage/mood/session-count refresh, throttled to every

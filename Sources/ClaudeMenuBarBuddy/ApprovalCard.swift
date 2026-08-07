@@ -870,6 +870,13 @@ extension AppDelegate {
             }, completionHandler: {
                 window.orderOut(nil)
                 window.alphaValue = 1
+                // Take the verdict wash back off. Nothing depended on this
+                // before — showStatusBubble builds a fresh content view for
+                // every request, so the overlay went out with the old one —
+                // but that is an invariant nothing enforces, and the failure
+                // mode if it ever breaks is a pending card that looks like it
+                // was already approved. Cheaper to not leave it lying there.
+                overlay.removeFromSuperview()
                 completion()
             })
         })
