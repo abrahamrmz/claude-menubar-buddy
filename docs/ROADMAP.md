@@ -128,7 +128,7 @@ Sigue viva y sin cambios; solo deja de ser la siguiente en la fila. Es la más i
 - Riesgo: firewall de macOS puede preguntar por el binario sin firmar (documentar en SKILL.md).
 - Verificar: QR desde el cel → request aparece ≤2s; Allow en el cel dismissa la tarjeta con ✓; disable → puerto cerrado.
 
-### 2.5 Liberar poses del firmware + escalera stressed/critical
+### 2.5 ✅ Liberar poses del firmware + escalera stressed/critical
 Re-clonar `anthropics/claude-desktop-buddy`; parametrizar `SRC_DIR` en `generate_species_gifs.py`; descubrir poses: `grep -ho 'static void do[A-Za-z]*' src/buddies/*.cpp | sort -u` (hoy solo se extraen doIdle/doAttention/doBusy/doDizzy/doSleep/doHeart/doCelebrate) y mapear doSad/doThink/etc. a los moods nuevos. Extender `first_array_in_function` para tomar TODOS los arrays de cada función → GIFs de 2-4 frames reales. Escalera: 50 tired · 70 stressed (pose nueva o doBusy acelerado) · 85 critical (doDizzy) · 100 asleep. Panda: dibujar stressed/critical en `generate_gifs.py`.
 - Verificar: regeneración sin skips, build, forzar cada mood con plan-usage falso y ciclar especies.
 
@@ -142,6 +142,13 @@ Así que el objetivo real se reordena, y el primer punto es el grande:
 3. Aceptar que working/thinking/sad/excited seguirán siendo exclusivos del panda salvo que se dibujen. **Importante para el usuario: usa "cat", así que hoy no ve nada de la Fase 1.3.**
 
 Prerequisitos: re-clonar, parametrizar `SRC_DIR` (para que no vuelva a pudrirse), y Pillow — no está instalado en la máquina del usuario; en 1.3 se usó un venv desechable.
+
+- Implementado 2026-08-06: la estructura del firmware resultó **más recuperable de lo previsto**. Cada pose no es sólo "varios arrays": es `P[]` (tabla de sprites) + `SEQ[]` (la coreografía real, con repeticiones) + a veces un array de offset por beat, y `beat = (t/D) % sizeof(SEQ)` con `TICK_MS = 200`. Así que las mascotas se mueven **exactamente como en el hardware**, al mismo tempo, en vez de con 2-4 frames inventados. 4108 frames sobre 228 combinaciones especie×mood, cero estampas.
+- Dos bugs de parseo, misma clase — el regex no distinguía literal de código: (a) el conteo de llaves moría dentro de `"}}~(______)~{{"`, que dejó a **axolotl sin generar desde siempre** (18 `.cpp` → 17 especies); (b) `[^;]*?` cortaba en el `;` de `" (   ;;   ) "`, perdiendo un sprite de `chonk`. Ahora son 19 especies.
+- Mapeo final, con el tempo como segundo eje (idiomático: el propio firmware corre `doCelebrate` a `t/3` y las poses calmas a `t/5`): idle=doIdle · pending=doAttention · working=doBusy · **tired=doIdle a 1.7×** · **stressed=doBusy a 0.6×** · **critical=doDizzy** · asleep=doSleep · heart · celebrate. `sleepy` era el placeholder de `critical` y desapareció (era inalcanzable desde `petMood`).
+- De regalo: cada especie declara su color RGB565 y se estaba ignorando. Ahora el gato es atigrado, el axolotl rosa, el dragón rojo. Los grises puros (ghost/goose/rabbit/robot) se bajan a 168 para que no se borren sobre un menú claro — eso ya pasaba con las 18 cuando todas eran blancas.
+- `SRC_DIR` → env `BUDDY_FIRMWARE_SRC`, y si no está clona solo en `.build/firmware` (ya gitignoreado). Corre en un checkout limpio sin setup.
+- CPU medido A/B (12 muestras instantáneas de 5s cada una, antes y después): **~1.1% en ambos**. No hay regresión — de hecho el beat del firmware (1000ms) redibuja menos que las estampas viejas (500ms).
 
 ### 2.6 Onboarding first-run
 `Onboarding.swift`: SwiftUI en NSHostingView dentro de NSWindow normal (puede activar la app, ok). 3-4 páginas: qué es → check de instalación del hook (verifica settings.json + hook.sh, botón "copy snippet", NUNCA auto-edita config de Claude) → hotkeys → tour del pet. Gate: `Defaults[.onboardingCompleted]`.

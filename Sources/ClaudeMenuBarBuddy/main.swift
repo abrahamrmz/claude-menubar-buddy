@@ -255,7 +255,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     // temporarily overrides the displayed GIF without losing track of what
     // to revert to.
     var lastComputedMood = "idle"
-    // Limit-derived mood only (idle/tired/sleepy/asleep), ignoring "working" —
+    // Limit-derived mood only (idle/tired/stressed/critical/asleep), ignoring "working" —
     // the celebrate-on-refresh detection must not misfire on a plain
     // working→idle transition when a turn ends.
     var lastLimitMood = "idle"

@@ -33,7 +33,6 @@ extension AppDelegate {
         case "tired": return "😅 Getting tired..."
         case "stressed": return "😰 Feeling the pressure (70% of the 5h limit)"
         case "critical": return "🥵 Running on fumes (85% of the 5h limit)"
-        case "sleepy": return "😴 Getting sleepy..."
         case "asleep": return "💤 Fast asleep (5h limit reached)"
         case "sad": return "😔 Aw, denied"
         case "excited": return "🤩 A new session said hi!"
@@ -128,17 +127,13 @@ extension AppDelegate {
         }
     }
 
-    /// Not every pet has art for every mood — the species come from the
-    /// hardware-buddy firmware, which only ever drew a handful of poses, and
-    /// even the panda borrows for the newest limit bands. Each mood names
-    /// the closest thing it can degrade to, ending at idle, so a missing GIF
-    /// never leaves the previous one frozen on screen.
+    /// Not every pet has art for every mood. The species come from the
+    /// hardware-buddy firmware, which only ever drew seven poses, so
+    /// thinking, sad and excited stay panda-only and the others degrade to
+    /// the nearest thing that says the same thing. Ending at idle means a
+    /// missing GIF never leaves the previous one frozen on screen.
     func moodGifCandidates(_ mood: String) -> [String] {
         switch mood {
-        // Until 2.4 gives the pressure bands their own poses, they wear the
-        // sleep ladder's — which is at least the right direction.
-        case "stressed": return ["stressed", "tired"]
-        case "critical": return ["critical", "sleepy", "tired"]
         case "thinking": return ["thinking", "working"]
         case "excited": return ["excited", "celebrate", "heart"]
         case "sad": return ["sad", "tired"]

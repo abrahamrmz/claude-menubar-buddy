@@ -32,7 +32,7 @@ When a permission request comes in, the icon changes, a sound plays, and the dro
 - **Settings window** (⌘, from the menu) — three tabs: **Behavior** (remap every shortcut, toast threshold, projected-limit warnings, start at login), **Appearance** (pet, menu bar icon style, floating pet), **Safety** (auto-approve edits, the auto-allowed command list, the decision log). The menu itself stays short and keeps what you'd want at a glance: status, usage, burn rate, sessions, history — plus the two standing grants, which change what the buddy does *without asking* and so don't belong behind a window.
 - **Session status** — idle / active, based on recent Claude Code session file activity
 - **Active Sessions submenu** — lists each active session's project path and how long ago it was last active; click one to reveal that project folder in Finder
-- **Mood pet** — the pet itself reacts to your 5-hour limit: active below 50%, visibly tired at 50%, feeling the pressure at 70%, running on fumes at 85%, and fast asleep (with drifting Zzz) once the limit is hit — same joke for all 18 pets. Being nearly out of budget outranks looking busy; the milder bands don't.
+- **Mood pet** — the pet itself reacts to your 5-hour limit: active below 50%, visibly tired at 50%, feeling the pressure at 70%, running on fumes at 85%, and fast asleep (with drifting Zzz) once the limit is hit — same joke for all 19 pets, each animated with the pose choreography its firmware actually plays. Being nearly out of budget outranks looking busy; the milder bands don't.
 - **Pet the buddy** — click the pet in the dropdown for a happy heart-eyes reaction
 - **Reactions** — a denied request gets three seconds of visible disappointment (downcast eyes, a tear), and a session the buddy hasn't met yet gets a star-eyed "hi!" the first time it says something. Both revert to the real mood on their own.
 - **Celebrate on refresh** — when the 5-hour limit rolls back over to healthy, the pet throws a little arms-up celebration (with a notification) instead of silently snapping back to idle
@@ -105,7 +105,7 @@ If you'd rather do it by hand:
 git clone <this-repo>
 cd claude-menubar-buddy
 python3 generate_gifs.py            # panda
-python3 generate_species_gifs.py    # other 16 pets (needs claude-desktop-buddy checked out too — see script header)
+python3 generate_species_gifs.py    # other 18 pets (clones the firmware into .build/ on first run)
 swift build
 mkdir -p ~/.config/claude-menubar-buddy
 cp hook.sh ~/.config/claude-menubar-buddy/hook.sh
