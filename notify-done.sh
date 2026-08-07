@@ -52,8 +52,16 @@ case "$EVENT" in
           # Banner only as fallback — when the app is running, the toast
           # (plus its Glass sound) already covers this and a second banner
           # would be double noise.
-          if ! pgrep -f ClaudeMenuBarBuddy >/dev/null 2>&1; then
-            osascript -e "display notification \"Finished in ${DURATION_TEXT}\" with title \"Claude Code — ${PROJECT_NAME}\" sound name \"Glass\""
+          #
+          # The two values go in as ARGUMENTS, never spliced into the script
+          # text. A project name is just a folder name, i.e. attacker-shaped
+          # input: a directory called `proyecto" & (do shell script "…") & "`
+          # closed the old string literal and ran whatever followed.
+          if ! pgrep -x ClaudeMenuBarBuddy >/dev/null 2>&1; then
+            osascript -e 'on run argv
+              display notification ("Finished in " & (item 1 of argv)) ¬
+                with title ("Claude Code — " & (item 2 of argv)) sound name "Glass"
+            end run' "$DURATION_TEXT" "$PROJECT_NAME" >/dev/null 2>&1 || true
           fi
         fi
       fi

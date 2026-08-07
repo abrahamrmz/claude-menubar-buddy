@@ -13,10 +13,9 @@ extension AppDelegate {
     /// approval card has the spotlight). Markers are consumed on sight.
     func processDoneMarkers() {
         let fm = FileManager.default
-        guard let urls = try? fm.contentsOfDirectory(at: dirURL, includingPropertiesForKeys: nil) else { return }
         let now = Date().timeIntervalSince1970
         var latest: (project: String, elapsed: Int)? = nil
-        for url in urls where url.lastPathComponent.hasPrefix("done_") && url.pathExtension == "json" {
+        for url in dirEntries where url.lastPathComponent.hasPrefix("done_") && url.pathExtension == "json" {
             defer { try? fm.removeItem(at: url) }
             guard let data = try? Data(contentsOf: url),
                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],

@@ -23,10 +23,19 @@ import Settings
 // .build/debug, which crashes on launch if UserNotifications is touched at
 // all. osascript's "display notification" has no such requirement.
 func sendNotification(title: String, body: String) {
-    let script = "display notification \"\(body.replacingOccurrences(of: "\"", with: "'"))\" with title \"\(title.replacingOccurrences(of: "\"", with: "'"))\""
+    // Title and body go in as ARGUMENTS, never spliced into the script text.
+    // Both can carry a project name — which is just a folder name, i.e.
+    // whatever happened to be on disk — and swapping quotes for apostrophes
+    // was not enough: a name ending in a backslash swallowed the closing
+    // quote and the notification died silently.
+    let script = """
+    on run argv
+        display notification (item 1 of argv) with title (item 2 of argv)
+    end run
+    """
     let task = Process()
     task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-    task.arguments = ["-e", script]
+    task.arguments = ["-e", script, body, title]
     try? task.run()
 }
 
@@ -57,8 +66,14 @@ struct PendingRequest: Decodable {
     // native picker would.
     let choices: [ChoiceQuestion]?
 
+    // How many characters of the real command/diff didn't fit in `hint`.
+    // Approving what you cannot see is the one thing this card must never
+    // make easy, so a non-zero count is spelled out on it. Optional: an older
+    // hook.sh doesn't write the field, and absent means "nothing was cut".
+    let hidden: Int?
+
     enum CodingKeys: String, CodingKey {
-        case id, tool, hint, project, ts, cwd, choices
+        case id, tool, hint, project, ts, cwd, choices, hidden
         case hostBundle = "host_bundle"
         case termProgram = "term_program"
     }
@@ -96,6 +111,9 @@ func gifMenuItem(named name: String, target: AnyObject? = nil, action: Selector?
     let frame = NSRect(x: (size.width - side) / 2, y: (size.height - side) / 2, width: side, height: side)
     let imageView = NSImageView(frame: frame)
     setGif(on: imageView, named: name)
+    // A menu starts closed, and a GIF inside a closed menu still loops at full
+    // rate for nobody. menuWillOpen/menuDidClose turn this back on and off.
+    imageView.animates = false
     imageView.imageScaling = .scaleProportionallyUpOrDown
     container.addSubview(imageView)
     if let target = target, let action = action {
@@ -163,6 +181,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     // right after we've already answered it.
     var respondedIds = Set<String>()
 
+    // One listing of the config directory per poll tick, shared by everyone
+    // who reads it: pending requests, done markers, turn_start markers and the
+    // debug capture flags. Between them they were scanning the same directory
+    // three times over and stat'ing four more files every single second, for a
+    // folder that rarely holds a dozen entries.
+    var dirEntries: [URL] = []
+
+    func refreshDirEntries() {
+        dirEntries = (try? FileManager.default.contentsOfDirectory(
+            at: dirURL, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+    }
+
+    /// Whether a debug capture flag is present, going by the tick's listing
+    /// instead of its own stat. Deliberately NOT how autoEditsEnabled is
+    /// read: that one gets checked immediately after the flag file is
+    /// written, where a listing up to a second old would report the state the
+    /// user just changed away from.
+    func flagIsSet(_ name: String) -> Bool {
+        dirEntries.contains { $0.lastPathComponent == name }
+    }
+
     // Built once and reused — menuWillOpen updates these items' text in
     // place rather than swapping statusItem.menu out from under an
     // already-opening menu (which is unsafe / can glitch mid-open).
@@ -205,6 +244,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     // visibly stutter — so same-mood applies are skipped.
     var displayedMood: String?
     var flashWorkItem: DispatchWorkItem?
+
+    // A pet nobody can see doesn't need to be redrawing. NSImageView.animates
+    // keeps a GIF looping whether or not its view is on screen, and the two
+    // biggest offenders are precisely the ones nobody is looking at: the
+    // dropdown's pet loops all day behind a closed menu, and both pets loop
+    // against a locked or sleeping display. Locked and asleep are separate
+    // flags because waking the display doesn't unlock the screen.
+    var menuIsOpen = false
+    var screenLocked = false
+    var displayAsleep = false
+    var animationsPaused: Bool { screenLocked || displayAsleep }
     // Session ids already greeted with the "excited" pose, and whether the
     // set has had its first (seed) pass — see noticeNewSessions().
     var seenTurnSessions: Set<String> = []
@@ -288,6 +338,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         setIdle()
         if floatingPetVisible { showFloatingPet() }
 
+        // Nothing to look at, nothing to animate. Both pets stop redrawing
+        // while the screen is locked or the display is asleep, and pick up
+        // again on the way back.
+        let workspace = NSWorkspace.shared.notificationCenter
+        _ = workspace.addObserver(forName: NSWorkspace.screensDidSleepNotification,
+                                  object: nil, queue: .main) { [weak self] _ in
+            self?.displayAsleep = true
+            self?.applyAnimationPolicy()
+        }
+        _ = workspace.addObserver(forName: NSWorkspace.screensDidWakeNotification,
+                                  object: nil, queue: .main) { [weak self] _ in
+            self?.displayAsleep = false
+            self?.applyAnimationPolicy()
+        }
+        let distributed = DistributedNotificationCenter.default()
+        _ = distributed.addObserver(forName: .init("com.apple.screenIsLocked"),
+                                    object: nil, queue: .main) { [weak self] _ in
+            self?.screenLocked = true
+            self?.applyAnimationPolicy()
+        }
+        _ = distributed.addObserver(forName: .init("com.apple.screenIsUnlocked"),
+                                    object: nil, queue: .main) { [weak self] _ in
+            self?.screenLocked = false
+            self?.applyAnimationPolicy()
+        }
+
         // .common (not just .default) so this keeps firing while an NSMenu
         // dropdown is open — AppKit switches the run loop to .eventTracking
         // mode during that time, and a plain scheduledTimer would go silent
@@ -359,9 +435,42 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     // is computed fresh at that moment instead of on a background timer.
     // Updates item text in place; never reassigns statusItem.menu here.
     func menuWillOpen(_ menu: NSMenu) {
+        menuIsOpen = true
+        setMenuAnimations(menu, animating: !animationsPaused)
         guard menu === idleMenu else { return }
         usage = UsageReader.snapshot()
         updateUsageLabels()
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        menuIsOpen = false
+        setMenuAnimations(menu, animating: false)
+    }
+
+    /// Re-applies the animation policy to the two long-lived pets. Has to run
+    /// after every GIF swap, because setGif turns animation back on each time
+    /// it loads one.
+    func applyAnimationPolicy() {
+        let floatingWanted = !animationsPaused
+        if floatingImageView?.animates != floatingWanted {
+            floatingImageView?.animates = floatingWanted
+        }
+        let menuWanted = menuIsOpen && !animationsPaused
+        if petImageView?.animates != menuWanted {
+            petImageView?.animates = menuWanted
+        }
+    }
+
+    /// Every GIF inside a menu's custom item views. Goes through the items
+    /// rather than through petImageView so the pending menu's own pet — a
+    /// different view that nothing else holds a reference to — is covered too.
+    func setMenuAnimations(_ menu: NSMenu, animating: Bool) {
+        for item in menu.items {
+            guard let view = item.view else { continue }
+            for subview in view.subviews {
+                (subview as? NSImageView)?.animates = animating
+            }
+        }
     }
 
     func updateUsageLabels() {
@@ -607,9 +716,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         let now = Date().timeIntervalSince1970
         var requests: [PendingRequest] = []
 
-        var urls = (try? fm.contentsOfDirectory(at: dirURL, includingPropertiesForKeys: nil))?
-            .filter { $0.lastPathComponent.hasPrefix("request_") && $0.pathExtension == "json" } ?? []
-        if fm.fileExists(atPath: legacyRequestURL.path) { urls.append(legacyRequestURL) }
+        var urls = dirEntries.filter {
+            $0.lastPathComponent.hasPrefix("request_") && $0.pathExtension == "json"
+        }
+        if dirEntries.contains(where: { $0.lastPathComponent == legacyRequestURL.lastPathComponent }) {
+            urls.append(legacyRequestURL)
+        }
 
         for url in urls {
             guard let data = try? Data(contentsOf: url),
@@ -625,14 +737,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     func poll() {
+        refreshDirEntries()
+        // Mid-verdict-animation: don't touch the card or surface the next
+        // request; respond()'s completion re-runs poll() the moment the exit
+        // finishes.
+        //
+        // The capture helpers moved below this line rather than above it. A
+        // screenshot taken mid-verdict catches the card still wearing the ✓
+        // wash of the decision that is on its way out — which, on a card whose
+        // content has already been rebuilt for the NEXT request, reads as a
+        // pending request that was somehow approved before anyone saw it.
+        if isDismissing { return }
+
         captureCardSelfieIfRequested()
         capturePetSelfieIfRequested()
         captureIconSelfieIfRequested()
         captureSettingsSelfieIfRequested()
-        // Mid-verdict-animation: don't touch the card or surface the next
-        // request; respond()'s completion re-runs poll() the moment the
-        // exit finishes.
-        if isDismissing { return }
 
         processDoneMarkers()
         // Background usage/mood/session-count refresh, throttled to every

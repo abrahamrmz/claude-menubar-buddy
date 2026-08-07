@@ -154,7 +154,12 @@ extension AppDelegate {
         let bodyFont = question != nil
             ? NSFont.systemFont(ofSize: 13)
             : NSFont.monospacedSystemFont(ofSize: 12.5, weight: .regular)
-        let body = String((question?.question ?? req.hint).prefix(2000))
+        // The block scrolls, so the display limit is generous and matches the
+        // hook's payload cap; whatever still doesn't fit is announced rather
+        // than quietly dropped. A question's text is never cut by the hook —
+        // `choices` rides along in full — so only the hint carries a cut.
+        let body = bodyText(question?.question ?? req.hint, limit: 20000,
+                            alreadyCut: question == nil ? (req.hidden ?? 0) : 0)
         let bodyMaxHeight: CGFloat = 200
 
         let measured = (body as NSString).boundingRect(
@@ -170,7 +175,10 @@ extension AppDelegate {
         // base command; edit tools offer auto-approve mode; plans hand off
         // to VS Code where the full options (auto-accept / manual / tell
         // Claude) live.
-        let base = req.tool == "Bash" ? commandBase(from: req.hint) : nil
+        // Nothing to promise about text that arrived cut — the hidden tail is
+        // exactly where a second command would be sitting.
+        let base = (req.tool == "Bash" && (req.hidden ?? 0) == 0)
+            ? commandBase(from: req.hint) : nil
         currentCommandBase = base
         let isEditTool = ["Edit", "MultiEdit", "Write", "NotebookEdit"].contains(req.tool)
         let isPlan = req.tool == "ExitPlanMode"
@@ -529,6 +537,24 @@ extension AppDelegate {
         bubble.setFrameOrigin(originNearPet(for: bubble.frame.size))
     }
 
+    /// Leads the line that says how much of the request didn't fit. Its own
+    /// prefix so attributedHint can color it like the warning it is.
+    static let truncationMarker = "⚠︎"
+
+    /// The text to show, plus — when the real thing didn't fit — an
+    /// unmissable note of how much is missing. Two separate cuts can land
+    /// here: hook.sh's payload cap (`alreadyCut`) and this card's own display
+    /// limit. Either one, left unsaid, turns Allow into a signature on a
+    /// document whose last page nobody was shown: a 2,100-character command
+    /// used to render cut at 2,000, with `; rm -rf ~/importante` past the
+    /// fold and approved all the same.
+    func bodyText(_ source: String, limit: Int, alreadyCut: Int = 0) -> String {
+        let shown = String(source.prefix(limit))
+        let hidden = alreadyCut + max(0, source.count - shown.count)
+        guard hidden > 0 else { return shown }
+        return shown + "\n\n\(AppDelegate.truncationMarker) faltan \(hidden) caracteres que no caben aquí — ábrelo con ↗ antes de aprobar."
+    }
+
     /// Colors the hook's mini-diff like a real diff: lines under "--- quita"
     /// in red, lines under "+++ pone" / "+++ contenido" in green, the marker
     /// lines themselves dimmed, everything else (commands, paths) plain.
@@ -538,7 +564,12 @@ extension AppDelegate {
         let lines = text.components(separatedBy: "\n")
         for (index, line) in lines.enumerated() {
             let color: NSColor
-            if line.hasPrefix("--- quita") {
+            if line.hasPrefix(AppDelegate.truncationMarker) {
+                // Deliberately outside the diff sections — a warning painted
+                // diff-green because it landed after "+++ pone" would be the
+                // one line on the card that must not blend in.
+                color = .systemRed
+            } else if line.hasPrefix("--- quita") {
                 section = 1
                 color = .secondaryLabelColor
             } else if line.hasPrefix("+++ pone") || line.hasPrefix("+++ contenido") {
@@ -567,6 +598,10 @@ extension AppDelegate {
         collectedAnswers = [:]
 
         let menu = NSMenu()
+        // Delegate so this menu's own pet starts and stops animating with it,
+        // the same way the idle menu's does. menuWillOpen's usage refresh is
+        // guarded on identity, so it stays an idle-menu concern.
+        menu.delegate = self
         menu.addItem(gifMenuItem(named: "\(selectedSpecies)_pending").0)
 
         // "tool — project" when the hook told us which session is asking;
@@ -582,7 +617,7 @@ extension AppDelegate {
         // Full content in the dropdown too — wrapping, monospaced, capped in
         // height. Same "no truncated teaser" rule as the floating card.
         let hintFont = NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
-        let hintText = String(req.hint.prefix(1200))
+        let hintText = bodyText(req.hint, limit: 1200, alreadyCut: req.hidden ?? 0)
         let hintWidth: CGFloat = 400
         let hintMeasured = (hintText as NSString).boundingRect(
             with: NSSize(width: hintWidth - 28, height: .greatestFiniteMagnitude),
@@ -633,6 +668,7 @@ extension AppDelegate {
         // dropdown's pending GIF; setIdle reverts both to the real mood.
         if let floatingImageView = floatingImageView {
             setGif(on: floatingImageView, named: "buddy_pending")
+            applyAnimationPolicy()
         }
         approvalHotKeys.enable(jump: jumpTarget(for: req) != nil,
                                choices: req.choices?.first?.options.count ?? 0,
@@ -650,9 +686,18 @@ extension AppDelegate {
     /// hook.sh's extraction so the button's promise ("gh won't ask again")
     /// is exactly what the fast path later honors. Returns nil for anything
     /// that doesn't look like a plain command name.
+    ///
+    /// Also nil the moment the command can chain, substitute, redirect or
+    /// expand. hook.sh refuses to fast-path those — an allowlist entry names
+    /// one command and can only speak for one command — so offering the
+    /// button there would be promising something that never happens, on the
+    /// exact shapes where the promise would be most dangerous if it did.
+    /// The character set is the same one hook.sh screens on; they have to
+    /// agree or the button and the fast path drift apart.
     func commandBase(from hint: String) -> String? {
-        guard let firstLine = hint.split(separator: "\n").first else { return nil }
-        for token in firstLine.split(whereSeparator: { $0 == " " || $0 == "\t" }) {
+        let shellMetacharacters = CharacterSet(charactersIn: ";&|<>()`$\\\n")
+        guard hint.rangeOfCharacter(from: shellMetacharacters) == nil else { return nil }
+        for token in hint.split(whereSeparator: { $0 == " " || $0 == "\t" }) {
             if token.range(of: "^[A-Za-z_][A-Za-z0-9_]*=", options: .regularExpression) != nil { continue }
             let base = String(token)
             guard base.range(of: "^[A-Za-z0-9_./-]+$", options: .regularExpression) != nil else { return nil }
@@ -825,6 +870,13 @@ extension AppDelegate {
             }, completionHandler: {
                 window.orderOut(nil)
                 window.alphaValue = 1
+                // Take the verdict wash back off. Nothing depended on this
+                // before — showStatusBubble builds a fresh content view for
+                // every request, so the overlay went out with the old one —
+                // but that is an invariant nothing enforces, and the failure
+                // mode if it ever breaks is a pending card that looks like it
+                // was already approved. Cheaper to not leave it lying there.
+                overlay.removeFromSuperview()
                 completion()
             })
         })
@@ -928,8 +980,8 @@ extension AppDelegate {
     /// blank through ScreenCaptureKit (screencapture gets only the blur
     /// material), so an in-process render is the only faithful screenshot.
     func captureCardSelfieIfRequested() {
+        guard flagIsSet("capture_card") else { return }
         let flagURL = dirURL.appendingPathComponent("capture_card")
-        guard FileManager.default.fileExists(atPath: flagURL.path) else { return }
         // Whichever pet-attached window is up: done toast or approval card.
         let visibleContent = (toastWindow?.isVisible == true ? toastWindow?.contentView : nil)
             ?? (statusBubbleWindow?.isVisible == true ? statusBubbleWindow?.contentView : nil)

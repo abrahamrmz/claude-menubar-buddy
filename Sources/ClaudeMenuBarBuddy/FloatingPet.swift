@@ -78,6 +78,7 @@ extension AppDelegate {
             floatingWindow = window
             floatingImageView = imageView
         }
+        applyAnimationPolicy()
         floatingWindow?.orderFront(nil)
     }
 
@@ -134,8 +135,8 @@ extension AppDelegate {
     /// Same in-process render as the card selfie, for the pet window:
     /// `touch ~/.config/claude-menubar-buddy/capture_pet` → pet_selfie.png.
     func capturePetSelfieIfRequested() {
+        guard flagIsSet("capture_pet") else { return }
         let flagURL = dirURL.appendingPathComponent("capture_pet")
-        guard FileManager.default.fileExists(atPath: flagURL.path) else { return }
         guard let content = floatingWindow?.contentView, floatingWindow?.isVisible == true else { return }
         try? FileManager.default.removeItem(at: flagURL)
         guard let rep = content.bitmapImageRepForCachingDisplay(in: content.bounds) else { return }

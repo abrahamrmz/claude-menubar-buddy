@@ -48,10 +48,8 @@ extension AppDelegate {
     /// long tool runs (a 30s build writes nothing), but the marker doesn't.
     /// The 30-minute cap self-heals orphans from sessions killed mid-turn.
     func anyTurnInFlight() -> Bool {
-        let fm = FileManager.default
-        guard let urls = try? fm.contentsOfDirectory(at: dirURL, includingPropertiesForKeys: [.contentModificationDateKey]) else { return false }
         let now = Date()
-        for url in urls where url.lastPathComponent.hasPrefix("turn_start_") {
+        for url in dirEntries where url.lastPathComponent.hasPrefix("turn_start_") {
             if let mtime = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
                now.timeIntervalSince(mtime) < 30 * 60 {
                 return true
@@ -66,10 +64,8 @@ extension AppDelegate {
     /// previously unseen id means someone just opened a new session — worth
     /// a little "hi!". Returns true when this call found a newcomer.
     func noticeNewSessions() -> Bool {
-        let fm = FileManager.default
-        guard let urls = try? fm.contentsOfDirectory(at: dirURL, includingPropertiesForKeys: nil) else { return false }
         var isNew = false
-        for url in urls where url.lastPathComponent.hasPrefix("turn_start_") {
+        for url in dirEntries where url.lastPathComponent.hasPrefix("turn_start_") {
             let id = url.deletingPathExtension().lastPathComponent
                 .replacingOccurrences(of: "turn_start_", with: "")
             if seenTurnSessions.insert(id).inserted, seededTurnSessions { isNew = true }
@@ -179,6 +175,7 @@ extension AppDelegate {
             setGif(on: floatingImageView, named: gifName(for: "buddy", mood: mood))
             floatingImageView.setAccessibilityLabel(spoken)
         }
+        applyAnimationPolicy()
     }
 
     // Shows a mood GIF ("heart" on click, "celebrate" on limit reset) for a

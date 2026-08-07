@@ -46,6 +46,7 @@ When a permission request comes in, the icon changes, a sound plays, and the dro
 - **Turn-finished toast** — when a turn that took 15+ seconds finishes, a compact green card pops up at the pet with the project and duration (and the pet celebrates); quick back-and-forth stays silent, and the plain macOS banner only fires as a fallback when the app isn't running
 - **Login item** — starts automatically, no manual launch needed
 - Stats refresh in the background every ~5s, kept cheap by a per-file token cache that stats each transcript and reads only newly appended bytes (plus a fresh compute every time the menu opens)
+- **Quiet when nobody's looking** — the pets stop animating while the screen is locked or the display is asleep, and the dropdown's pet only animates while the dropdown is actually open. A looping GIF redraws whether or not anyone can see it, and that was most of the app's idle wakeups: ~155/s down to ~36/s, which is the difference between a desk pet and a desk pet you notice in your battery
 
 ## How it works
 
@@ -57,6 +58,30 @@ A `PreToolUse` hook (`hook.sh`) is registered in `~/.claude/settings.json`. When
 4. If nothing responds in time, the hook returns nothing and Claude Code falls back to its normal interactive prompt — so this is additive, never a single point of failure
 
 No BLE, no external device, no cloud service — just local files.
+
+## What it can see, and what it can do
+
+This app sits between Claude Code and your answer to "may I run this?", so its reach is worth spelling out.
+
+**It makes no network connections at all.** No telemetry, no update check, no API client — grep the sources for `URLSession` and there is nothing to find. Everything below stays on the machine.
+
+**It reads your local Claude Code transcripts.** Every `.jsonl` under `~/.claude/projects/`, to count today's output tokens and tell which sessions are active. It sums the `usage` numbers and reads the last record of the newest file to tell a running tool from a thinking model. It also reads `~/Library/Application Support/Claude/plan-usage-history.json`, which Claude Desktop writes, for the limit bars.
+
+**It writes what you're being asked to approve to disk.** Each pending request lands in `~/.config/claude-menubar-buddy/request_<id>.json` — the command, or the diff, or the file content — and is deleted the moment it's answered. Every decision is then appended to `decisions.jsonl` along with the first 200 characters of what it was about, and that log is deliberately never rotated: it's your audit trail, and `Settings ▸ Safety` opens it. On a shared or managed Mac, treat that directory the way you'd treat your shell history.
+
+**It asks for none of the invasive macOS permissions.** No Accessibility (the global shortcuts are Carbon hot keys), no Screen Recording (the debug screenshots are rendered in-process), no camera, microphone, contacts or location. The one thing it takes is the ⌘⏎ / ⇧⌘⏎ / ⌥⌘⏎ / ⌘M combinations, and only while a card is actually on screen.
+
+**The hook fails safe.** A timeout, an error, or the app not running all return no decision, which means Claude Code falls back to its own prompt. Nothing is ever approved because something broke; the worst case is being asked twice.
+
+### The two standing grants
+
+Both approve things without showing you a card, so both are worth understanding before turning them on — and both stay visible in the menu bar the whole time they're active, because a grant you can't see is a grant you'll forget you gave.
+
+**Always allow `<command>`** remembers one base command in `always_allow.json`. It only ever speaks for a single command: anything carrying `;` `&` `|` `<` `>` `(` `)` `` ` `` `$` `\` or a newline gets a card regardless of its first word, since past that point the first word has stopped describing what will actually run. Keep the list to things that read and navigate — `cat`, `git`, `grep`, `ls`. An interpreter on that list (`python`, `node`, `swift`) is equivalent to allowing everything, because one clean command is all it takes.
+
+**Auto-approve Edits** lets `Edit`/`Write`/`NotebookEdit` through without a card and puts a ✏️ on the menu bar icon for as long as it's on. It stops at the files that decide what runs on this machine tomorrow: `~/.ssh`, `~/.gnupg`, LaunchAgents and LaunchDaemons, `.git/hooks`, `~/.claude`, the buddy's own config directory, shell startup files, and the system directories. Anything relative, or containing `..`, gets a card too — there's no way to tell where those land, and "can't tell" has to mean "ask". The buddy's own config is on that list on purpose: without it, an auto-approved write could append to `always_allow.json` and widen the very grant that let it through.
+
+Neither grant is applied while the app isn't running. Both are announced by an icon, and with no icon on screen there is nothing doing the announcing.
 
 ## Install
 
