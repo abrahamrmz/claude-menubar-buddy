@@ -8,7 +8,10 @@
 set -euo pipefail
 
 DIR="$HOME/.config/claude-menubar-buddy"
-mkdir -p "$DIR"
+# 700, not the umask's 755: the request files written below carry the command,
+# diff or file content being approved. -m only applies when the directory is
+# actually created, which is why the app also re-asserts the mode at launch.
+mkdir -m 700 -p "$DIR"
 
 INPUT="$(cat)"
 

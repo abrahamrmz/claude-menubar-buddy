@@ -980,7 +980,7 @@ extension AppDelegate {
     /// blank through ScreenCaptureKit (screencapture gets only the blur
     /// material), so an in-process render is the only faithful screenshot.
     func captureCardSelfieIfRequested() {
-        guard flagIsSet("capture_card") else { return }
+        guard debugFlagIsSet("capture_card") else { return }
         let flagURL = dirURL.appendingPathComponent("capture_card")
         // Whichever pet-attached window is up: done toast or approval card.
         let visibleContent = (toastWindow?.isVisible == true ? toastWindow?.contentView : nil)
