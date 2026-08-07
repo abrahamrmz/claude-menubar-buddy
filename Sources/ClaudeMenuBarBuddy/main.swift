@@ -41,6 +41,21 @@ func sendNotification(title: String, body: String) {
 
 let dirURL = FileManager.default.homeDirectoryForCurrentUser
     .appendingPathComponent(".config/claude-menubar-buddy")
+
+/// Debug captures are opt-in per launch: without CLAUDE_BUDDY_DEBUG in the
+/// environment, the capture_* flag files do nothing whatsoever.
+///
+/// They earn their keep — a non-activating panel renders blank through
+/// ScreenCaptureKit, so an in-process render is the only faithful screenshot
+/// of the card, which is exactly what you want while working on its layout.
+/// But they render whatever card is on screen, and that card can be a diff
+/// carrying a credential; the PNG lands on disk; and any process running as
+/// this user can create the flag that asks for one. A fine trade while
+/// debugging your own layout, a bad one to leave standing on a shared machine.
+let debugCapturesEnabled: Bool = {
+    guard let value = ProcessInfo.processInfo.environment["CLAUDE_BUDDY_DEBUG"] else { return false }
+    return !["", "0", "false", "no"].contains(value.lowercased())
+}()
 // Written by hook.sh versions before the one-file-per-request queue; still
 // honored so an in-flight session running the old hook isn't orphaned.
 let legacyRequestURL = dirURL.appendingPathComponent("pending_request.json")
@@ -198,8 +213,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     /// read: that one gets checked immediately after the flag file is
     /// written, where a listing up to a second old would report the state the
     /// user just changed away from.
-    func flagIsSet(_ name: String) -> Bool {
-        dirEntries.contains { $0.lastPathComponent == name }
+    ///
+    /// The CLAUDE_BUDDY_DEBUG check lives in here rather than only at the call
+    /// site, so a capture added later can't quietly arrive ungated — the gate
+    /// belongs to the mechanism, not to whoever remembers to ask for it.
+    func debugFlagIsSet(_ name: String) -> Bool {
+        guard debugCapturesEnabled else { return false }
+        return dirEntries.contains { $0.lastPathComponent == name }
     }
 
     // Built once and reused — menuWillOpen updates these items' text in
@@ -322,7 +342,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     // see Prefs.swift.
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        try? FileManager.default.createDirectory(at: dirURL, withIntermediateDirectories: true)
+        // Owner-only. This directory carries the command, diff or file content
+        // of every pending request, plus a decision log that is never rotated
+        // by design. The hook creates it with the shell's umask — 0755 on a
+        // stock Mac — which on a shared or managed machine lets any other local
+        // account read what Claude Code has been asked to do. Gating the debug
+        // screenshots while leaving that readable would be half a fix.
+        // Two calls: the first for a fresh install, the second because
+        // createDirectory won't touch the mode of a directory that already
+        // exists (the hook usually gets there first).
+        try? FileManager.default.createDirectory(
+            at: dirURL, withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700])
+        try? FileManager.default.setAttributes(
+            [.posixPermissions: 0o700], ofItemAtPath: dirURL.path)
 
         approvalHotKeys.onAllow = { [weak self] in self?.decideViaHotKey("allow") }
         approvalHotKeys.onDeny = { [weak self] in self?.decideViaHotKey("deny") }
@@ -749,10 +782,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         // pending request that was somehow approved before anyone saw it.
         if isDismissing { return }
 
-        captureCardSelfieIfRequested()
-        capturePetSelfieIfRequested()
-        captureIconSelfieIfRequested()
-        captureSettingsSelfieIfRequested()
+        if debugCapturesEnabled {
+            captureCardSelfieIfRequested()
+            capturePetSelfieIfRequested()
+            captureIconSelfieIfRequested()
+            captureSettingsSelfieIfRequested()
+        }
 
         processDoneMarkers()
         // Background usage/mood/session-count refresh, throttled to every

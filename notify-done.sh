@@ -10,7 +10,8 @@
 set -euo pipefail
 
 DIR="$HOME/.config/claude-menubar-buddy"
-mkdir -p "$DIR"
+# 700 for the same reason hook.sh uses it — see the note there.
+mkdir -m 700 -p "$DIR"
 
 INPUT="$(cat)"
 EVENT="$(echo "$INPUT" | jq -r '.hook_event_name // "unknown"')"

@@ -128,7 +128,7 @@ extension AppDelegate {
     /// the window — this way the layout can be checked without stealing focus
     /// from whatever you're doing.
     func captureSettingsSelfieIfRequested() {
-        guard flagIsSet("capture_settings") else { return }
+        guard debugFlagIsSet("capture_settings") else { return }
         let flagURL = dirURL.appendingPathComponent("capture_settings")
         try? FileManager.default.removeItem(at: flagURL)
 

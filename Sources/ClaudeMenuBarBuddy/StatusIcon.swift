@@ -93,7 +93,7 @@ extension AppDelegate {
     /// icon variant to icon_selfie.png, drawn light-on-dark the way the menu
     /// bar tints a template. Beats squinting at 18 points of menu bar.
     func captureIconSelfieIfRequested() {
-        guard flagIsSet("capture_icon") else { return }
+        guard debugFlagIsSet("capture_icon") else { return }
         let flagURL = dirURL.appendingPathComponent("capture_icon")
         try? FileManager.default.removeItem(at: flagURL)
 
