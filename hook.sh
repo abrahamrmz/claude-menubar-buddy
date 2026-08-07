@@ -11,6 +11,20 @@ DIR="$HOME/.config/claude-menubar-buddy"
 mkdir -p "$DIR"
 
 INPUT="$(cat)"
+
+# Nobody home: with the app not running, no response file will ever appear, so
+# every tool call would sit in the poll loop below for the full 55s before
+# falling back. Hand off to the native prompt immediately instead.
+#
+# This deliberately comes BEFORE the standing-grant fast paths below.
+# Auto-approve-edits and the always-allow list are signalled by the menu bar
+# icon (the pencil, the panda) — with no app there is no signal, and a grant
+# applied where nobody can see it is exactly what that icon exists to prevent.
+if ! pgrep -x ClaudeMenuBarBuddy >/dev/null 2>&1; then
+  echo '{}'
+  exit 0
+fi
+
 ID="$(uuidgen)"
 TOOL="$(echo "$INPUT" | jq -r '.tool_name // "unknown"')"
 
@@ -33,14 +47,29 @@ fi
 # entry from its "Auto-allowed Commands" submenu re-enables the card.
 ALLOW_FILE="$DIR/always_allow.json"
 if [ "$TOOL" = "Bash" ] && [ -f "$ALLOW_FILE" ]; then
-  # First token of the command that isn't an env assignment (FOO=bar) — the
-  # same base the app extracts when offering the "Always allow" button.
-  CMD_BASE="$(echo "$INPUT" | jq -r '.tool_input.command // ""' | head -1 \
-    | awk '{for(i=1;i<=NF;i++){if($i !~ /^[A-Za-z_][A-Za-z0-9_]*=/){print $i; exit}}}')"
-  if [ -n "$CMD_BASE" ] && jq -e --arg c "$CMD_BASE" 'index($c) != null' "$ALLOW_FILE" >/dev/null 2>&1; then
-    jq -n --arg r "Always-allowed via Claude Menu Bar Buddy: $CMD_BASE" \
-      '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"allow",permissionDecisionReason:$r}}'
-    exit 0
+  FULL_CMD="$(echo "$INPUT" | jq -r '.tool_input.command // ""')"
+
+  # An allowlist entry names ONE command, so it may only ever speak for ONE
+  # command. Anything that chains, substitutes, redirects or expands means the
+  # base token has stopped describing what actually runs, and the grant the
+  # user gave ("gh won't ask again") would be covering something they never
+  # agreed to: `echo hi ; rm -rf ~` used to sail through on "echo" alone.
+  # Those always get a card, however boring their first word looks.
+  case "$FULL_CMD" in
+    *[\;\&\|\<\>\(\)\`\$\\]* | *$'\n'*) FAST_PATH_SHAPE="unsafe" ;;
+    *) FAST_PATH_SHAPE="single" ;;
+  esac
+
+  if [ "$FAST_PATH_SHAPE" = "single" ]; then
+    # First token that isn't an env assignment (FOO=bar) — the same base the
+    # app extracts when offering the "Always allow" button.
+    CMD_BASE="$(printf '%s' "$FULL_CMD" \
+      | awk '{for(i=1;i<=NF;i++){if($i !~ /^[A-Za-z_][A-Za-z0-9_]*=/){print $i; exit}}}')"
+    if [ -n "$CMD_BASE" ] && jq -e --arg c "$CMD_BASE" 'index($c) != null' "$ALLOW_FILE" >/dev/null 2>&1; then
+      jq -n --arg r "Always-allowed via Claude Menu Bar Buddy: $CMD_BASE" \
+        '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"allow",permissionDecisionReason:$r}}'
+      exit 0
+    fi
   fi
 fi
 
@@ -62,8 +91,15 @@ fi
 
 # Full content, not a teaser: the whole command for Bash, a mini-diff for
 # Edit, path + content preview for Write. The app decides how much fits on
-# screen (scrolls beyond that); truncation here is only a payload safety cap.
-HINT="$(echo "$INPUT" | jq -r '
+# screen (scrolls beyond that); truncation here is only a payload safety cap,
+# which is why it sits at 20k rather than the old 2k — a 2,100-character
+# command was being shown cut at 2,000 while Allow still approved all 2,100,
+# so `…####### ; rm -rf ~/importante` could ride in past the fold.
+#
+# The cap can still be hit by something genuinely enormous, so the count of
+# what didn't fit rides along to the app, which says so on the card. Emitted
+# as "<hidden>\n<hint>" — hidden first because the hint itself has newlines.
+HINT_INFO="$(echo "$INPUT" | jq -r '
   (if .tool_name == "AskUserQuestion" then
     ([.tool_input.questions[]? | .question] | join("\n\n"))
   elif .tool_name == "ExitPlanMode" and .tool_input.plan != null then
@@ -76,7 +112,15 @@ HINT="$(echo "$INPUT" | jq -r '
   elif .tool_input.file_path then .tool_input.file_path
   elif .tool_input.url then .tool_input.url
   else (.tool_input | tostring)
-  end) | .[0:2000]' 2>/dev/null || echo "")"
+  end) as $full
+  | (($full | length) - 20000) as $over
+  | ((if $over > 0 then $over else 0 end) | tostring) + "\n" + $full[0:20000]' 2>/dev/null || echo "0")"
+case "$HINT_INFO" in
+  *$'\n'*) HIDDEN="${HINT_INFO%%$'\n'*}"; HINT="${HINT_INFO#*$'\n'}" ;;
+  *)       HIDDEN=0; HINT="" ;;
+esac
+# --argjson wants a real number, and this one came out of a subshell.
+case "$HIDDEN" in ''|*[!0-9]*) HIDDEN=0 ;; esac
 
 # Project = basename of the session's cwd, so the approval UI can show which
 # repo/session is actually asking (avoids approving something from the wrong
@@ -101,9 +145,10 @@ REQUEST_FILE="$DIR/request_${ID}.json"
 
 jq -n --arg id "$ID" --arg tool "$TOOL" --arg hint "$HINT" --arg project "$PROJECT_NAME" \
   --arg cwd "$CWD" --arg host_bundle "$HOST_BUNDLE" --arg term_program "$TERM_PROG" \
-  --argjson choices "$CHOICES" \
+  --argjson choices "$CHOICES" --argjson hidden "$HIDDEN" \
   '{id: $id, tool: $tool, hint: $hint, project: $project, cwd: $cwd,
-    host_bundle: $host_bundle, term_program: $term_program, choices: $choices, ts: now}' > "$REQUEST_FILE"
+    host_bundle: $host_bundle, term_program: $term_program, choices: $choices,
+    hidden: $hidden, ts: now}' > "$REQUEST_FILE"
 
 RESPONSE_FILE="$DIR/response_${ID}.json"
 

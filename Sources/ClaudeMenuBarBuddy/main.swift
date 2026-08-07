@@ -23,10 +23,19 @@ import Settings
 // .build/debug, which crashes on launch if UserNotifications is touched at
 // all. osascript's "display notification" has no such requirement.
 func sendNotification(title: String, body: String) {
-    let script = "display notification \"\(body.replacingOccurrences(of: "\"", with: "'"))\" with title \"\(title.replacingOccurrences(of: "\"", with: "'"))\""
+    // Title and body go in as ARGUMENTS, never spliced into the script text.
+    // Both can carry a project name — which is just a folder name, i.e.
+    // whatever happened to be on disk — and swapping quotes for apostrophes
+    // was not enough: a name ending in a backslash swallowed the closing
+    // quote and the notification died silently.
+    let script = """
+    on run argv
+        display notification (item 1 of argv) with title (item 2 of argv)
+    end run
+    """
     let task = Process()
     task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-    task.arguments = ["-e", script]
+    task.arguments = ["-e", script, body, title]
     try? task.run()
 }
 
@@ -57,8 +66,14 @@ struct PendingRequest: Decodable {
     // native picker would.
     let choices: [ChoiceQuestion]?
 
+    // How many characters of the real command/diff didn't fit in `hint`.
+    // Approving what you cannot see is the one thing this card must never
+    // make easy, so a non-zero count is spelled out on it. Optional: an older
+    // hook.sh doesn't write the field, and absent means "nothing was cut".
+    let hidden: Int?
+
     enum CodingKeys: String, CodingKey {
-        case id, tool, hint, project, ts, cwd, choices
+        case id, tool, hint, project, ts, cwd, choices, hidden
         case hostBundle = "host_bundle"
         case termProgram = "term_program"
     }
