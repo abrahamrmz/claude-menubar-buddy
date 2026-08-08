@@ -190,6 +190,12 @@ Decisión: **se suma como especie 20, el panda queda de respaldo.** Cuesta lo mi
 - Lo que se acepta a sabiendas: el arte es **PNG binario de 47 colores**, así que se pierde el `Edit` quirúrgico sobre la rejilla de texto que permite el panda.
 - Verificado: 240 combinaciones especie×mood, cero estampas, **cero fallbacks del koala** (tiene las 12 propias).
 
+#### 2.8b ✅ El selector de especie viste a los dos pets (2026-08-08)
+Elegir koala cambiaba el pet del menú pero **no el flotante**, que seguía siendo panda: estaba fijado a `"buddy"` en tres call-sites, con un comentario que citaba la decisión de upstream (`Ray, 2026-07-12`). Esa decisión tenía sentido cuando el dropdown sólo ofrecía especies del firmware sin set de moods; con el koala dejó de tenerlo. Ahora los tres pasan por `gifName(for: selectedSpecies, ...)` — creación, cambio de mood y pose `pending` (esta última además gana el fallback a idle que el literal `"buddy_pending"` no tenía).
+- La ventana es un cuadrado de 120pt con escalado proporcional: el koala mide 120×120 y cae **pixel-exacto**, el panda 160×160 baja, y las del firmware (108×80) quedan con transparencia arriba y abajo en vez de estirarse.
+- **Bug encontrado de paso**: `speciesPopupChanged` llamaba `setIdle()` sin guarda, así que cambiar de especie con una tarjeta en pantalla **olvidaba el request vivo** y dejaba al hook esperando su propio timeout (~55s, que degrada al prompt nativo — malo pero no fatal). Sus dos handlers hermanos ya se protegían con `currentRequestId == nil`; ahora este también, y con tarjeta arriba sólo cambia la pose sin tocar el request.
+- Verificado con instancia de depuración y `capture_pet`: pose `working` (koala tras la laptop) y pose `pending` (koala alerta, orejas erguidas) — ninguna es el panda.
+
 ## Fase 3 — Pulido (~3-4 días)
 
 ### 3.1 Fidgets ambientales (solo Core Animation)

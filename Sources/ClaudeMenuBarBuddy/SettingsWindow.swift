@@ -258,8 +258,18 @@ extension AppDelegate {
         guard let title = sender.titleOfSelectedItem else { return }
         selectedSpecies = title.lowercased()
         buildIdleMenu()
-        setIdle()
-        updatePetMood()
+        // setIdle() answers nothing — it just forgets the live request, which
+        // would strand the hook until its own timeout. Guarded the way the
+        // two sibling handlers here already guard it; with a card up, swap
+        // the pending pose to the new species and leave the request alone
+        // (setIdle picks the species up for real once it resolves).
+        if currentRequestId == nil {
+            setIdle()
+            updatePetMood()
+        } else if let floatingImageView = floatingImageView {
+            setGif(on: floatingImageView, named: gifName(for: selectedSpecies, mood: "pending"))
+            applyAnimationPolicy()
+        }
     }
 
     @objc func iconStylePopupChanged(_ sender: NSPopUpButton) {

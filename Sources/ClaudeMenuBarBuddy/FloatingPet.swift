@@ -33,8 +33,8 @@ final class DraggablePetImageView: NSImageView {
 }
 
 // Codex-style floating desktop pet: a borderless, always-on-top window that
-// shows just the panda GIF, draggable anywhere on screen, independent of
-// the menu bar dropdown. Deliberately minimal — no speech bubble, no
+// shows the selected species' GIF, draggable anywhere on screen, independent
+// of the menu bar dropdown. Deliberately minimal — no speech bubble, no
 // click-to-chat (Claude Code has no API for that, see revealSession's
 // comment) — just ambient presence, which is the part that's actually
 // buildable today.
@@ -53,16 +53,21 @@ final class FloatingPetWindow: NSWindow {
 }
 
 extension AppDelegate {
-    // Codex-style floating pet — panda only, ambient status, no chat bubble
-    // (see FloatingPetWindow's comment for why). Position persists across
+    // Codex-style floating pet — ambient status, no chat bubble (see
+    // FloatingPetWindow's comment for why). Position persists across
     // launches; defaults to the bottom-right of the main screen.
+    //
+    // The window is a 120pt square and scales proportionally, so it fits
+    // both the tall pets (buddy is 160×160, koala 120×120 — pixel-exact
+    // here) and the wide firmware ones (108×80, which letterbox into
+    // transparency rather than stretch).
     func showFloatingPet() {
         if floatingWindow == nil {
             let side: CGFloat = 120
             let window = FloatingPetWindow(size: NSSize(width: side, height: side))
             let imageView = DraggablePetImageView(frame: NSRect(x: 0, y: 0, width: side, height: side))
             imageView.imageScaling = .scaleProportionallyUpOrDown
-            setGif(on: imageView, named: gifName(for: "buddy", mood: lastComputedMood))
+            setGif(on: imageView, named: gifName(for: selectedSpecies, mood: lastComputedMood))
             window.contentView?.addSubview(imageView)
             window.delegate = self
             let saved = Defaults[.floatingPetOrigin]

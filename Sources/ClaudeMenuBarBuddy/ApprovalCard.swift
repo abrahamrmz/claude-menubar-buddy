@@ -667,7 +667,7 @@ extension AppDelegate {
         // Wide-eyed attention pose on the floating pet too, matching the
         // dropdown's pending GIF; setIdle reverts both to the real mood.
         if let floatingImageView = floatingImageView {
-            setGif(on: floatingImageView, named: "buddy_pending")
+            setGif(on: floatingImageView, named: gifName(for: selectedSpecies, mood: "pending"))
             applyAnimationPolicy()
         }
         approvalHotKeys.enable(jump: jumpTarget(for: req) != nil,

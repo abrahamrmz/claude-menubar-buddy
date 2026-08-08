@@ -127,11 +127,11 @@ extension AppDelegate {
         }
     }
 
-    /// Not every pet has art for every mood. The species come from the
-    /// hardware-buddy firmware, which only ever drew seven poses, so
-    /// thinking, sad and excited stay panda-only and the others degrade to
-    /// the nearest thing that says the same thing. Ending at idle means a
-    /// missing GIF never leaves the previous one frozen on screen.
+    /// Not every pet has art for every mood. The eighteen firmware species
+    /// only ever drew seven poses, so on those, thinking, sad and excited
+    /// degrade to the nearest thing that says the same thing; buddy and
+    /// koala are the two with the full set. Ending at idle means a missing
+    /// GIF never leaves the previous one frozen on screen.
     func moodGifCandidates(_ mood: String) -> [String] {
         switch mood {
         case "thinking": return ["thinking", "working"]
@@ -164,10 +164,12 @@ extension AppDelegate {
             string: text,
             attributes: [.foregroundColor: NSColor.secondaryLabelColor, .font: NSFont.systemFont(ofSize: 11)]
         )
-        // Floating pet is panda-only regardless of the dropdown's species
-        // choice (Ray, 2026-07-12: "ทำแค่ panda ก็พอ").
+        // Both pets follow the same species. Upstream pinned the floating one
+        // to the panda (Ray, 2026-07-12: "ทำแค่ panda ก็พอ") back when the
+        // dropdown only offered firmware pets that couldn't carry a mood set;
+        // the species picker is the desktop pet's picker now.
         if let floatingImageView = floatingImageView {
-            setGif(on: floatingImageView, named: gifName(for: "buddy", mood: mood))
+            setGif(on: floatingImageView, named: gifName(for: selectedSpecies, mood: mood))
             floatingImageView.setAccessibilityLabel(spoken)
         }
         applyAnimationPolicy()
