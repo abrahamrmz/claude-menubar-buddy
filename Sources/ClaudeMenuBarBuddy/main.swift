@@ -414,6 +414,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         RunLoop.current.add(t, forMode: .common)
         timer = t
 
+        // Off the main thread: `claude --version` spawns a Node process and
+        // costs the better part of a second cold, and the setup check that
+        // wants the answer runs when the menu opens.
+        DispatchQueue.global(qos: .utility).async { BuddyHealth.refreshClaudeVersion() }
+
         // Last, so the menu bar icon and the pet are already up behind it —
         // the welcome points at both.
         showOnboardingIfFirstRun()

@@ -220,7 +220,21 @@ extension AppDelegate {
                    + "out why a card didn't appear."),
         ]
         rows += health.checks.map { checkRow($0) }
-        rows.append(leading(recheck))
+
+        var buttons: [NSView] = [recheck]
+        // Only offered when there's a version gap to close, and it records
+        // your judgement rather than making one: the app can't tell whether
+        // an update broke anything, only that one happened.
+        if health.checks.contains(where: { !$0.ok && $0.title == "Checked against this Claude Code" }) {
+            let mark = NSButton(title: "Looks fine — stop flagging this version",
+                                target: self, action: #selector(markVersionVerified))
+            mark.bezelStyle = .rounded
+            buttons.append(mark)
+        }
+        let buttonRow = NSStackView(views: buttons)
+        buttonRow.orientation = .horizontal
+        buttonRow.spacing = 8
+        rows.append(leading(buttonRow))
         rows.append(footnote(
             "Fixing the wiring means editing ~/.claude/settings.json, and the "
             + "buddy never edits Claude Code's config — that's a door it "
@@ -288,6 +302,14 @@ extension AppDelegate {
     }
 
     @objc private func recheckHealth() {
+        BuddyHealth.refreshClaudeVersion()
+        lastHealth = nil          // the menu's warning line reads this too
+        onboardingWindowController?.refreshCurrentPage()
+    }
+
+    @objc private func markVersionVerified() {
+        BuddyHealth.markCurrentVersionVerified()
+        lastHealth = nil
         onboardingWindowController?.refreshCurrentPage()
     }
 

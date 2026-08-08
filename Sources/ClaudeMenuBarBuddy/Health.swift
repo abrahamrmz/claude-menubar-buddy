@@ -55,6 +55,9 @@ struct BuddyHealth {
             jqCheck(),
             hookFreshnessCheck(),
             notifyCheck(),
+            claudeVersionCheck(),
+            transcriptShapeCheck(),
+            ungatedToolsCheck(),
         ])
     }
 
@@ -182,6 +185,207 @@ struct BuddyHealth {
                          optional: true)
         }
         return Check(title: title, ok: true, detail: notifyURL.path, remedy: nil)
+    }
+
+    // MARK: - Surviving Claude Code updates
+    //
+    // Everything below watches the seams between this app and Claude Code.
+    // Nothing here can break approvals — hooks are additive, so if ours fails
+    // or times out the native prompt takes over. What these catch is the
+    // quieter kind of damage: a contract we rely on shifting under us and the
+    // buddy carrying on looking perfectly healthy while it stops being right.
+
+    static var verifiedVersionURL: URL {
+        dirURL.appendingPathComponent("verified_claude_version")
+    }
+
+    /// Cached because `claude --version` costs ~0.66s cold, and this runs on
+    /// the main thread when the menu opens. Warmed in the background at
+    /// launch; a nil cache just means the check hasn't got an answer yet.
+    private static var cachedClaudeVersion: String??
+
+    @discardableResult
+    static func refreshClaudeVersion() -> String? {
+        let candidates = ["/opt/homebrew/bin/claude", "/usr/local/bin/claude",
+                          FileManager.default.homeDirectoryForCurrentUser
+                              .appendingPathComponent(".claude/local/claude").path]
+        guard let binary = candidates.first(where: {
+            FileManager.default.isExecutableFile(atPath: $0)
+        }) else {
+            cachedClaudeVersion = .some(nil)
+            return nil
+        }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: binary)
+        process.arguments = ["--version"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else {
+            cachedClaudeVersion = .some(nil)
+            return nil
+        }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+        // "2.1.226 (Claude Code)" — take the version, drop the label.
+        let text = String(data: data, encoding: .utf8) ?? ""
+        let version = text.split(separator: " ").first.map(String.init)
+        cachedClaudeVersion = .some(version)
+        return version
+    }
+
+    /// Major.minor only. Claude Code ships patch releases constantly, and a
+    /// check that cried wolf on every one of them would be trained away
+    /// within a week. A minor bump is where the tool surface actually moves.
+    private static func series(_ version: String) -> String {
+        version.split(separator: ".").prefix(2).joined(separator: ".")
+    }
+
+    static func markCurrentVersionVerified() {
+        guard let current = cachedClaudeVersion ?? refreshClaudeVersion() else { return }
+        try? series(current).write(to: verifiedVersionURL, atomically: true, encoding: .utf8)
+    }
+
+    private static func claudeVersionCheck() -> Check {
+        let title = "Checked against this Claude Code"
+        guard let current = cachedClaudeVersion ?? nil else {
+            return Check(title: title, ok: true,
+                         detail: "Skipped — couldn't read `claude --version`",
+                         remedy: nil, optional: true)
+        }
+        let recorded = (try? String(contentsOf: verifiedVersionURL, encoding: .utf8))?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let recorded, !recorded.isEmpty else {
+            // First run: record what we're looking at rather than nagging
+            // about a comparison we've never had the chance to make.
+            try? series(current).write(to: verifiedVersionURL, atomically: true, encoding: .utf8)
+            return Check(title: title, ok: true, detail: "Claude Code \(current)", remedy: nil)
+        }
+        guard recorded != series(current) else {
+            return Check(title: title, ok: true, detail: "Claude Code \(current)", remedy: nil)
+        }
+        return Check(
+            title: title, ok: false,
+            detail: "Claude Code moved \(recorded) → \(series(current)) since the buddy was last checked",
+            remedy: "Nothing is broken — the other checks here still pass. But parts of "
+                  + "the hook contract we rely on aren't documented, so this is worth "
+                  + "a look after a version bump.",
+            optional: true)
+    }
+
+    /// The transcripts are the buddy's other source of truth: token counts,
+    /// and telling "a tool is running" from "Claude is thinking". Both read
+    /// specific fields, and both fail quietly — the pet would just sit on
+    /// idle forever rather than showing an error.
+    private static func transcriptShapeCheck() -> Check {
+        let title = "Transcripts still readable"
+        guard let newest = newestTranscript() else {
+            return Check(title: title, ok: true,
+                         detail: "Skipped — no recent transcript to look at",
+                         remedy: nil, optional: true)
+        }
+        guard let sample = lastAssistantRecord(in: newest) else {
+            return Check(title: title, ok: false,
+                         detail: "No parseable assistant record in \(newest.lastPathComponent)",
+                         remedy: "Token counts and the working/thinking poses come from these "
+                               + "files. Worth reporting if it persists.",
+                         optional: true)
+        }
+        let message = sample["message"] as? [String: Any]
+        let hasUsage = (message?["usage"] as? [String: Any])?["output_tokens"] is Int
+        let hasContent = message?["content"] is [[String: Any]]
+        guard hasUsage, hasContent else {
+            var missing: [String] = []
+            if !hasUsage { missing.append("message.usage.output_tokens (token counts)") }
+            if !hasContent { missing.append("message.content[] (working vs thinking)") }
+            return Check(title: title, ok: false,
+                         detail: "Format changed — missing \(missing.joined(separator: ", "))",
+                         remedy: "The buddy reads these directly; nothing warns when they move.",
+                         optional: true)
+        }
+        return Check(title: title, ok: true,
+                     detail: "\(newest.lastPathComponent) has the fields the buddy reads", remedy: nil)
+    }
+
+    /// Tools that ran without ever passing through the card. Most are
+    /// read-only and belong here; the point is that a *new* one shows up in
+    /// this list the first time you use it, instead of being discovered by
+    /// noticing a card that never appeared.
+    private static func ungatedToolsCheck() -> Check {
+        let title = "Tools going around the card"
+        // Read from the file UsageStats writes rather than calling into it:
+        // everything in here inspects artifacts, which is what keeps these
+        // checks runnable against fixtures instead of only against this Mac.
+        let seenMap = (try? Data(contentsOf: dirURL.appendingPathComponent("seen_tools.json")))
+            .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: String] } ?? [:]
+        let seen = Set(seenMap.keys)
+        guard !seen.isEmpty else {
+            return Check(title: title, ok: true,
+                         detail: "Skipped — no tool use recorded yet",
+                         remedy: nil, optional: true)
+        }
+        let unwatched = seen
+            .subtracting(expectedMatchers)
+            .subtracting(deliberatelyUngated)
+            .sorted()
+        guard !unwatched.isEmpty else {
+            return Check(title: title, ok: true,
+                         detail: "Every tool you've used either routes through the card or reads only",
+                         remedy: nil)
+        }
+        return Check(
+            title: title, ok: false,
+            detail: "Ran without a card: \(unwatched.joined(separator: ", "))",
+            remedy: "If any of those should ask first, add it as a PreToolUse matcher "
+                  + "alongside the others in ~/.claude/settings.json.",
+            optional: true)
+    }
+
+    /// Tools we've looked at and decided don't need a card: they read, or they
+    /// only touch the session's own bookkeeping. Agent is here because a
+    /// subagent's own tool calls fire their own hooks — gating the spawn as
+    /// well would ask twice for the same work.
+    static let deliberatelyUngated: Set<String> = [
+        "Read", "Glob", "Grep", "NotebookRead", "TodoWrite", "Task", "Agent",
+        "Skill", "ToolSearch", "TaskOutput", "TaskStop", "SendMessage",
+        "BashOutput", "KillShell", "SlashCommand",
+    ]
+
+    private static func newestTranscript() -> URL? {
+        let root = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".claude/projects")
+        guard let dirs = try? FileManager.default.contentsOfDirectory(
+            at: root, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) else { return nil }
+        var newest: (URL, Date)?
+        for dir in dirs {
+            guard let files = try? FileManager.default.contentsOfDirectory(
+                at: dir, includingPropertiesForKeys: [.contentModificationDateKey],
+                options: [.skipsHiddenFiles]) else { continue }
+            for url in files where url.pathExtension == "jsonl" {
+                guard let mtime = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
+                    .contentModificationDate else { continue }
+                if newest == nil || mtime > newest!.1 { newest = (url, mtime) }
+            }
+        }
+        return newest?.0
+    }
+
+    /// Reads backwards from the end rather than parsing the whole file —
+    /// these run to tens of megabytes.
+    private static func lastAssistantRecord(in url: URL) -> [String: Any]? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        let size = (try? handle.seekToEnd()) ?? 0
+        let window: UInt64 = 256 * 1024
+        try? handle.seek(toOffset: size > window ? size - window : 0)
+        guard let tail = try? handle.readToEnd() else { return nil }
+        let lines = tail.split(separator: 0x0A)
+        for line in lines.reversed() {
+            guard let obj = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
+                  obj["type"] as? String == "assistant" else { continue }
+            return obj
+        }
+        return nil
     }
 
     // MARK: -

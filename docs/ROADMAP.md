@@ -164,6 +164,18 @@ Prerequisitos: re-clonar, parametrizar `SRC_DIR` (para que no vuelva a pudrirse)
 - Verificado: `kickstart` limpio con la key borrada → ventana 580x548 en layer 0 (vía `CGWindowListCopyWindowInfo`, no a ojo); segundo arranque → sólo icono y pet. Los tres modos de fallo del wiring (parcial / ausente / JSON roto) probados con configs fabricadas contra un binario aislado; por eso `inspect(claudeSettings:)` toma la ruta como parámetro.
 - Layout: la página 1 se encimaba porque un `NSBox` y un contenedor `NSView` no tienen ancho intrínseco, y un `NSStackView` vertical dimensiona por eso. La regla quedó dicha una vez en `page(_:)` — cada fila se ancla al ancho de la página.
 
+### 2.7 ✅ No ir a ciegas cuando Claude Code se actualiza
+No estaba en el plan; salió de una conversación (2026-08-08). Dependemos de cuatro superficies de Claude Code y ninguna nos debe compatibilidad: el contrato del hook (incluido `updatedInput` + el campo `answers` de AskUserQuestion, que **descubrimos empíricamente** y no está documentado), el formato del transcript (`message.usage.output_tokens`, `content[].type == "tool_use"`), el `plan-usage-history.json` que escribe **otra app** (Claude Desktop), y la lista de herramientas que piden permiso.
+
+Las aprobaciones nunca se rompen — los hooks son aditivos, si el nuestro falla aparece el prompt nativo. Lo que estas tres verificaciones atrapan es el daño callado: un contrato que se mueve debajo y la app siguiendo tan campante mientras deja de tener razón. Todas son `optional`, así que ninguna dispara la advertencia del menú.
+
+1. **Ancla de versión.** Guarda contra qué serie de Claude Code validamos (`verified_claude_version` en el dir de config) y avisa cuando cambia. **Sólo major.minor**: Claude Code publica parches constantemente y un aviso que grita en cada uno se desaprende en una semana. `claude --version` cuesta 0.66s en frío, así que se calienta en background al arrancar — nunca en `menuWillOpen`. Botón para marcar la versión nueva como revisada: registra tu criterio, no inventa uno.
+2. **Aserciones de forma.** Lee el último registro `assistant` del transcript más reciente (cola de 256KB, no el archivo entero: pesan decenas de MB) y comprueba que siguen ahí los campos que leemos, nombrando cuál se movió y qué deja de funcionar.
+3. **Herramientas que van por fuera de la tarjeta.** Los nombres se cosechan **gratis** dentro de `tokensFromLine`, que ya está parseando esa línea para contar tokens — escanear aparte serían ~95MB de transcripts (medido). Se acumulan en `seen_tools.json`, se escribe sólo cuando aparece un nombre nuevo. Contra `expectedMatchers` y una lista explícita de `deliberatelyUngated` (sólo-lectura y bookkeeping), lo que sobra se reporta. Es la clase entera del problema AskUserQuestion, resuelta sola y para siempre.
+
+- **Encontró algo en la primera corrida**: usas **WebSearch** y no la interceptamos — sí `WebFetch`, no `WebSearch`.
+- Verificado con el arnés aislado (por eso `Health.swift` no llama a `UsageReader`, lee `seen_tools.json` como artefacto): las tres transiciones del ancla de versión (primera vez / misma serie / salto 1.9→2.1) y el check de herramientas con tus datos reales y con una herramienta inventada.
+
 ## Fase 3 — Pulido (~3-4 días)
 
 ### 3.1 Fidgets ambientales (solo Core Animation)

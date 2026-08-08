@@ -250,6 +250,50 @@ enum UsageReader {
               let message = obj["message"] as? [String: Any],
               let usage = message["usage"] as? [String: Any],
               let out = usage["output_tokens"] as? Int else { return 0 }
+        noteToolNames(in: message)
         return out
+    }
+
+    // MARK: - Which tools actually run
+
+    /// Tool names seen in assistant records, and when each was first noticed.
+    ///
+    /// Harvested here because this line has already been read off disk and
+    /// parsed for its token count — the marginal cost is walking an array
+    /// that's in memory anyway. Scanning for this separately would mean
+    /// re-reading ~95MB of transcripts, which is exactly the kind of thing
+    /// this file's caches exist to avoid.
+    ///
+    /// The point is the setup check: a tool Claude Code starts asking
+    /// permission for, that isn't in our matcher list, silently bypasses the
+    /// card. AskUserQuestion did that for weeks. This is how the next one
+    /// announces itself instead of being noticed by accident.
+    /// Read back by BuddyHealth's "tools going around the card" check.
+    private static var seenTools: [String: String] = loadSeenTools()
+
+    private static var seenToolsURL: URL { dirURL.appendingPathComponent("seen_tools.json") }
+
+    private static func loadSeenTools() -> [String: String] {
+        guard let data = try? Data(contentsOf: seenToolsURL),
+              let map = try? JSONSerialization.jsonObject(with: data) as? [String: String]
+        else { return [:] }
+        return map
+    }
+
+    private static func noteToolNames(in message: [String: Any]) {
+        guard let content = message["content"] as? [[String: Any]] else { return }
+        var added = false
+        for block in content where block["type"] as? String == "tool_use" {
+            guard let name = block["name"] as? String, seenTools[name] == nil else { continue }
+            seenTools[name] = ISO8601DateFormatter().string(from: Date())
+            added = true
+        }
+        // Written only when a name shows up for the first time, which happens
+        // a handful of times in the life of an install — not on every parse.
+        guard added,
+              let data = try? JSONSerialization.data(
+                withJSONObject: seenTools, options: [.prettyPrinted, .sortedKeys])
+        else { return }
+        try? data.write(to: seenToolsURL, options: [.atomic])
     }
 }
