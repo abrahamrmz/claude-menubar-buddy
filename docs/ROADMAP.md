@@ -196,6 +196,15 @@ Elegir koala cambiaba el pet del menú pero **no el flotante**, que seguía sien
 - **Bug encontrado de paso**: `speciesPopupChanged` llamaba `setIdle()` sin guarda, así que cambiar de especie con una tarjeta en pantalla **olvidaba el request vivo** y dejaba al hook esperando su propio timeout (~55s, que degrada al prompt nativo — malo pero no fatal). Sus dos handlers hermanos ya se protegían con `currentRequestId == nil`; ahora este también, y con tarjeta arriba sólo cambia la pose sin tocar el request.
 - Verificado con instancia de depuración y `capture_pet`: pose `working` (koala tras la laptop) y pose `pending` (koala alerta, orejas erguidas) — ninguna es el panda.
 
+#### 2.8c ✅ Tres tamaños para el pet flotante (2026-08-08)
+El pet medía 120pt fijos contra una tarjeta de 430pt de ancho — 28%, se veía chico. Menú → `Pet Size`: small/medium/large. **Default nuevo: medium.**
+- **Tres pasos y no un slider, por una razón medible.** El arte del koala es de 120px y la pantalla dibuja 2 píxeles de respaldo por punto, así que 120pt = 2 px por píxel de origen, 180pt = 3 y 240pt = 4. Cualquier valor intermedio parte un píxel de origen entre dos de pantalla, y en pixel art eso se ve como bloques de ancho desigual. Las demás especies tienen su propio tamaño nativo (panda 160, firmware 108×80) y no pueden ser todas enteras a la vez; la escalera limpia es para el koala porque es el pet dibujado para esta app.
+- **`NSImageView` interpola por defecto y eso emborrona el pixel art al agrandar.** `DraggablePetImageView` ahora pone `imageInterpolation = .none` en `draw`, pero **sólo al magnificar**: al reducir (el panda son 160pt de origen en una caja de 120) tirar la interpolación descarta píxeles en vez de promediarlos, que es el único caso donde suavizar es mejor.
+- El resize es en vivo, alrededor del **centro** y no del origen (el pet está donde el usuario lo dejó, y la vista sigue el medio), con clamp a la pantalla — un pet grande en una esquina se saldría — y `invalidateShadow()`, porque la ventana es transparente y su sombra se deriva del alpha del contenido.
+- Verificado con `capture_pet` en los tres: 240px / 360px / 480px, es decir 120pt / 180pt / 240pt. A 4× del nativo el arte sigue con bloques cuadrados. **No probado con click**: el cambio en vivo desde el menú (centrado y clamp) está construido, no ejercitado — automatizarlo pedía permisos de accesibilidad que el proyecto evita a propósito.
+- **Trampa de verificación que costó una vuelta**: la app no tiene bundle ID, así que su dominio de preferencias es `ClaudeMenuBarBuddy` (el nombre del ejecutable), **no** `com.claudemenubarbuddy.app`. Escribir en el segundo crea un dominio basura que nadie lee, y la app cae a su default como si el código fallara.
+- **`OS_REASON_CODESIGNING` es reproducible**: el primer `launchctl kickstart` después de matar una instancia manual del mismo binario ad-hoc falla, el segundo levanta. No lo dispara reconstruir el binario (se repitió sin recompilar) sino el respawn inmediato tras el kill.
+
 ## Fase 3 — Pulido (~3-4 días)
 
 ### 3.1 Fidgets ambientales (solo Core Animation)

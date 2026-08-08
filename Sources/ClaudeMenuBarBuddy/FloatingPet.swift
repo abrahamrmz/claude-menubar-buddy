@@ -30,6 +30,22 @@ final class DraggablePetImageView: NSImageView {
         let dy = current.y - dragStartMouseScreenLocation.y
         window.setFrameOrigin(NSPoint(x: dragStartWindowOrigin.x + dx, y: dragStartWindowOrigin.y + dy))
     }
+
+    // The art is pixel art, and Cocoa's default interpolation blurs it the
+    // moment the view is bigger than the source — which is the whole point of
+    // the size setting. Nearest-neighbour keeps the blocks square.
+    //
+    // Only when magnifying: dropping interpolation while shrinking (the panda
+    // is 160pt of source in a 120pt box) throws away pixels instead of
+    // averaging them, which is the one case where smoothing is the better
+    // answer. Compared in points, which is the right question — a 1:1 view on
+    // a 2x screen is still being magnified into the backing store.
+    override func draw(_ dirtyRect: NSRect) {
+        if let image = image, image.size.width <= bounds.width, image.size.height <= bounds.height {
+            NSGraphicsContext.current?.imageInterpolation = .none
+        }
+        super.draw(dirtyRect)
+    }
 }
 
 // Codex-style floating desktop pet: a borderless, always-on-top window that
@@ -53,17 +69,32 @@ final class FloatingPetWindow: NSWindow {
 }
 
 extension AppDelegate {
+    /// Three steps instead of a slider, because only some sizes are honest.
+    /// The koala's art is 120px square and a Retina screen draws 2 backing
+    /// pixels per point, so 120pt is exactly 2 screen pixels per source
+    /// pixel, 180pt is 3 and 240pt is 4. Sizes in between split a source
+    /// pixel across screen pixels, and pixel art shows that immediately as
+    /// uneven block widths. The koala gets the clean ladder because it's the
+    /// pet drawn for this app; the others have their own native sizes (panda
+    /// 160, firmware pets 108×80) and can't all be integral at once.
+    var floatingPetSide: CGFloat {
+        switch floatingPetSize {
+        case "small": return 120
+        case "large": return 240
+        default: return 180
+        }
+    }
+
     // Codex-style floating pet — ambient status, no chat bubble (see
-    // FloatingPetWindow's comment for why). Position persists across
-    // launches; defaults to the bottom-right of the main screen.
+    // FloatingPetWindow's comment for why). Position and size persist across
+    // launches; position defaults to the bottom-right of the main screen.
     //
-    // The window is a 120pt square and scales proportionally, so it fits
-    // both the tall pets (buddy is 160×160, koala 120×120 — pixel-exact
-    // here) and the wide firmware ones (108×80, which letterbox into
-    // transparency rather than stretch).
+    // The window is square and scales proportionally, so it fits both the
+    // tall pets (buddy 160×160, koala 120×120) and the wide firmware ones
+    // (108×80, which letterbox into transparency rather than stretch).
     func showFloatingPet() {
         if floatingWindow == nil {
-            let side: CGFloat = 120
+            let side = floatingPetSide
             let window = FloatingPetWindow(size: NSSize(width: side, height: side))
             let imageView = DraggablePetImageView(frame: NSRect(x: 0, y: 0, width: side, height: side))
             imageView.imageScaling = .scaleProportionallyUpOrDown
@@ -91,6 +122,33 @@ extension AppDelegate {
         floatingWindow?.orderOut(nil)
         hideStatusBubble()
         hideDoneToast()
+    }
+
+    /// Resizes in place around the pet's current centre rather than growing
+    /// down-right from its origin: the pet is wherever the user parked it,
+    /// and the eye tracks its middle, not its corner. Clamped back onto the
+    /// screen afterwards, because a large pet parked in a corner would
+    /// otherwise grow half of itself off the edge.
+    @objc func petSizeChanged(_ sender: NSMenuItem) {
+        guard let size = sender.representedObject as? String, size != floatingPetSize else { return }
+        floatingPetSize = size
+        buildIdleMenu()
+        guard let window = floatingWindow else { return }
+        let side = floatingPetSide
+        var frame = NSRect(x: window.frame.midX - side / 2, y: window.frame.midY - side / 2,
+                           width: side, height: side)
+        if let screen = window.screen ?? NSScreen.main {
+            let visible = screen.visibleFrame
+            frame.origin.x = min(max(frame.origin.x, visible.minX), visible.maxX - side)
+            frame.origin.y = min(max(frame.origin.y, visible.minY), visible.maxY - side)
+        }
+        window.setFrame(frame, display: true)
+        floatingImageView?.frame = NSRect(x: 0, y: 0, width: side, height: side)
+        // The window is transparent, so its shadow is derived from the
+        // content's alpha — without this it keeps the outline of the old size.
+        window.invalidateShadow()
+        Defaults[.floatingPetOrigin] = NSStringFromPoint(frame.origin)
+        if statusBubbleWindow?.isVisible == true { positionStatusBubble(above: window) }
     }
 
     @objc func toggleFloatingPet() {

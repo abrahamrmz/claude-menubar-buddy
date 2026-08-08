@@ -464,6 +464,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         floatingItem.target = self
         floatingItem.state = floatingPetVisible ? .on : .off
         menu.addItem(floatingItem)
+        // A submenu, and only while the pet is on screen: sizing something
+        // that isn't shown is a dead control, and the row costs nothing when
+        // it isn't there. An item with a submenu can't also carry an action,
+        // so this can't just hang off the toggle above.
+        if floatingPetVisible {
+            let sizeItem = NSMenuItem(title: "Pet Size", action: nil, keyEquivalent: "")
+            let sizes = NSMenu()
+            for (title, value) in [("Small", "small"), ("Medium", "medium"), ("Large", "large")] {
+                let item = NSMenuItem(title: title, action: #selector(petSizeChanged(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = value
+                item.state = floatingPetSize == value ? .on : .off
+                sizes.addItem(item)
+            }
+            sizeItem.submenu = sizes
+            menu.addItem(sizeItem)
+        }
         let autoEditsItem = NSMenuItem(title: "Auto-approve Edits", action: #selector(toggleAutoEdits), keyEquivalent: "")
         autoEditsItem.target = self
         autoEditsItem.state = autoEditsEnabled ? .on : .off

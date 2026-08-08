@@ -16,6 +16,9 @@ extension Defaults.Keys {
     static let notifiedWeekly = Key<Int>("notifiedWeekly", default: 0)
     // NSStringFromPoint-encoded origin of the floating pet window.
     static let floatingPetOrigin = Key<String>("floatingPetOrigin", default: "")
+    // "small" | "medium" | "large" — see floatingPetSide for why those three
+    // point sizes and not a free slider.
+    static let floatingPetSize = Key<String>("floatingPetSize", default: "medium")
     // "template" = drawn monochrome panda that follows the menu bar's
     // appearance; "emoji" = the literal 🐼 the app shipped with, for anyone
     // who wants the color back.
@@ -38,6 +41,11 @@ extension AppDelegate {
     var selectedSpecies: String {
         get { Defaults[.selectedSpecies] }
         set { Defaults[.selectedSpecies] = newValue }
+    }
+
+    var floatingPetSize: String {
+        get { Defaults[.floatingPetSize] }
+        set { Defaults[.floatingPetSize] = newValue }
     }
 
     var notifiedFiveHour: Int {
