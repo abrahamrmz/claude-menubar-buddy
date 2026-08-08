@@ -235,6 +235,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     // Settings window (see SettingsWindow.swift). Built lazily and kept, so
     // reopening it returns to the tab you were on.
     var settingsWindowController: SettingsWindowController?
+    var onboardingWindowController: OnboardingWindowController?
+    // Shown in the menu only when the setup check finds something broken —
+    // the buddy looks identical whether the hook is wired or not, so without
+    // this the failure mode is "it just never does anything".
+    var setupWarningItem: NSMenuItem!
+    var lastHealth: BuddyHealth?
+    var lastHealthAt = Date.distantPast
     weak var toastThresholdReadout: NSTextField?
     var alwaysAllowTable: AlwaysAllowTable?
     // (sampled-at, tokens-today) for the fallback burn rate, pruned to 2h.
@@ -406,6 +413,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
         RunLoop.current.add(t, forMode: .common)
         timer = t
+
+        // Last, so the menu bar icon and the pet are already up behind it —
+        // the welcome points at both.
+        showOnboardingIfFirstRun()
     }
 
     func buildIdleMenu() {
@@ -454,6 +465,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         autoEditsItem.toolTip = "While on, Edit/Write/NotebookEdit are approved instantly with no card. Uncheck to go back to ask-before-each-edit."
         menu.addItem(autoEditsItem)
         menu.addItem(NSMenuItem.separator())
+        // Always in the menu, hidden unless menuWillOpen finds a real problem.
+        setupWarningItem = NSMenuItem(title: "⚠︎ Setup needs attention…",
+                                      action: #selector(showSetupCheck), keyEquivalent: "")
+        setupWarningItem.target = self
+        setupWarningItem.isHidden = true
+        menu.addItem(setupWarningItem)
+        let welcomeItem = NSMenuItem(title: "Welcome & Setup Check…",
+                                     action: #selector(showOnboarding), keyEquivalent: "")
+        welcomeItem.target = self
+        menu.addItem(welcomeItem)
         let settingsItem = NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
         settingsItem.target = self
         menu.addItem(settingsItem)
@@ -473,6 +494,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         guard menu === idleMenu else { return }
         usage = UsageReader.snapshot()
         updateUsageLabels()
+        setupWarningItem?.isHidden = cachedHealth().isHealthy
+    }
+
+    /// The setup check re-reads settings.json and hashes hook.sh, which is
+    /// cheap but not free, and the answer changes about once a month. Cache it
+    /// for a minute so opening the menu repeatedly doesn't repeat the work.
+    func cachedHealth() -> BuddyHealth {
+        if let health = lastHealth, Date().timeIntervalSince(lastHealthAt) < 60 {
+            return health
+        }
+        let health = BuddyHealth.inspect()
+        lastHealth = health
+        lastHealthAt = Date()
+        return health
     }
 
     func menuDidClose(_ menu: NSMenu) {
@@ -787,6 +822,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             capturePetSelfieIfRequested()
             captureIconSelfieIfRequested()
             captureSettingsSelfieIfRequested()
+            captureOnboardingSelfieIfRequested()
         }
 
         processDoneMarkers()

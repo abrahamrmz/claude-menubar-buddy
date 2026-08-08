@@ -150,9 +150,19 @@ Prerequisitos: re-clonar, parametrizar `SRC_DIR` (para que no vuelva a pudrirse)
 - `SRC_DIR` → env `BUDDY_FIRMWARE_SRC`, y si no está clona solo en `.build/firmware` (ya gitignoreado). Corre en un checkout limpio sin setup.
 - CPU medido A/B (12 muestras instantáneas de 5s cada una, antes y después): **~1.1% en ambos**. No hay regresión — de hecho el beat del firmware (1000ms) redibuja menos que las estampas viejas (500ms).
 
-### 2.6 Onboarding first-run
+### 2.6 ✅ Onboarding first-run
 `Onboarding.swift`: SwiftUI en NSHostingView dentro de NSWindow normal (puede activar la app, ok). 3-4 páginas: qué es → check de instalación del hook (verifica settings.json + hook.sh, botón "copy snippet", NUNCA auto-edita config de Claude) → hotkeys → tour del pet. Gate: `Defaults[.onboardingCompleted]`.
 - Verificar: borrar la key → aparece una vez; check del hook refleja realidad.
+
+**Reorientación 2026-08-08 (aprobada por el usuario).** La premisa del plan era un instalador manual, pero el camino documentado es SKILL.md: Claude Code genera los GIFs, compila, instala `hook.sh`, fusiona `settings.json` y lanza la app. Para el primer arranque **ya está todo instalado**, así que una página "copia este snippet" resuelve un problema que el camino principal ya resolvió. Se invirtió a **diagnóstico, no instalador**: `Health.swift` lee la realidad y sólo ofrece el remedio cuando el check falla — y eso sirve para siempre, no sólo el primer día.
+
+- Implementado 2026-08-08. **AppKit, no SwiftUI**, en contra del plan: SwiftUI + `NSHostingView` sí compila en este binario sin bundle (verificado, no asumido), pero la razón que da `SettingsWindow.swift` para quedarse en AppKit aplica igual, y el tour del pet son GIFs animados, que AppKit da nativo.
+- Cinco checks: hook instalado y ejecutable · wiring real en `settings.json` (parsea el JSON, cuenta `Edit|Write` como dos, ignora hooks ajenos, nombra los matchers faltantes) · `jq` — buscado en rutas conocidas, **no en `$PATH`**, porque launchd le da a este proceso un PATH mínimo mientras el hook corre con el entorno de Claude Code · deriva entre el `hook.sh` del repo y el instalado · `notify-done.sh` (opcional).
+- **El check encontró un problema real en su primer uso**: al `hook.sh` instalado le faltaba el `mkdir -m 700` del commit de seguridad `f7962c2` — el endurecimiento estaba a medias desde entonces. Sincronizado.
+- El menú gana una línea `⚠︎ Setup needs attention…`, oculta salvo que haya un fallo **bloqueante** (los opcionales no la disparan). Es la paga de la reorientación: la app se ve idéntica con el hook cableado o no.
+- Gate: se marca completo **al mostrar**, no al terminar. El LaunchAgent arranca en cada login, y un gate que sólo cierra al llegar a la última página le robaría el foco cada mañana a quien la cierre antes. Cuesta que un crash en el primer arranque se coma el onboarding — aceptable, porque se reabre desde el menú.
+- Verificado: `kickstart` limpio con la key borrada → ventana 580x548 en layer 0 (vía `CGWindowListCopyWindowInfo`, no a ojo); segundo arranque → sólo icono y pet. Los tres modos de fallo del wiring (parcial / ausente / JSON roto) probados con configs fabricadas contra un binario aislado; por eso `inspect(claudeSettings:)` toma la ruta como parámetro.
+- Layout: la página 1 se encimaba porque un `NSBox` y un contenedor `NSView` no tienen ancho intrínseco, y un `NSStackView` vertical dimensiona por eso. La regla quedó dicha una vez en `page(_:)` — cada fila se ancla al ancho de la página.
 
 ## Fase 3 — Pulido (~3-4 días)
 
