@@ -334,9 +334,16 @@ if __name__ == "__main__":
         if n:
             names.append(n)
     prune_stale(names)
-    # The pixel-art panda comes from generate_gifs.py, not the firmware.
-    if os.path.exists(f"{OUT_DIR}/buddy_idle.gif"):
-        names.append("buddy")
+    # Pets that don't come from the firmware: the hand-drawn panda
+    # (generate_gifs.py) and anything generated (generate_koala_gifs.py).
+    # Discovered by looking for an idle GIF rather than listed by name, so a
+    # new pet doesn't silently vanish from the picker the next time this
+    # script runs — which is exactly how it would have happened.
+    extras = sorted(
+        os.path.basename(path)[: -len("_idle.gif")]
+        for path in glob.glob(f"{OUT_DIR}/*_idle.gif")
+        if os.path.basename(path)[: -len("_idle.gif")] not in names)
+    names += extras
     with open(f"{OUT_DIR}/species.txt", "w") as f:
         f.write("\n".join(names))
     print(f"\n{len(names)} species available:", ", ".join(names))

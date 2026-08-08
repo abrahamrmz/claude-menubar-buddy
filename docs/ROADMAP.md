@@ -176,6 +176,20 @@ Las aprobaciones nunca se rompen — los hooks son aditivos, si el nuestro falla
 - **Encontró algo en la primera corrida**: usas **WebSearch** y no la interceptamos — sí `WebFetch`, no `WebSearch`.
 - Verificado con el arnés aislado (por eso `Health.swift` no llama a `UsageReader`, lee `seen_tools.json` como artefacto): las tres transiciones del ancla de versión (primera vez / misma serie / salto 1.9→2.1) y el check de herramientas con tus datos reales y con una herramienta inventada.
 
+### 2.8 ✅ Mascota propia generada (koala cyberpunk)
+Tampoco estaba en el plan; salió de una conversación (2026-08-08). El usuario quería una mascota más visual y personalizada, aceptando opciones de pago y algo más de CPU. Se evaluaron cinco herramientas (Layer AI, PixelLab, SpriteFlow, AutoSprite, spritesheets.ai) y **sólo PixelLab encaja**, por una razón que ninguna publica: nuestras 12 moods **no son ciclos de videojuego**. Sólo se solapa `idle`. Mirando el arte del panda, `BASE`/`BLINK`/`TIRED`/`SHUT` sólo difieren en las filas de los ojos — es *edición de sprite preservando estilo*, no generación de animación. Las otras cuatro ofrecen catálogos fijos de caminar/correr/atacar; AutoSprite dice explícitamente que no soporta expresiones faciales.
+
+Decisión: **se suma como especie 20, el panda queda de respaldo.** Cuesta lo mismo y deja marcha atrás.
+
+- **Quedarse en pixel art abarató todo**: alpha binario (medido: 2 niveles en GIF vs 8 en APNG), así que **cero cambios al pipeline**. Sin Rive (probado: su XCFramework sí carga sin `.app` bundle, pero suma 12 MB y sube el mínimo a macOS 13.1), sin APNG, sin cambio de CPU.
+- **Endpoint correcto: `create-character-state`, no `inpaint-v3`.** Cuestan **lo mismo** (20 generaciones, medido — mi hipótesis de que inpaint sería más barato era falsa), pero inpaint sólo ve una máscara y borró el implante biónico: 90 → 37 píxeles cian. `create-character-state` recibe el `character_id`, y por eso conserva la identidad.
+- **La animación se resolvió con `last_frame`, no con `drift_threshold`.** Poniendo `last_frame = first_frame`: frames 0 y N vuelven **pixel-idénticos** al original y sólo se mueve el medio. Deriva del implante 27 → 11. El `drift_threshold` casi no movió la aguja (27 vs 29 entre 0 y 0.10). 1 generación por animación.
+- **Economía real**: Tier 1 son **2000 generaciones/mes** por $12 (dato que no publican en ningún lado; sólo se ve al pagar). El set completo costó ~193 — el 10%.
+- **Fallos encontrados**: (a) el almacenamiento devuelve **403 al User-Agent de `urllib`** (con `curl` funciona), lo que costó un estado a medias — ahora el `character_id` se guarda *antes* de descargar y un reintento reutiliza el estado ya pagado; (b) `celebrate` con "brazos en alto" devolvió **un bulto gris sin cara** (0 píxeles de implante) — los prompts de edición dirigen el sprite entero, no sólo lo nombrado; se arregló pidiendo patas al costado y cara visible; (c) `generate_species_gifs.py` **habría borrado al koala** de `species.txt` en su siguiente corrida, porque reconstruía la lista desde el firmware — ahora descubre especies extra buscando su `_idle.gif`.
+- **Se descartó el MCP de PixelLab** pese a existir: los prompts, semillas e IDs tienen que vivir en un script commiteado y reproducible. Un MCP no deja rastro versionable, y ya sabemos lo que cuesta eso — así perdimos el axolotl.
+- Lo que se acepta a sabiendas: el arte es **PNG binario de 47 colores**, así que se pierde el `Edit` quirúrgico sobre la rejilla de texto que permite el panda.
+- Verificado: 240 combinaciones especie×mood, cero estampas, **cero fallbacks del koala** (tiene las 12 propias).
+
 ## Fase 3 — Pulido (~3-4 días)
 
 ### 3.1 Fidgets ambientales (solo Core Animation)

@@ -1,0 +1,34 @@
+{
+  "base_character_id": "bfcf4185-dce5-4bc4-9701-a5824b1e165e",
+  "base_prompt": "cyberpunk koala mascot, round fluffy grey ears, big dark nose, one glowing cyan bionic eye with a thin metal rim, small neon circuit accents on the fur, friendly and charismatic",
+  "base_south_url": "https://backblaze.pixellab.ai/file/pixellab-characters/5dfea3bd-f299-4bca-9ef3-cb4ec20d74e7/bfcf4185-dce5-4bc4-9701-a5824b1e165e/rotations/south.png",
+  "character_ids": {
+    "asleep": "b8025cdf-4913-4583-959a-6d843b214324",
+    "base": "bfcf4185-dce5-4bc4-9701-a5824b1e165e",
+    "celebrate": "8ea97ef9-4ad9-46c4-ac14-4b4a2d6be7e5",
+    "critical": "0a9aeabd-da8b-454e-9621-12e327452d87",
+    "excited": "eda15eec-6410-4e7b-a108-2ddefb338d5c",
+    "heart": "39e42e0b-6779-49d1-a371-461bcdf3c622",
+    "pending": "9a1c8978-6420-4954-b4be-a46e61872082",
+    "sad": "89cfa42f-533c-4d7e-923e-d3fa2a4477fe",
+    "stressed": "b1f9b7fe-2cec-4c6e-a54a-b1143bcf72b2",
+    "thinking": "0162f01b-a400-4b51-ba17-5876514811c4",
+    "tired": "cf98a583-a21e-46ec-a287-37cb23ed3054",
+    "working": "6182f71e-c034-4be0-ae88-f28ece2c535b"
+  },
+  "seed": 20260808,
+  "stills": {
+    "asleep": ".build/koala/asleep.png",
+    "celebrate": ".build/koala/celebrate.png",
+    "critical": ".build/koala/critical.png",
+    "excited": ".build/koala/excited.png",
+    "heart": ".build/koala/heart.png",
+    "idle": ".build/koala/idle.png",
+    "pending": ".build/koala/pending.png",
+    "sad": ".build/koala/sad.png",
+    "stressed": ".build/koala/stressed.png",
+    "thinking": ".build/koala/thinking.png",
+    "tired": ".build/koala/tired.png",
+    "working": ".build/koala/working.png"
+  }
+}

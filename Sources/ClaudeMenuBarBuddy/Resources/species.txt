@@ -17,3 +17,4 @@ robot
 snail
 turtle
 buddy
+koala
