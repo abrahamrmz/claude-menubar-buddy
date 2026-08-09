@@ -16,6 +16,12 @@
     "tired": "cf98a583-a21e-46ec-a287-37cb23ed3054",
     "working": "6182f71e-c034-4be0-ae88-f28ece2c535b"
   },
+  "crop": [
+    28,
+    29,
+    92,
+    93
+  ],
   "seed": 20260808,
   "stills": {
     "asleep": ".build/koala/asleep.png",
