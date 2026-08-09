@@ -45,7 +45,18 @@ final class FloatingPetWindow: NSWindow {
                     styleMask: [.borderless], backing: .buffered, defer: false)
         isOpaque = false
         backgroundColor = .clear
-        hasShadow = true
+        // No shadow, and it can't be turned back on without a plan for this:
+        // macOS derives a transparent window's shadow from its content alpha
+        // and then caches it. It does not follow an animated GIF, so the
+        // shadow keeps the outline of whatever pose happened to be on screen
+        // when it was last computed — celebrate's raised arms hanging in the
+        // air behind an idle koala. invalidateShadow() fixes one moment, but
+        // the sprite changes shape several times a second, and a timer at
+        // frame rate to keep chasing it costs CPU we have promised not to
+        // spend. A soft blurred shadow was the wrong idiom for pixel art
+        // anyway; if the pet ever wants one, it belongs drawn into the sprite
+        // where it animates for free.
+        hasShadow = false
         level = .floating
         isMovableByWindowBackground = true
         collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
@@ -142,9 +153,6 @@ extension AppDelegate {
         }
         window.setFrame(frame, display: true)
         floatingImageView?.frame = NSRect(x: 0, y: 0, width: side, height: side)
-        // The window is transparent, so its shadow is derived from the
-        // content's alpha — without this it keeps the outline of the old size.
-        window.invalidateShadow()
         Defaults[.floatingPetOrigin] = NSStringFromPoint(frame.origin)
         if statusBubbleWindow?.isVisible == true { positionStatusBubble(above: window) }
     }

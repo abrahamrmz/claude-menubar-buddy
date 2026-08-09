@@ -226,6 +226,13 @@ El relleno transparente era **exclusivo del koala** — PixelLab devuelve el per
 - Verificado: 256 / 384 / 512 px en los tres tamaños, llenado 81% × 92% en todos, nada cortado. El Small nuevo (≈104pt de koala visible) ya es más grande que el Medium viejo (≈77pt).
 - De paso: el origen guardado ahora se acota a la pantalla al restaurarlo, porque se grabó bajo el tamaño y los monitores de entonces.
 
+#### 2.8e ✅ Quitar la sombra de la ventana del pet (2026-08-08)
+El usuario reportó una "silueta fantasma transparente", más visible al cambiar de animación, con la forma de los brazos del koala. Era la **sombra de la ventana**: macOS la deriva del alpha del contenido y la cachea, y no sigue a un GIF animado — se queda con el contorno de la pose que hubiera en pantalla al calcularla (los brazos de `celebrate` colgando detrás de un koala en reposo).
+- `invalidateShadow()` corrige un instante, pero el sprite cambia de forma varias veces por segundo y perseguirla con un timer a velocidad de frame cuesta el CPU que el proyecto promete no gastar. `hasShadow = false`, y una sombra difuminada nunca fue el idioma de pixel art: si algún día se quiere, va **dibujada en el sprite**, donde anima gratis.
+- Por qué apareció justo ahora y no antes: el artefacto siempre estuvo, pero el koala recortado (2.8d) es el doble de grande y su silueta tiene brazos definidos. El panda llena su lienzo al 100% y su sombra es un bloque que casi no cambia entre poses.
+- **Descartado con evidencia antes de llegar ahí**: (a) el arte — los 4 frames de `celebrate` renderizados sobre magenta salen limpios, sin residuo; (b) el `disposal` del GIF, que era la sospecha propia más probable tras recodificar con ImageIO — parseados los bytes del GCE, los recortados traen `disposal 2, transparent 1`, idéntico a los originales de PIL y al panda.
+- **No verificable localmente**: `CGWindowListCreateImage` —la vía para que un proceso se capture a sí mismo *con* sombra, sin permisos— está **obsoleta en macOS 15**, y su reemplazo exige Grabación de Pantalla. El diagnóstico se cerró con la confirmación visual del usuario, no con una captura.
+
 ## Fase 3 — Pulido (~3-4 días)
 
 ### 3.1 Fidgets ambientales (solo Core Animation)
