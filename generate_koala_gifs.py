@@ -64,6 +64,19 @@ BASE_PROMPT = (
 # The tempo is the same vocabulary the panda uses: brisk for the moods that
 # mean something is happening, slow for the ones that mean it isn't. `idle`
 # has no edit — it *is* the base character.
+# PixelLab returns a 120x120 canvas with the character small and centred: the
+# union of every frame of every mood is only 53x62, so 57% of the image is
+# transparent padding. Every other pet fills its own canvas (the panda 100%,
+# the firmware pets 75-100%), which meant the koala drew at less than half
+# their size for the same window — scaling the padding, not the pet.
+#
+# Cropping to 64x64 puts it at 83% like the rest. 64 specifically because the
+# app's three pet sizes are 128/192/256pt and a 2x screen then lands on
+# exactly 4, 6 and 8 screen pixels per source pixel; pixel art shows a
+# fractional scale immediately. Box is top-left origin, PIL's convention, and
+# it is checked against every frame rather than trusted — see crop_frames.
+CROP = (28, 29, 92, 93)
+
 MOODS = {
     "idle":      (None,
                   "idle breathing, gentle bob, occasional slow blink", 500),
@@ -240,6 +253,23 @@ def animate(still, action):
     return [decode(image) for image in job["last_response"]["images"]]
 
 
+def crop_frames(frames, mood):
+    """Trim the transparent padding, refusing to clip the pet.
+
+    A beheaded koala is a worse outcome than a small one, and it would be
+    invisible in a 4-frame loop until someone happened to look at the right
+    beat — so the box is verified against each frame instead of assumed.
+    """
+    for i, frame in enumerate(frames):
+        box = frame.getchannel("A").getbbox()
+        if box and not (box[0] >= CROP[0] and box[1] >= CROP[1]
+                        and box[2] <= CROP[2] and box[3] <= CROP[3]):
+            sys.exit(f"{mood}[{i}]: sprite {box} escapes crop {CROP}. "
+                     f"Widen CROP (and re-check the pet sizes in FloatingPet.swift, "
+                     f"which assume a 64px canvas) rather than shipping a clipped pet.")
+    return [frame.crop(CROP) for frame in frames]
+
+
 def build(mood, manifest):
     edit, action, duration = MOODS[mood]
     print(f"{mood}:")
@@ -250,6 +280,7 @@ def build(mood, manifest):
     # only make the pet hang for an extra beat on the pose it just held.
     if len(frames) > 1 and frames[0].tobytes() == frames[-1].tobytes():
         frames = frames[:-1]
+    frames = crop_frames(frames, mood)
     path = f"{OUT_DIR}/{SPECIES}_{mood}.gif"
     frames[0].save(path, save_all=True, append_images=frames[1:],
                    duration=[duration] * len(frames), loop=0, disposal=2)

@@ -7,7 +7,7 @@ import Defaults
 // event before the window's own background-drag logic gets a chance, and
 // this was inconsistent enough in testing (2026-07-12) to just implement
 // dragging explicitly instead of trusting the flag.
-final class DraggablePetImageView: NSImageView {
+final class DraggablePetImageView: PixelArtImageView {
     private var dragStartMouseScreenLocation: NSPoint = .zero
     private var dragStartWindowOrigin: NSPoint = .zero
 
@@ -31,21 +31,6 @@ final class DraggablePetImageView: NSImageView {
         window.setFrameOrigin(NSPoint(x: dragStartWindowOrigin.x + dx, y: dragStartWindowOrigin.y + dy))
     }
 
-    // The art is pixel art, and Cocoa's default interpolation blurs it the
-    // moment the view is bigger than the source — which is the whole point of
-    // the size setting. Nearest-neighbour keeps the blocks square.
-    //
-    // Only when magnifying: dropping interpolation while shrinking (the panda
-    // is 160pt of source in a 120pt box) throws away pixels instead of
-    // averaging them, which is the one case where smoothing is the better
-    // answer. Compared in points, which is the right question — a 1:1 view on
-    // a 2x screen is still being magnified into the backing store.
-    override func draw(_ dirtyRect: NSRect) {
-        if let image = image, image.size.width <= bounds.width, image.size.height <= bounds.height {
-            NSGraphicsContext.current?.imageInterpolation = .none
-        }
-        super.draw(dirtyRect)
-    }
 }
 
 // Codex-style floating desktop pet: a borderless, always-on-top window that
@@ -70,18 +55,21 @@ final class FloatingPetWindow: NSWindow {
 
 extension AppDelegate {
     /// Three steps instead of a slider, because only some sizes are honest.
-    /// The koala's art is 120px square and a Retina screen draws 2 backing
-    /// pixels per point, so 120pt is exactly 2 screen pixels per source
-    /// pixel, 180pt is 3 and 240pt is 4. Sizes in between split a source
-    /// pixel across screen pixels, and pixel art shows that immediately as
-    /// uneven block widths. The koala gets the clean ladder because it's the
-    /// pet drawn for this app; the others have their own native sizes (panda
-    /// 160, firmware pets 108×80) and can't all be integral at once.
+    /// The koala's art is a 64px square (see CROP in generate_koala_gifs.py)
+    /// and a Retina screen draws 2 backing pixels per point, so 128pt is
+    /// exactly 4 screen pixels per source pixel, 192pt is 6 and 256pt is 8.
+    /// Sizes in between split a source pixel across screen pixels, and pixel
+    /// art shows that immediately as uneven block widths.
+    ///
+    /// The ladder follows the koala because it's the pet drawn for this app;
+    /// the others have their own native sizes (panda 160, firmware pets
+    /// 108×80) and can't all be integral at once. Changing CROP means
+    /// rechecking these three numbers.
     var floatingPetSide: CGFloat {
         switch floatingPetSize {
-        case "small": return 120
-        case "large": return 240
-        default: return 180
+        case "small": return 128
+        case "large": return 256
+        default: return 192
         }
     }
 
@@ -90,7 +78,7 @@ extension AppDelegate {
     // launches; position defaults to the bottom-right of the main screen.
     //
     // The window is square and scales proportionally, so it fits both the
-    // tall pets (buddy 160×160, koala 120×120) and the wide firmware ones
+    // tall pets (buddy 160×160, koala 64×64) and the wide firmware ones
     // (108×80, which letterbox into transparency rather than stretch).
     func showFloatingPet() {
         if floatingWindow == nil {
@@ -103,7 +91,17 @@ extension AppDelegate {
             window.delegate = self
             let saved = Defaults[.floatingPetOrigin]
             if !saved.isEmpty, NSPointFromString(saved) != .zero {
-                window.setFrameOrigin(NSPointFromString(saved))
+                // Clamped, because a saved origin was recorded under whatever
+                // size was current then — and under whatever monitors were
+                // attached then. Restoring it verbatim can put a bigger pet
+                // (or the same pet on a smaller screen) partly out of reach.
+                var origin = NSPointFromString(saved)
+                if let screen = NSScreen.main {
+                    let visible = screen.visibleFrame
+                    origin.x = min(max(origin.x, visible.minX), visible.maxX - side)
+                    origin.y = min(max(origin.y, visible.minY), visible.maxY - side)
+                }
+                window.setFrameOrigin(origin)
             } else if let screen = NSScreen.main {
                 let margin: CGFloat = 40
                 window.setFrameOrigin(NSPoint(

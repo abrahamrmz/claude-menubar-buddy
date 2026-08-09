@@ -114,6 +114,25 @@ struct ChoiceOption: Decodable {
 // GIF so clicking the pet (even mid-menu-tracking) fires the action —
 // AppKit only reliably delivers clicks to real controls inside a custom
 // NSMenuItem view, not to plain NSViews/NSImageViews via gesture recognizers.
+/// Every pet is pixel art, and Cocoa's default interpolation blurs it the
+/// moment the view is bigger than the source.
+///
+/// Only when magnifying, and only when *both* axes fit: dropping interpolation
+/// while shrinking throws pixels away instead of averaging them, which is the
+/// one case where smoothing is the better answer. So the panda (160px of
+/// source in an 80pt menu box) and the firmware pets (108 wide in the same
+/// box) keep the smoothing they have always had, and the cropped koala — 64px
+/// of source, now magnified where it used to be shrunk — gets square blocks
+/// instead of the blur the crop would otherwise have introduced.
+class PixelArtImageView: NSImageView {
+    override func draw(_ dirtyRect: NSRect) {
+        if let image = image, image.size.width <= bounds.width, image.size.height <= bounds.height {
+            NSGraphicsContext.current?.imageInterpolation = .none
+        }
+        super.draw(dirtyRect)
+    }
+}
+
 func gifMenuItem(named name: String, target: AnyObject? = nil, action: Selector? = nil) -> (NSMenuItem, NSImageView) {
     let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     let size = NSSize(width: 220, height: 90)
@@ -124,7 +143,7 @@ func gifMenuItem(named name: String, target: AnyObject? = nil, action: Selector?
     // ratio inside this square instead of distorting it.
     let side: CGFloat = 80
     let frame = NSRect(x: (size.width - side) / 2, y: (size.height - side) / 2, width: side, height: side)
-    let imageView = NSImageView(frame: frame)
+    let imageView = PixelArtImageView(frame: frame)
     setGif(on: imageView, named: name)
     // A menu starts closed, and a GIF inside a closed menu still loops at full
     // rate for nobody. menuWillOpen/menuDidClose turn this back on and off.

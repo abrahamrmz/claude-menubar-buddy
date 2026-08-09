@@ -198,12 +198,33 @@ Elegir koala cambiaba el pet del menú pero **no el flotante**, que seguía sien
 
 #### 2.8c ✅ Tres tamaños para el pet flotante (2026-08-08)
 El pet medía 120pt fijos contra una tarjeta de 430pt de ancho — 28%, se veía chico. Menú → `Pet Size`: small/medium/large. **Default nuevo: medium.**
-- **Tres pasos y no un slider, por una razón medible.** El arte del koala es de 120px y la pantalla dibuja 2 píxeles de respaldo por punto, así que 120pt = 2 px por píxel de origen, 180pt = 3 y 240pt = 4. Cualquier valor intermedio parte un píxel de origen entre dos de pantalla, y en pixel art eso se ve como bloques de ancho desigual. Las demás especies tienen su propio tamaño nativo (panda 160, firmware 108×80) y no pueden ser todas enteras a la vez; la escalera limpia es para el koala porque es el pet dibujado para esta app.
+- **Tres pasos y no un slider, por una razón medible.** El arte del koala era de 120px y la pantalla dibuja 2 píxeles de respaldo por punto, así que 120pt = 2 px por píxel de origen, 180pt = 3 y 240pt = 4. (La escalera pasó a **128/192/256** en 2.8d, cuando el lienzo se recortó a 64px; el razonamiento es el mismo, los números no.) Cualquier valor intermedio parte un píxel de origen entre dos de pantalla, y en pixel art eso se ve como bloques de ancho desigual. Las demás especies tienen su propio tamaño nativo (panda 160, firmware 108×80) y no pueden ser todas enteras a la vez; la escalera limpia es para el koala porque es el pet dibujado para esta app.
 - **`NSImageView` interpola por defecto y eso emborrona el pixel art al agrandar.** `DraggablePetImageView` ahora pone `imageInterpolation = .none` en `draw`, pero **sólo al magnificar**: al reducir (el panda son 160pt de origen en una caja de 120) tirar la interpolación descarta píxeles en vez de promediarlos, que es el único caso donde suavizar es mejor.
 - El resize es en vivo, alrededor del **centro** y no del origen (el pet está donde el usuario lo dejó, y la vista sigue el medio), con clamp a la pantalla — un pet grande en una esquina se saldría — y `invalidateShadow()`, porque la ventana es transparente y su sombra se deriva del alpha del contenido.
 - Verificado con `capture_pet` en los tres: 240px / 360px / 480px, es decir 120pt / 180pt / 240pt. A 4× del nativo el arte sigue con bloques cuadrados. **No probado con click**: el cambio en vivo desde el menú (centrado y clamp) está construido, no ejercitado — automatizarlo pedía permisos de accesibilidad que el proyecto evita a propósito.
 - **Trampa de verificación que costó una vuelta**: la app no tiene bundle ID, así que su dominio de preferencias es `ClaudeMenuBarBuddy` (el nombre del ejecutable), **no** `com.claudemenubarbuddy.app`. Escribir en el segundo crea un dominio basura que nadie lee, y la app cae a su default como si el código fallara.
 - **`OS_REASON_CODESIGNING` es reproducible**: el primer `launchctl kickstart` después de matar una instancia manual del mismo binario ad-hoc falla, el segundo levanta. No lo dispara reconstruir el binario (se repitió sin recompilar) sino el respawn inmediato tras el kill.
+
+#### 2.8d ✅ Recortar el lienzo del koala (2026-08-08)
+Agrandar la ventana no resolvía la queja de fondo, porque **estábamos escalando aire**. Medido con el bounding box del alpha sobre todos los frames de todas las moods:
+
+| especie | lienzo | sprite | llena |
+|---|---|---|---|
+| buddy | 160×160 | 160×160 | 100% |
+| dragon | 108×80 | 109×74 | ~100% × 93% |
+| cat | 108×80 | 82×60 | 76% × 75% |
+| **koala** | 120×120 | **53×62** | **44% × 52%** |
+
+El relleno transparente era **exclusivo del koala** — PixelLab devuelve el personaje pequeño y centrado. A 120pt el panda dibujaba 120pt de panda y el koala 52pt de koala: menos de la mitad, con la misma configuración.
+
+- **Recortar y no escalar al vuelo**, por tres razones: el problema es de un archivo y no del sistema (escalar sería código de render que no hace nada para 19 de 20 pets); escalar congelaría la inconsistencia en el renderer en vez de arreglarla, cuando "tamaño nativo = tamaño del sprite" es un invariante que las otras 19 ya cumplen; y el factor para llenar la ventana sería 120/53 ≈ 2.26, no entero, reintroduciendo el desenfoque que 2.8c acababa de quitar.
+- **Lienzo 64×64, escalera 128/192/256.** El lienzo no puede bajar de 62 (la unión es 53×62) y para que las tres medidas caigan en píxeles enteros debe dividir a `2W`; con la escalera vieja los únicos candidatos eran 120 y 60, y 60 se queda 2px corto. Con 64 la escalera es 4×/6×/8×.
+- **Bug propio, encontrado por la medición**: `CGImage.cropping(to:)` usa origen **abajo-izquierda**, no arriba. Mi aserción de "el sprite cabe en la caja" estaba escrita en coordenadas arriba-izquierda, así que validaba un rectángulo distinto al que recortaba y dejó pasar el corte de **una fila** en la parte baja del sprite. Se detectó porque la unión bajó de 62 a 61 y el sprite quedó pegado al borde. Ahora la aserción vive en el mismo espacio que el recorte, que es la única forma de que signifique algo.
+- El script lleva `CROP` y `crop_frames`, que **aborta** si algún frame se sale de la caja: regenerar no puede deshacer el recorte ni, peor, decapitar al pet en un frame que nadie mire.
+- **`PixelArtImageView` compartido con el menú.** Con 64px nativos el koala pasó de reducirse (120→80pt) a ampliarse (64→80pt), así que el recorte habría metido desenfoque justo donde no lo había. La condición exige que *ambos* ejes quepan, de modo que el panda (160px) y los del firmware (108 de ancho) conservan el suavizado de siempre.
+- Peso: **82 KB → 65 KB**.
+- Verificado: 256 / 384 / 512 px en los tres tamaños, llenado 81% × 92% en todos, nada cortado. El Small nuevo (≈104pt de koala visible) ya es más grande que el Medium viejo (≈77pt).
+- De paso: el origen guardado ahora se acota a la pantalla al restaurarlo, porque se grabó bajo el tamaño y los monitores de entonces.
 
 ## Fase 3 — Pulido (~3-4 días)
 
