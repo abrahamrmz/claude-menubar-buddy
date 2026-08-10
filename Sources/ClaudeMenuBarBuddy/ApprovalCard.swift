@@ -1,10 +1,19 @@
 import AppKit
+import KeyboardShortcuts
 
 // Pill button that visibly sinks while pressed — scales down and dims, then
 // springs back. setPressed is public so the ⌘⏎ hotkey path can flash the
 // same pressed state: the whole point is that the shortcut FEELS like
 // pushing the on-screen button, not like the card silently obeying.
 final class PressablePillButton: NSButton {
+    // Whether the button is currently lit up as "armed" — the modifier half
+    // of its shortcut is being held, so it lifts slightly and grows a bright
+    // rim to say "⏎ lands here". The button's own resting border (choice
+    // options carry an accent one) is saved on arm and restored on release.
+    private var armed = false
+    private var restingBorderWidth: CGFloat = 0
+    private var restingBorderColor: CGColor?
+
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
     override func mouseDown(with event: NSEvent) {
@@ -14,18 +23,44 @@ final class PressablePillButton: NSButton {
         setPressed(false)
     }
 
-    func setPressed(_ down: Bool) {
-        guard let layer = layer else { return }
-        // Scale about the center, not AppKit's default bottom-left anchor.
+    /// Scale about the center, not AppKit's default bottom-left anchor.
+    private func centerAnchor(_ layer: CALayer) {
         if layer.anchorPoint != CGPoint(x: 0.5, y: 0.5) {
             let f = layer.frame
             layer.anchorPoint = CGPoint(x: 0.5, y: 0.5)
             layer.position = CGPoint(x: f.midX, y: f.midY)
         }
+    }
+
+    /// The lifted "armed" pose, also what a released press springs back to
+    /// while the modifier is still held.
+    private var armedTransform: CGAffineTransform {
+        armed ? CGAffineTransform(scaleX: 1.02, y: 1.05) : .identity
+    }
+
+    func setPressed(_ down: Bool) {
+        guard let layer = layer else { return }
+        centerAnchor(layer)
         CATransaction.begin()
         CATransaction.setAnimationDuration(0.08)
-        layer.setAffineTransform(down ? CGAffineTransform(scaleX: 0.95, y: 0.93) : .identity)
+        layer.setAffineTransform(down ? CGAffineTransform(scaleX: 0.95, y: 0.93) : armedTransform)
         layer.opacity = down ? 0.7 : 1.0
+        CATransaction.commit()
+    }
+
+    func setArmed(_ on: Bool) {
+        guard on != armed, let layer = layer else { return }
+        armed = on
+        if on {
+            restingBorderWidth = layer.borderWidth
+            restingBorderColor = layer.borderColor
+        }
+        centerAnchor(layer)
+        CATransaction.begin()
+        CATransaction.setAnimationDuration(0.12)
+        layer.borderWidth = on ? 1.5 : restingBorderWidth
+        layer.borderColor = on ? NSColor.white.withAlphaComponent(0.9).cgColor : restingBorderColor
+        layer.setAffineTransform(armedTransform)
         CATransaction.commit()
     }
 }
@@ -458,6 +493,7 @@ extension AppDelegate {
     /// branch returns before the Allow/Deny rows are built.
     func finishStatusBubble(window: NSWindow, petWindow: NSWindow) {
         let wasVisible = window.isVisible
+        startModifierWatch()
         positionStatusBubble(above: petWindow)
         if wasVisible {
             window.orderFront(nil)
@@ -523,7 +559,73 @@ extension AppDelegate {
     }
 
     func hideStatusBubble() {
+        stopModifierWatch()
         statusBubbleWindow?.orderOut(nil)
+    }
+
+    // MARK: - Armed buttons (modifier held, key not yet)
+
+    // Holding the modifier half of a shortcut lights up the button it would
+    // push: ⌘ down and Allow lifts with a bright rim before ⏎ ever lands,
+    // add ⇧ and the glow hops to Deny, ⌥ and it's the quiet row. On a
+    // multiple-choice card ⌘ arms the options (they share it). Matching goes
+    // through the user's actual recorded shortcuts, not the defaults, so a
+    // remapped Allow arms on whatever modifiers it was remapped to.
+
+    /// The modifier keys being physically held right now, filtered down to
+    /// the four a shortcut can be recorded with (caps lock and fn are not
+    /// intent).
+    private static let armableModifiers: NSEvent.ModifierFlags = [.command, .shift, .option, .control]
+
+    func startModifierWatch() {
+        guard modifierWatchTimer == nil else { return }
+        // 20Hz is imperceptible CPU for the seconds a card is up, and fast
+        // enough that the glow reads as instant. .common so it keeps ticking
+        // while a menu is being tracked.
+        let t = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
+            self?.updateArmedButtons()
+        }
+        RunLoop.main.add(t, forMode: .common)
+        modifierWatchTimer = t
+        updateArmedButtons()
+    }
+
+    func stopModifierWatch() {
+        modifierWatchTimer?.invalidate()
+        modifierWatchTimer = nil
+        armButtons(matching: [])
+    }
+
+    func updateArmedButtons() {
+        guard statusBubbleWindow?.isVisible == true, !isDismissing else {
+            armButtons(matching: [])
+            return
+        }
+        armButtons(matching: NSEvent.modifierFlags.intersection(Self.armableModifiers))
+    }
+
+    private func armButtons(matching held: NSEvent.ModifierFlags) {
+        func armed(_ name: KeyboardShortcuts.Name) -> Bool {
+            guard !held.isEmpty, let shortcut = KeyboardShortcuts.getShortcut(for: name) else { return false }
+            return shortcut.modifiers.intersection(Self.armableModifiers) == held
+        }
+        // A choice card parks option 0 in allowButtonRef (so the ⌘⏎ flash
+        // path has something to flash) — arm the options by their own
+        // shortcuts and leave the decision names out of it.
+        let optionButtons = (statusBubbleWindow?.contentView?.subviews ?? [])
+            .compactMap { $0 as? PressablePillButton }
+            .filter { $0.action == #selector(chooseOption(_:)) }
+        if !optionButtons.isEmpty {
+            for button in optionButtons {
+                let name = ApprovalHotKeys.choiceNames.indices.contains(button.tag)
+                    ? ApprovalHotKeys.choiceNames[button.tag] : nil
+                button.setArmed(name.map(armed) ?? false)
+            }
+            return
+        }
+        allowButtonRef?.setArmed(armed(.approvalAllow))
+        denyButtonRef?.setArmed(armed(.approvalDeny))
+        alwaysButtonRef?.setArmed(armed(.approvalQuiet))
     }
 
     func positionStatusBubble(above petWindow: NSWindow) {

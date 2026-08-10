@@ -53,7 +53,9 @@ final class ApprovalHotKeys {
     var onQueuePick: ((Int) -> Void)?
 
     private static let decisionNames: [KeyboardShortcuts.Name] = [.approvalAllow, .approvalDeny, .approvalQuiet]
-    private static let choiceNames: [KeyboardShortcuts.Name] = [.choice1, .choice2, .choice3, .choice4]
+    // Internal (not private) so the card can look up a choice button's
+    // shortcut when deciding which buttons to light up as "armed".
+    static let choiceNames: [KeyboardShortcuts.Name] = [.choice1, .choice2, .choice3, .choice4]
     private static let queueNames: [KeyboardShortcuts.Name] = [
         .queue1, .queue2, .queue3, .queue4, .queue5, .queue6, .queue7, .queue8, .queue9,
     ]

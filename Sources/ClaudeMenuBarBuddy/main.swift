@@ -343,6 +343,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     // What the card's quiet third row does for the CURRENT request (always
     // allow / auto-edits / review in VS Code) — ⌥⌘⏎ triggers it too.
     var currentQuietAction: (() -> Void)?
+    // Ticks only while a card is on screen: samples the hardware modifier
+    // state so the button whose shortcut is half-held (⌘ down, ⏎ not yet)
+    // lights up "armed". Polled because the panel is non-activating (no
+    // local flagsChanged events reach us) and a global monitor would drag
+    // in the Accessibility permission this app deliberately does without.
+    var modifierWatchTimer: Timer?
     // True while the verdict/exit animation runs — poll() must not surface
     // the next queued request (or rebuild the card) mid-animation, and a
     // second ⌘⏎ mash must not double-respond.
