@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# UserPromptSubmit + Stop hook — notifies when a turn that took a while
+# UserPromptSubmit + Stop + PreCompact hook — notifies when a turn that took a while
 # (not every turn — quick back-and-forth doesn't need a notification,
 # you're already watching) finishes. No approve/deny decision needed here,
 # so unlike hook.sh this never routes through the menu bar app or waits on
@@ -67,6 +67,14 @@ case "$EVENT" in
         fi
       fi
     fi
+    ;;
+  PreCompact)
+    # Context compaction starting (manual /compact or auto) — drop a marker
+    # so the pet can sit this one out in lotus position. Marker only: the
+    # app's 1s poll picks it up and times the meditation itself, since
+    # there is no "compact finished" event to hang the end on.
+    jq -n --arg project "$PROJECT_NAME" \
+      '{project: $project, ts: now}' > "$DIR/compact_${SESSION_ID}.json"
     ;;
 esac
 

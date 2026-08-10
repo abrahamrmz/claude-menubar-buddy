@@ -103,7 +103,67 @@ MOODS = {
                   "slow sad slump, sniffling", 700),
     "excited":   ("excited and amazed, star-shaped eyes, mouth open in a big grin",
                   "excited jumping up and down", 170),
+    # Shown while Claude Code compacts its context — the pet sits it out in
+    # lotus position. Slow tempo on purpose: compaction is the one moment
+    # nothing is asked of anyone.
+    "meditate":  ("sitting cross-legged in a peaceful meditation pose, eyes gently "
+                  "closed, serene slight smile, paws resting on the knees, "
+                  "face fully visible",
+                  "meditating, slow deep breaths, floating gently up and down", 600),
 }
+
+# Species-specific replacement for a mood's (edit, motion, tempo). The shared
+# MOODS table dresses every species alike; an entry here re-poses one species
+# without changing the family vocabulary. The koala's pending swaps "alert
+# ears" for a raised paw — the lightbulb that goes with it is NOT in the
+# prompt: props this small land wherever the model feels like, so it's
+# composited pixel-by-pixel in add_lightbulb() where its position and blink
+# are exact.
+OVERRIDES = {
+    ("koala", "pending"): (
+        "one paw raised high beside the head like eagerly raising a hand in "
+        "class, the other arm at its side, alert attentive wide-open eyes, "
+        "face fully visible, both eyes visible",
+        "holding the paw raised high, waving it eagerly, ears twitching", 250),
+}
+
+
+def mood_spec(species, mood):
+    return OVERRIDES.get((species, mood), MOODS[mood])
+
+
+# A 6x8 pixel lightbulb, blinking above the koala's ear while it raises its
+# paw. Drawn in the one region of the 64px crop box that every mood leaves
+# empty (the sprite union stops at x=86; the crop runs to x=92) — directly
+# above the head there are only 2 free rows, which is why the bulb sits
+# beside the ear rather than centred. Composited after animation so the
+# blink is a deliberate per-frame choice instead of a prayer to the model.
+BULB_ROWS = [
+    ".####.",
+    "######",
+    "##W###",
+    "######",
+    ".####.",
+    "..bb..",
+    "..bb..",
+    "...b..",
+]
+BULB_PALETTES = {
+    # on: warm glowing yellow with a white shine; off: dark unlit amber.
+    True:  {"#": (255, 226, 74, 255), "W": (255, 255, 255, 255), "b": (138, 138, 138, 255)},
+    False: {"#": (84, 74, 40, 255),   "W": (110, 100, 60, 255),  "b": (94, 94, 94, 255)},
+}
+BULB_ORIGIN = (86, 29)  # field coordinates, inside the frozen crop box
+
+
+def add_lightbulb(frames):
+    for i, frame in enumerate(frames):
+        palette = BULB_PALETTES[i % 2 == 0]
+        for dy, row in enumerate(BULB_ROWS):
+            for dx, ch in enumerate(row):
+                if ch != ".":
+                    frame.putpixel((BULB_ORIGIN[0] + dx, BULB_ORIGIN[1] + dy), palette[ch])
+    return frames
 
 # The nine that MoodEngine can't fake. thinking/excited/sad are omitted from
 # CORE because gifName already degrades them to working/celebrate/tired, which
@@ -113,8 +173,13 @@ CORE = ["idle", "pending", "working", "tired", "stressed",
         "critical", "asleep", "heart", "celebrate"]
 FULL = list(MOODS)
 
-# Each pet gets its own neon so they read apart at a glance, and the same
-# sentence shape so they read as one family.
+# Each pet gets its own neon AND its own piece of tech, worn somewhere
+# different on the body — an eye, a forehead, an arm, a tail — so they read
+# as four characters and not one character recolored. One rule bounds the
+# designs: the mood edits live in the eyes (hearts, X marks, drooping lids),
+# so every pet keeps at least one organic eye free to emote with. The koala
+# gets away with an eye implant because it only takes one eye; a visor
+# across both would fight nearly every mood.
 #
 # Posture is stated outright even though the koala never needed it: left to
 # itself the model drew the piglet on four legs in profile and the cat
@@ -134,16 +199,17 @@ PETS = {
                     "one glowing cyan bionic eye with a thin metal rim, small neon "
                     "circuit accents on the fur, friendly and charismatic"),
     "piglet": (CORE, f"cyberpunk piglet mascot, {UPRIGHT_PIG}, round pink snout, small "
-                     "floppy ears, one glowing magenta bionic eye with a thin metal "
-                     "rim, small neon circuit accents on the skin, friendly and "
-                     "charismatic"),
+                     "floppy ears, glowing magenta tech goggles pushed up on the "
+                     "forehead above both fully visible eyes, small neon circuit "
+                     "accents on the skin, friendly and charismatic"),
     "panda": (CORE, f"cyberpunk panda mascot, {UPRIGHT}, round black ears, black eye "
-                    "patches, fluffy fur, one glowing green bionic eye with a thin "
-                    "metal rim, small neon circuit accents on the fur, friendly and "
-                    "charismatic"),
-    "kitty": (CORE, f"cyberpunk cat mascot, {UPRIGHT}, pointed ears, small pink nose, "
-                    "fluffy fur, one glowing amber bionic eye with a thin metal rim, "
-                    "small neon circuit accents on the fur, friendly and charismatic"),
+                    "patches, fluffy fur, one robotic arm with glowing green circuit "
+                    "lines and a small metal shoulder plate, both eyes natural and "
+                    "visible, friendly and charismatic"),
+    "kitty": (CORE, f"cyberpunk cat mascot, {UPRIGHT}, pointed ears with glowing amber "
+                    "LED tips, small pink nose, fluffy fur, a segmented robotic tail "
+                    "with an amber glowing tip, both eyes natural and visible, "
+                    "friendly and charismatic"),
 }
 
 TOKEN = None
@@ -365,7 +431,7 @@ def crop_frames(frames, crop, label):
 
 
 def frames_for(species, mood, manifest):
-    edit, action, _ = MOODS[mood]
+    edit, action, _ = mood_spec(species, mood)
     print(f"{mood}:")
     still = still_for(species, mood, edit, manifest)
     print("  animate-with-text-v3 — 1 generation")
@@ -374,12 +440,14 @@ def frames_for(species, mood, manifest):
     # only make the pet hang for an extra beat on the pose it just held.
     if len(frames) > 1 and frames[0].tobytes() == frames[-1].tobytes():
         frames = frames[:-1]
+    if species == "koala" and mood == "pending":
+        frames = add_lightbulb(frames)
     return frames
 
 
 def write_gif(species, mood, frames):
     path = f"{OUT_DIR}/{species}_{mood}.gif"
-    duration = MOODS[mood][2]
+    duration = mood_spec(species, mood)[2]
     frames[0].save(path, save_all=True, append_images=frames[1:],
                    duration=[duration] * len(frames), loop=0, disposal=2)
     print(f"  wrote {path} — {len(frames)} frames, {frames[0].size[0]}px")

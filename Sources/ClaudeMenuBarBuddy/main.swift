@@ -873,6 +873,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
 
         processDoneMarkers()
+        processCompactMarkers()
         // Background usage/mood/session-count refresh, throttled to every
         // ~5s — cheap thanks to UsageReader's per-file token cache (stat
         // per file, read appended bytes only). Runs regardless of the

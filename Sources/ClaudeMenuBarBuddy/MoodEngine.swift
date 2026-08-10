@@ -36,6 +36,7 @@ extension AppDelegate {
         case "asleep": return "💤 Fast asleep (5h limit reached)"
         case "sad": return "😔 Aw, denied"
         case "excited": return "🤩 A new session said hi!"
+        case "meditate": return "🧘 Meditating — compacting context"
         default: return "🐼 Active and happy"
         }
     }
@@ -137,6 +138,10 @@ extension AppDelegate {
         case "thinking": return ["thinking", "working"]
         case "excited": return ["excited", "celebrate", "heart"]
         case "sad": return ["sad", "tired"]
+        // Species without meditation art sit compaction out looking
+        // thoughtful — NOT asleep, whose Z means "limit reached" and would
+        // read as a much worse thing than a tidy-up.
+        case "meditate": return ["meditate", "thinking"]
         default: return [mood]
         }
     }
@@ -173,6 +178,32 @@ extension AppDelegate {
             floatingImageView.setAccessibilityLabel(spoken)
         }
         applyAnimationPolicy()
+    }
+
+    /// Picks up compact_<session>.json markers written by notify-done.sh on
+    /// PreCompact and sends the pet into a meditation while Claude Code
+    /// squeezes its context down. Fixed-length pose: there is no "compact
+    /// finished" event to hang the end on, and ~25s covers a typical
+    /// compaction without the pet looking stuck. Markers are consumed on
+    /// sight, same as the done_ ones.
+    func processCompactMarkers() {
+        let fm = FileManager.default
+        let now = Date().timeIntervalSince1970
+        var compacting = false
+        for url in dirEntries where url.lastPathComponent.hasPrefix("compact_") && url.pathExtension == "json" {
+            defer { try? fm.removeItem(at: url) }
+            guard let data = try? Data(contentsOf: url),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+            // Stale marker (written while the app wasn't running): the
+            // compaction it announced is long over.
+            if let ts = obj["ts"] as? Double, now - ts > 60 { continue }
+            compacting = true
+        }
+        // An approval card keeps the spotlight — the pet stays in its
+        // wide-eyed pending pose instead of serenely closing its eyes right
+        // next to a question it is asking you.
+        guard compacting, currentRequestId == nil else { return }
+        flashMood("meditate", for: 25.0)
     }
 
     // Shows a mood GIF ("heart" on click, "celebrate" on limit reset) for a
