@@ -182,6 +182,10 @@ extension AppDelegate {
             setGif(on: floatingImageView, named: gifName(for: selectedSpecies, mood: mood))
             floatingImageView.setAccessibilityLabel(spoken)
         }
+        // A transition worth narrating gets a one-line speech bubble at the
+        // pet; showSpeechBubble applies its own suppressions and cooldowns,
+        // so this fires on every change and stays rare on screen.
+        if let line = bubbleText(for: mood) { showSpeechBubble(line) }
         applyAnimationPolicy()
     }
 

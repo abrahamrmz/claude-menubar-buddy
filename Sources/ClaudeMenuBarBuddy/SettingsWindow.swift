@@ -257,6 +257,12 @@ extension AppDelegate {
             calm.state = self.calmPet ? .on : .off
             form.wideRow(calm)
             form.note("Turns off the gentle bob, the occasional stretch and the cursor reaction. The animations themselves stay.")
+
+            let bubbles = NSButton(checkboxWithTitle: "Speech bubbles",
+                                   target: self, action: #selector(self.speechBubblesCheckboxChanged(_:)))
+            bubbles.state = self.speechBubbles ? .on : .off
+            form.wideRow(bubbles)
+            form.note("An occasional one-liner at the pet — compacting, limit moods, pace warnings. Never over an approval card, and never chatty.")
         }
     }
 
@@ -297,6 +303,11 @@ extension AppDelegate {
     @objc func calmPetCheckboxChanged(_ sender: NSButton) {
         calmPet = sender.state == .on
         applyFidgetPolicy()
+    }
+
+    @objc func speechBubblesCheckboxChanged(_ sender: NSButton) {
+        speechBubbles = sender.state == .on
+        if !speechBubbles { hideSpeechBubble() }
     }
 
     // MARK: - Safety

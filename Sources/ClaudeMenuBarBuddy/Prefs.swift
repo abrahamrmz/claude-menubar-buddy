@@ -34,6 +34,8 @@ extension Defaults.Keys {
     // reaction) — the GIFs still animate, the pet just holds still between
     // frames. See Fidgets.swift.
     static let calmPet = Key<Bool>("calmPet", default: false)
+    // The pet's occasional one-line speech bubble (SpeechBubble.swift).
+    static let speechBubbles = Key<Bool>("speechBubbles", default: true)
 }
 
 extension AppDelegate {
@@ -75,6 +77,11 @@ extension AppDelegate {
     var projectedWarnings: Bool {
         get { Defaults[.projectedWarnings] }
         set { Defaults[.projectedWarnings] = newValue }
+    }
+
+    var speechBubbles: Bool {
+        get { Defaults[.speechBubbles] }
+        set { Defaults[.speechBubbles] = newValue }
     }
 
     // MARK: - Start at login

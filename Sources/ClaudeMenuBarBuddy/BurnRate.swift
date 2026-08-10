@@ -158,6 +158,8 @@ extension AppDelegate {
                 title: "Claude 5-hour limit heading for \(target)%",
                 body: String(format: "At %.0f%%/h you'd hit %d%% around %@ (now %d%%).",
                              slope, target, BurnRate.formatClock(eta), pct))
+            // The pet says the short version of the same warning.
+            showSpeechBubble("⏳ \(target)% ≈ \(BurnRate.formatClock(eta))")
         }
     }
 }

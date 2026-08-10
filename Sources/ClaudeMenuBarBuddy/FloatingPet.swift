@@ -166,6 +166,7 @@ extension AppDelegate {
         floatingWindow?.orderOut(nil)
         hideStatusBubble()
         hideDoneToast()
+        hideSpeechBubble()
         // orderOut flips isVisible, which is one of the fidget conditions.
         applyFidgetPolicy()
     }
@@ -230,6 +231,10 @@ extension AppDelegate {
             Defaults[.floatingPetOrigin] = NSStringFromPoint(window.frame.origin)
             if statusBubbleWindow?.isVisible == true {
                 positionStatusBubble(above: window)
+            }
+            // The speech bubble follows the pet it's speaking from.
+            if let bubble = speechBubbleWindow, bubble.isVisible {
+                bubble.setFrameOrigin(originNearPet(for: bubble.frame.size))
             }
         } else if let panel = notification.object as? NSWindow, panel === statusBubbleWindow,
                   let pet = floatingWindow {

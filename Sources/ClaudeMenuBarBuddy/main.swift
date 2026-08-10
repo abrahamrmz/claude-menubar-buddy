@@ -373,6 +373,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     // Turn-finished toast (see Toast.swift).
     var toastWindow: NSPanel?
     var toastDismissWorkItem: DispatchWorkItem?
+    // The pet's speech bubble (SpeechBubble.swift). The two "last" fields
+    // are its rate limiter — the bubble should feel like an aside, not a
+    // ticker, so repeats and rapid-fire are dropped at the source.
+    var speechBubbleWindow: NSPanel?
+    var speechBubbleDismissWork: DispatchWorkItem?
+    var lastSpeechBubbleText: String?
+    var lastSpeechBubbleAt = Date.distantPast
     // Toast minimum duration now lives in Defaults (Settings ▸ Behavior);
     // see Prefs.swift.
 
@@ -898,6 +905,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         if debugCapturesEnabled {
             captureCardSelfieIfRequested()
             capturePetSelfieIfRequested()
+            captureBubbleSelfieIfRequested()
             captureIconSelfieIfRequested()
             captureSettingsSelfieIfRequested()
             captureOnboardingSelfieIfRequested()
