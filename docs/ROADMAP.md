@@ -233,6 +233,21 @@ El usuario reportó una "silueta fantasma transparente", más visible al cambiar
 - **Descartado con evidencia antes de llegar ahí**: (a) el arte — los 4 frames de `celebrate` renderizados sobre magenta salen limpios, sin residuo; (b) el `disposal` del GIF, que era la sospecha propia más probable tras recodificar con ImageIO — parseados los bytes del GCE, los recortados traen `disposal 2, transparent 1`, idéntico a los originales de PIL y al panda.
 - **No verificable localmente**: `CGWindowListCreateImage` —la vía para que un proceso se capture a sí mismo *con* sombra, sin permisos— está **obsoleta en macOS 15**, y su reemplazo exige Grabación de Pantalla. El diagnóstico se cerró con la confirmación visual del usuario, no con una captura.
 
+#### 2.8f ✅ Botones armados por modificador (2026-08-10)
+Con una tarjeta arriba, mantener los modificadores de un atajo (⌘ para Allow, ⇧⌘ para Deny, ⌥⌘ para la fila quiet, ⌘ solo para las opciones) ilumina el botón correspondiente — borde blanco + crecimiento leve — para ver dónde caerá el ⏎ antes de soltarlo.
+- **Polling a 20Hz de `NSEvent.modifierFlags`, no monitor global**: el panel es no-activante, así que ningún `flagsChanged` local llega a la app, y un monitor global arrastraría el permiso de Accesibilidad que este proyecto evita a propósito. El timer vive **solo mientras hay tarjeta visible** — costo idle cero.
+- Compara contra los atajos **grabados** del usuario (`KeyboardShortcuts.getShortcut`), así que los remaps siguen funcionando.
+- `setPressed(false)` regresa a la pose armada (no a `.identity`) si el modificador sigue abajo; los bordes de acento de las opciones se guardan y restauran (`restingBorderWidth/Color`).
+- Verificado en vivo con tarjeta real: ⌘ arma Allow, ⇧⌘ cambia a Deny, ⌥⌘ a la fila quiet, soltar desarma.
+
+#### 2.8g ✅ Mano alzada en pending + meditación en compact (2026-08-10)
+Dos gestos nuevos para el koala, validados por el usuario.
+- **Pending — pata alzada + foquito.** `OVERRIDES` por (especie, mood) en `generate_pets.py` le da al koala una pata alzada como pidiendo la palabra. El foquito es `add_lightbulb()`: 6×8 píxeles compuestos **programáticamente** en la esquina superior derecha del crop congelado, parpadeando por frame alterno. Composición y no prompt por dos razones: la unión de sprites deja solo 2px libres directamente sobre la cabeza (centrarlo habría obligado a encoger al pet, lienzo 64→128), y un prompt sobre la posición es una esperanza mientras que un offset es un hecho — el precedente es el pixel art a mano del panda.
+- **Meditate — flor de loto en PreCompact.** Hook nuevo `PreCompact` en `settings.json` → `notify-done.sh` escribe `compact_<session>.json` → `processCompactMarkers()` en el poll de 1s dispara `flashMood("meditate", 25s)`. Duración fija porque **no existe evento de "compact terminó"**. Una tarjeta activa conserva el spotlight (`currentRequestId == nil` de guarda), y las especies sin ese arte degradan a `thinking` — no a `asleep`, cuya Z significa "límite alcanzado".
+- **`still_for` reusa el estado pagado aunque el prompt de edición cambie** (gotcha del generador): para regenerar `pending` hubo que borrar a mano `character_ids.pending` + `stills.pending` del manifest y el PNG cacheado.
+- Costo: 42 generaciones (balance 1718/2000). Verificado en vivo con selfies: pata alzada + foquito en las coords exactas (x 58-63, y 0-7, encendido en frames 0/2), y loto tras un marcador de compact.
+- Pendiente conocido: `meditate` solo existe para el koala (el buddy y las 19 restantes degradan) y **SKILL.md aún no documenta PreCompact** — va en Fase 4.
+
 ## Fase 3 — Pulido (~3-4 días)
 
 ### 3.1 Fidgets ambientales (solo Core Animation)
@@ -242,6 +257,55 @@ En `floatingImageView.layer`: bob = CABasicAnimation `transform.translation.y` �
 
 ### 3.2 Pulido final
 Accesibilidad de la página web (botones reales, aria-live), campo `"via":"web"` en decisions.jsonl, copy de Settings, README + SKILL.md (campos nuevos del hook, nota de firewall, start-at-login por LaunchAgent), muestreo de CPU con `/usr/bin/time -l`.
+
+---
+
+# Segundo ciclo — Fases 4-6 (planeado 2026-08-10)
+
+Sale de un inventario completo del repo (features, señales, assets, hardcodeos) + decisiones del usuario: entra todo lo de abajo; **la 2.4 (web + QR) sigue pospuesta** (reconfirmado 2026-08-10). La 3.1 (fidgets) se absorbe aquí como 5.1; la 3.2 se reparte entre la Fase 4 (docs/copy) y lo que la 2.4 desbloquee algún día (accesibilidad web).
+
+## Fase 4 — Correcciones (~½-1 día, primera en ejecutarse)
+
+Todo salió del inventario; el 1 es de seguridad y no es opcional:
+
+1. **Copy peligroso en `Onboarding.swift:252`**: describe ⌥⌘⏎ como "Deny quietly — no card, no note back to Claude". Es lo contrario — es always-allow / auto-approve-edits / auto-accept del plan: el usuario cree que niega y en realidad otorga un permiso permanente. Corregir también "There are 19 pets" (:297 — son 20).
+2. **Matchers faltantes**: `MultiEdit` y `WebSearch` tienen acento/color en la tarjeta y fast-path en hook.sh, pero no están en `expectedMatchers` (Health.swift) ni en `settings.json` ni en SKILL.md — nunca llega una tarjeta de ellos. Cablearlos (aditivo, como siempre).
+3. **SKILL.md no documenta PreCompact**: una reinstalación desde SKILL.md perdería el mood meditate.
+4. **`petMoodText` default `🐼 Active and happy`**: emoji de panda hardcodeado para las 20 especies.
+5. **Limpieza del config dir**: nada borra `response_*.json` huérfanos, `turn_start_*` de sesiones muertas ni `*_selfie.png`. Barrido al arrancar (edad > 1 día).
+6. **Rotación de `decisions.jsonl`** (420 KB y creciendo): rotar a `decisions.1.jsonl` al pasar ~1 MB.
+7. `moodGifCandidates("meditate")`: terminar la cadena explícitamente en idle (hoy depende del fallback implícito de `gifName`).
+
+## Fase 5 — Estética
+
+### 5.1 Fidgets ambientales (la 3.1 de arriba, sin cambios de diseño)
+Bob ±2pt/3.5s con CABasicAnimation (GPU), squash ocasional con jitter 30-90s, NSTrackingArea para el cursor. Pausado obligatorio al ocultar/tapar; kill-switch "Calm pet" en Settings ▸ Appearance. Verificar: CPU idle idéntico en Activity Monitor.
+
+### 5.2 Pet flotante acariciable
+Hoy `DraggablePetImageView` solo arrastra; el clic→heart+Tink vive solo en el pet del menú (`petClicked`). Distinguir clic de drag por umbral de movimiento (~3pt entre mouseDown/mouseUp) y disparar el mismo `petClicked`. El pet más visible es hoy el único que no se puede acariciar.
+
+### 5.3 Burbujas de diálogo
+Globito ocasional junto al pet flotante con contexto corto ("compactando…", "3 sesiones activas", "90% ≈ 16:40"). Reusar el patrón del Toast (panel `ignoresMouseEvents`, `originNearPet()`), tipografía pequeña, auto-dismiss. Frecuencia baja (no ruido) y suprimida con tarjeta visible.
+
+### 5.4 Arte PixelLab (~570 de 1718 generaciones del mes)
+- **Terminar kitty, panda y piglet** (~169 c/u; base ya pagada en sus manifests, cero GIFs hoy). Antes, resolver la colisión de nombres del picker: `panda` (PixelLab) vs `buddy` (panda dibujado) y `kitty` vs `cat` (firmware) — nombres de display distintos en Settings ▸ Appearance (los ids internos ya son distintos). Añadirlas a `species.txt`.
+- **2-3 gestos nuevos del koala** (~21 c/u): saludo al detectar sesión nueva (hoy `excited` genérico), bostezo/estiramiento como variación de idle largo (engancha con 5.1), baile para celebrate. Prompts en `OVERRIDES`/`MOODS`, mismo pipeline, crop congelado.
+- Decidir por gesto si las especies nuevas lo reciben o degradan vía `moodGifCandidates`.
+
+## Fase 6 — Productividad
+
+### 6.1 Estadísticas de decisiones
+`decisions.jsonl` ya tiene ts/tool/project/decision/host/answers. El submenú Decision History gana cabecera de resumen (hoy/semana: N aprobadas, M denegadas, tool más frecuente, proyecto más activo). Sin ventana nueva de entrada — el menú es el hábitat de la app.
+
+### 6.2 Always-allow por proyecto
+Hoy `always_allow.json` es global. La fila quiet ofrece "Always allow `git push` **in proyX**"; `hook.sh` compara contra `{global: [...], projects: {...}}` usando el `cwd` que ya captura. Migración: la lista actual pasa a `global`. La tabla de Settings ▸ Safety gana columna de proyecto.
+
+### 6.3 Configurables
+Toggle "Sounds" en Settings ▸ Behavior (Ping/Tink/Glass) · duración de meditación y staleness del plan como keys de Defaults (primero la key, UI solo si se pide) · unificar el umbral duplicado `MIN_SECONDS_TO_NOTIFY=30` (notify-done.sh) vs `toastMinSeconds` (app).
+
+## Orden del segundo ciclo
+
+**4 → 5.1+5.2 → 5.4 → 5.3 → 6.1 → 6.2 → 6.3.** El arte (5.4) se intercala donde convenga: generar es esperar API. La 2.4 sigue disponible sin bloquear a nadie.
 
 ---
 
