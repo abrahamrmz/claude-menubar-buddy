@@ -106,7 +106,9 @@ already exists — append to it, don't replace):
       { "matcher": "Bash", "hooks": [{ "type": "command", "command": "ABSOLUTE_HOME/.config/claude-menubar-buddy/hook.sh", "timeout": 60, "statusMessage": "Waiting for Claude Menu Bar Buddy..." }] },
       { "matcher": "Write", "hooks": [{ "type": "command", "command": "ABSOLUTE_HOME/.config/claude-menubar-buddy/hook.sh", "timeout": 60, "statusMessage": "Waiting for Claude Menu Bar Buddy..." }] },
       { "matcher": "Edit", "hooks": [{ "type": "command", "command": "ABSOLUTE_HOME/.config/claude-menubar-buddy/hook.sh", "timeout": 60, "statusMessage": "Waiting for Claude Menu Bar Buddy..." }] },
+      { "matcher": "MultiEdit", "hooks": [{ "type": "command", "command": "ABSOLUTE_HOME/.config/claude-menubar-buddy/hook.sh", "timeout": 60, "statusMessage": "Waiting for Claude Menu Bar Buddy..." }] },
       { "matcher": "WebFetch", "hooks": [{ "type": "command", "command": "ABSOLUTE_HOME/.config/claude-menubar-buddy/hook.sh", "timeout": 60, "statusMessage": "Waiting for Claude Menu Bar Buddy..." }] },
+      { "matcher": "WebSearch", "hooks": [{ "type": "command", "command": "ABSOLUTE_HOME/.config/claude-menubar-buddy/hook.sh", "timeout": 60, "statusMessage": "Waiting for Claude Menu Bar Buddy..." }] },
       { "matcher": "NotebookEdit", "hooks": [{ "type": "command", "command": "ABSOLUTE_HOME/.config/claude-menubar-buddy/hook.sh", "timeout": 60, "statusMessage": "Waiting for Claude Menu Bar Buddy..." }] },
       { "matcher": "ExitPlanMode", "hooks": [{ "type": "command", "command": "ABSOLUTE_HOME/.config/claude-menubar-buddy/hook.sh", "timeout": 60, "statusMessage": "Waiting for Claude Menu Bar Buddy..." }] },
       { "matcher": "AskUserQuestion", "hooks": [{ "type": "command", "command": "ABSOLUTE_HOME/.config/claude-menubar-buddy/hook.sh", "timeout": 60, "statusMessage": "Waiting for Claude Menu Bar Buddy..." }] }
@@ -128,8 +130,9 @@ during development; don't assume `~` expansion without re-testing it.
 
 ### 4b. Wire the turn-finished notification (optional but recommended)
 
-Add `UserPromptSubmit` and `Stop` entries alongside the `PreToolUse` block
-above — same file, no `matcher` field needed for these two events:
+Add `UserPromptSubmit`, `Stop` and `PreCompact` entries alongside the
+`PreToolUse` block above — same file, no `matcher` field needed for these
+events:
 
 ```json
 {
@@ -138,6 +141,9 @@ above — same file, no `matcher` field needed for these two events:
       { "hooks": [{ "type": "command", "command": "ABSOLUTE_HOME/.config/claude-menubar-buddy/notify-done.sh", "timeout": 5 }] }
     ],
     "Stop": [
+      { "hooks": [{ "type": "command", "command": "ABSOLUTE_HOME/.config/claude-menubar-buddy/notify-done.sh", "timeout": 5 }] }
+    ],
+    "PreCompact": [
       { "hooks": [{ "type": "command", "command": "ABSOLUTE_HOME/.config/claude-menubar-buddy/notify-done.sh", "timeout": 5 }] }
     ]
   }
@@ -148,6 +154,11 @@ This fires a plain macOS notification ("Finished in 1m 20s — project-name")
 whenever a turn takes 30+ seconds — short back-and-forth stays silent since
 you're already watching. It's independent of the menu bar app being open;
 it calls `osascript` directly.
+
+`PreCompact` fires when Claude Code compacts its context (manual `/compact`
+or automatic): the script drops a marker file and the pet meditates through
+the compaction. Purely cosmetic — with the app closed the marker is simply
+ignored — but without this entry the meditate mood never triggers.
 
 Validate after writing:
 ```bash

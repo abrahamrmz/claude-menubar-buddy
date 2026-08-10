@@ -1016,6 +1016,17 @@ extension AppDelegate {
             if let answers = answers { entry["answers"] = answers }
             if let line = try? JSONSerialization.data(withJSONObject: entry) {
                 let logURL = dirURL.appendingPathComponent("decisions.jsonl")
+                // One rotation deep at ~1 MB (years of decisions): the menu
+                // only ever shows the last 10, so past a point the file is
+                // an archive nobody reads growing without bound. The .1 file
+                // keeps the previous megabyte greppable; older than that is
+                // genuinely gone, which is the accepted trade.
+                if let size = (try? FileManager.default.attributesOfItem(atPath: logURL.path))?[.size]
+                       as? Int, size > 1_000_000 {
+                    let rotatedURL = dirURL.appendingPathComponent("decisions.1.jsonl")
+                    try? FileManager.default.removeItem(at: rotatedURL)
+                    try? FileManager.default.moveItem(at: logURL, to: rotatedURL)
+                }
                 if let handle = try? FileHandle(forWritingTo: logURL) {
                     handle.seekToEndOfFile()
                     handle.write(line)

@@ -37,7 +37,10 @@ extension AppDelegate {
         case "sad": return "😔 Aw, denied"
         case "excited": return "🤩 A new session said hi!"
         case "meditate": return "🧘 Meditating — compacting context"
-        default: return "🐼 Active and happy"
+        // Species-neutral on purpose: this line follows whichever pet is
+        // selected, and a koala announcing itself with a panda face was a
+        // leftover from when the panda was the only pet.
+        default: return "😊 Active and happy"
         }
     }
 
@@ -140,8 +143,10 @@ extension AppDelegate {
         case "sad": return ["sad", "tired"]
         // Species without meditation art sit compaction out looking
         // thoughtful — NOT asleep, whose Z means "limit reached" and would
-        // read as a much worse thing than a tidy-up.
-        case "meditate": return ["meditate", "thinking"]
+        // read as a much worse thing than a tidy-up. Idle is spelled out as
+        // the end of the chain rather than left to gifName's implicit
+        // fallback, so this list reads as the complete policy.
+        case "meditate": return ["meditate", "thinking", "idle"]
         default: return [mood]
         }
     }

@@ -133,11 +133,15 @@ HINT_INFO="$(echo "$INPUT" | jq -r '
     "PLAN PROPUESTO\n" + .tool_input.plan
   elif .tool_name == "Edit" and .tool_input.old_string != null then
     (.tool_input.file_path // "?") + "\n--- quita\n" + .tool_input.old_string + "\n+++ pone\n" + .tool_input.new_string
+  elif .tool_name == "MultiEdit" and (.tool_input.edits | length) > 0 then
+    (.tool_input.file_path // "?") + "\n" +
+    ([.tool_input.edits[] | "--- quita\n" + (.old_string // "") + "\n+++ pone\n" + (.new_string // "")] | join("\n"))
   elif .tool_name == "Write" and .tool_input.content != null then
     (.tool_input.file_path // "?") + "\n+++ contenido\n" + .tool_input.content
   elif .tool_input.command then .tool_input.command
   elif .tool_input.file_path then .tool_input.file_path
   elif .tool_input.url then .tool_input.url
+  elif .tool_input.query then .tool_input.query
   else (.tool_input | tostring)
   end) as $full
   | (($full | length) - 20000) as $over

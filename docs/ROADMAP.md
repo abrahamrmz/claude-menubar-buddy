@@ -264,7 +264,7 @@ Accesibilidad de la página web (botones reales, aria-live), campo `"via":"web"`
 
 Sale de un inventario completo del repo (features, señales, assets, hardcodeos) + decisiones del usuario: entra todo lo de abajo; **la 2.4 (web + QR) sigue pospuesta** (reconfirmado 2026-08-10). La 3.1 (fidgets) se absorbe aquí como 5.1; la 3.2 se reparte entre la Fase 4 (docs/copy) y lo que la 2.4 desbloquee algún día (accesibilidad web).
 
-## Fase 4 — Correcciones (~½-1 día, primera en ejecutarse)
+## Fase 4 — Correcciones ✅ 2026-08-10
 
 Todo salió del inventario; el 1 es de seguridad y no es opcional:
 
@@ -275,6 +275,8 @@ Todo salió del inventario; el 1 es de seguridad y no es opcional:
 5. **Limpieza del config dir**: nada borra `response_*.json` huérfanos, `turn_start_*` de sesiones muertas ni `*_selfie.png`. Barrido al arrancar (edad > 1 día).
 6. **Rotación de `decisions.jsonl`** (420 KB y creciendo): rotar a `decisions.1.jsonl` al pasar ~1 MB.
 7. `moodGifCandidates("meditate")`: terminar la cadena explícitamente en idle (hoy depende del fallback implícito de `gifName`).
+
+- Implementado 2026-08-10, los 7 en una sesión. Notas: el `settings.json` vivo ganó los matchers `MultiEdit`/`WebSearch` por jq aditivo (respaldo + validación antes de reemplazar); `hook.sh` además aprendió a armar el hint de ambos (multi-diff por edit para MultiEdit, `query` para WebSearch — antes habría caído al `tostring` del tool_input). El barrido de arranque se **verificó en vivo**: se llevó 6 `response_*` huérfanos, 3 selfies y un `turn_start` muerto, y conservó el de la sesión activa — ojo, el primer `find` tras el kickstart ganó la carrera al arranque y pareció que no barría; era el SIGKILL de codesigning documentado retrasando el relanzamiento. La rotación del log se verificó **aislada** con el bloque exacto de `writeDecision` (1.2MB → `.1`, log nuevo por la vía del fallback); en vivo se disparará sola al cruzar 1 MB (hoy va en ~420 KB).
 
 ## Fase 5 — Estética
 

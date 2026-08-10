@@ -249,7 +249,11 @@ extension AppDelegate {
         let bound: [(KeyboardShortcuts.Name, String)] = [
             (.approvalAllow, "Allow the request"),
             (.approvalDeny, "Deny it"),
-            (.approvalQuiet, "Deny quietly — no card, no note back to Claude"),
+            // This one GRANTS: always-allow for the Bash base command,
+            // auto-approve for edits, auto-accept for a plan. It was once
+            // described here as "deny quietly", which is the most dangerous
+            // possible way to be wrong about a key.
+            (.approvalQuiet, "The card's ⚡ row — always-allow this command, or auto-approve edits"),
             (.jumpToHost, "Jump to the editor or terminal that's asking"),
         ]
         var rows: [NSView] = [
@@ -294,10 +298,11 @@ extension AppDelegate {
             body("It also reacts to what's happening: heads-down while tools run, "
                  + "thinking while Claude does, and a little celebration when the "
                  + "limit resets."),
-            footnote("There are 19 pets, each animated with the pose choreography from "
-                     + "the Claude hardware buddy's firmware. Pick yours in Settings › "
-                     + "Appearance, and drag the floating pet anywhere you like — or turn "
-                     + "it off from the menu."),
+            footnote("There are 20 pets — most animated with the pose choreography "
+                     + "from the Claude hardware buddy's firmware, plus a hand-drawn "
+                     + "panda and a pixel-art koala with the full set of moods. Pick "
+                     + "yours in Settings › Appearance, and drag the floating pet "
+                     + "anywhere you like — or turn it off from the menu."),
         ])
     }
 

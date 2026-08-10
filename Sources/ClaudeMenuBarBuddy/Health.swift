@@ -32,11 +32,15 @@ struct BuddyHealth {
     var blockingProblems: [Check] { checks.filter { !$0.ok && !$0.optional } }
     var isHealthy: Bool { blockingProblems.isEmpty }
 
-    /// Matchers SKILL.md wires up. Bash/Write/Edit/WebFetch/NotebookEdit are
-    /// permission decisions; the last two are the card answering a question
-    /// instead (a plan to accept three ways, and a multiple-choice ask).
-    static let expectedMatchers = ["Bash", "Write", "Edit", "WebFetch",
-                                   "NotebookEdit", "ExitPlanMode", "AskUserQuestion"]
+    /// Matchers SKILL.md wires up. The file-and-web tools are permission
+    /// decisions; ExitPlanMode and AskUserQuestion are the card answering a
+    /// question instead (a plan to accept three ways, and a multiple-choice
+    /// ask). MultiEdit and WebSearch were the card's own blind spot for a
+    /// while — both had an accent color and a fast path but no matcher, so
+    /// their cards could never arrive.
+    static let expectedMatchers = ["Bash", "Write", "Edit", "MultiEdit",
+                                   "WebFetch", "WebSearch", "NotebookEdit",
+                                   "ExitPlanMode", "AskUserQuestion"]
 
     static var hookURL: URL { dirURL.appendingPathComponent("hook.sh") }
     static var notifyURL: URL { dirURL.appendingPathComponent("notify-done.sh") }

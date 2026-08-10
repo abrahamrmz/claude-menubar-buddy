@@ -373,10 +373,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     // Toast minimum duration now lives in Defaults (Settings ▸ Behavior);
     // see Prefs.swift.
 
+    /// One sweep at launch for the debris the live protocol can't clean up
+    /// itself: response files whose hook died before consuming them,
+    /// turn-start markers from sessions killed mid-turn while the app wasn't
+    /// running, and debug selfies. A day of age is the line — everything the
+    /// protocol actually uses lives for seconds (responses) or is capped at
+    /// 30 minutes (turn markers), so anything older is guaranteed garbage.
+    func sweepStaleArtifacts() {
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(
+            at: dirURL, includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]) else { return }
+        let now = Date()
+        for url in entries {
+            let name = url.lastPathComponent
+            let sweepable = name.hasPrefix("response_") || name.hasPrefix("turn_start_")
+                || name.hasSuffix("_selfie.png")
+            guard sweepable,
+                  let mtime = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
+                      .contentModificationDate,
+                  now.timeIntervalSince(mtime) > 24 * 60 * 60 else { continue }
+            try? fm.removeItem(at: url)
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Owner-only. This directory carries the command, diff or file content
-        // of every pending request, plus a decision log that is never rotated
-        // by design. The hook creates it with the shell's umask — 0755 on a
+        // of every pending request, plus the decision log and its one rotated
+        // predecessor. The hook creates it with the shell's umask — 0755 on a
         // stock Mac — which on a shared or managed machine lets any other local
         // account read what Claude Code has been asked to do. Gating the debug
         // screenshots while leaving that readable would be half a fix.
@@ -388,6 +412,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             attributes: [.posixPermissions: 0o700])
         try? FileManager.default.setAttributes(
             [.posixPermissions: 0o700], ofItemAtPath: dirURL.path)
+        sweepStaleArtifacts()
 
         approvalHotKeys.onAllow = { [weak self] in self?.decideViaHotKey("allow") }
         approvalHotKeys.onDeny = { [weak self] in self?.decideViaHotKey("deny") }
