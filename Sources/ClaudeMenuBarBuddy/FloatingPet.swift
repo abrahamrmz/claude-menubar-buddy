@@ -11,6 +11,17 @@ final class DraggablePetImageView: PixelArtImageView {
     private var dragStartMouseScreenLocation: NSPoint = .zero
     private var dragStartWindowOrigin: NSPoint = .zero
 
+    /// A press that ends within this distance of where it started was a pet,
+    /// not a move. 3pt absorbs the hand tremor of a normal click without
+    /// eating any intentional drag.
+    private let clickSlop: CGFloat = 3
+
+    /// Fired on click-without-drag ("petting"), and on the cursor entering
+    /// or leaving the pet. Wired by showFloatingPet; both optional so the
+    /// view works standalone.
+    var onPet: (() -> Void)?
+    var onHover: ((Bool) -> Void)?
+
     // Without this, the first click on the pet while the app is inactive is
     // swallowed by activation and the drag never starts. The app is inactive
     // almost always once the non-activating approval card is in use (that
@@ -31,6 +42,26 @@ final class DraggablePetImageView: PixelArtImageView {
         window.setFrameOrigin(NSPoint(x: dragStartWindowOrigin.x + dx, y: dragStartWindowOrigin.y + dy))
     }
 
+    override func mouseUp(with event: NSEvent) {
+        let current = NSEvent.mouseLocation
+        let dx = current.x - dragStartMouseScreenLocation.x
+        let dy = current.y - dragStartMouseScreenLocation.y
+        if dx * dx + dy * dy <= clickSlop * clickSlop { onPet?() }
+    }
+
+    // .activeAlways, not .activeInKeyWindow: this window is never key — the
+    // whole design keeps the app inactive — so any key-window-gated tracking
+    // would simply never fire.
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas where area.owner === self { removeTrackingArea(area) }
+        addTrackingArea(NSTrackingArea(
+            rect: bounds, options: [.mouseEnteredAndExited, .activeAlways],
+            owner: self, userInfo: nil))
+    }
+
+    override func mouseEntered(with event: NSEvent) { onHover?(true) }
+    override func mouseExited(with event: NSEvent) { onHover?(false) }
 }
 
 // Codex-style floating desktop pet: a borderless, always-on-top window that
@@ -97,6 +128,10 @@ extension AppDelegate {
             let window = FloatingPetWindow(size: NSSize(width: side, height: side))
             let imageView = DraggablePetImageView(frame: NSRect(x: 0, y: 0, width: side, height: side))
             imageView.imageScaling = .scaleProportionallyUpOrDown
+            // Petting was menu-pet-only for a while — the most visible pet
+            // was the one you couldn't pet.
+            imageView.onPet = { [weak self] in self?.petClicked() }
+            imageView.onHover = { [weak self] inside in self?.petHoverChanged(inside) }
             setGif(on: imageView, named: gifName(for: selectedSpecies, mood: lastComputedMood))
             window.contentView?.addSubview(imageView)
             window.delegate = self
@@ -131,6 +166,8 @@ extension AppDelegate {
         floatingWindow?.orderOut(nil)
         hideStatusBubble()
         hideDoneToast()
+        // orderOut flips isVisible, which is one of the fidget conditions.
+        applyFidgetPolicy()
     }
 
     /// Resizes in place around the pet's current centre rather than growing

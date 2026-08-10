@@ -349,6 +349,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     // local flagsChanged events reach us) and a global monitor would drag
     // in the Accessibility permission this app deliberately does without.
     var modifierWatchTimer: Timer?
+    // One-shot, rescheduled with fresh jitter after each squash; nil whenever
+    // fidgets are stopped. See Fidgets.swift.
+    var fidgetSquashTimer: Timer?
     // True while the verdict/exit animation runs — poll() must not surface
     // the next queued request (or rebuild the card) mid-animation, and a
     // second ⌘⏎ mash must not double-respond.
@@ -599,6 +602,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         if petImageView?.animates != menuWanted {
             petImageView?.animates = menuWanted
         }
+        // Fidgets pause under the same rules as GIF frames, plus their own
+        // (occlusion, the Calm pet switch) — one choke point for both.
+        applyFidgetPolicy()
     }
 
     /// Every GIF inside a menu's custom item views. Goes through the items

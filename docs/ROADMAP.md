@@ -280,11 +280,17 @@ Todo salió del inventario; el 1 es de seguridad y no es opcional:
 
 ## Fase 5 — Estética
 
-### 5.1 Fidgets ambientales (la 3.1 de arriba, sin cambios de diseño)
+### 5.1 ✅ Fidgets ambientales (2026-08-10; la 3.1 de arriba, sin cambios de diseño)
 Bob ±2pt/3.5s con CABasicAnimation (GPU), squash ocasional con jitter 30-90s, NSTrackingArea para el cursor. Pausado obligatorio al ocultar/tapar; kill-switch "Calm pet" en Settings ▸ Appearance. Verificar: CPU idle idéntico en Activity Monitor.
+- Implementado en `Fidgets.swift` nuevo. **La política de pausa cuelga de `applyAnimationPolicy`** — el mismo choke point que ya apaga los frames de GIF en lock/sleep/GIF-swap — más la oclusión vía `windowDidChangeOcclusionState` (el delegate ya era el AppDelegate) y el estado `isVisible` en `hideFloatingPet`. Una sola regla para frames y fidgets, imposible que deriven.
+- Ancla del layer al centro con compensación de posición (mismo patrón que los botones de la tarjeta): el default de AppKit es la esquina inferior-izquierda y cada escala habría sido un ladeo.
+- El squash es un one-shot que se reagenda con jitter fresco (30-90s) — un período fijo se lee como metrónomo en dos repeticiones.
+- Hover: lean-in de 1.05 + corazón ocasional (1 de 6), nunca sobre una tarjeta activa ni encimando un flash en curso. `.activeAlways` porque esta ventana jamás es key.
+- **El riesgo del plan (layer-backing vs `animates`) se verificó y no se materializó**: 4 selfies a intervalos irregulares dieron 3 frames distintos con `wantsLayer` activo. (La primera prueba con 2 selfies salió engañosamente idéntica: el espaciado ~2.3s casi calzó con el ciclo de 2.4s del idle.) CPU en régimen 0.6-1.5% — igual a la línea base ~1.1% de la 2.5.
 
-### 5.2 Pet flotante acariciable
+### 5.2 ✅ Pet flotante acariciable (2026-08-10)
 Hoy `DraggablePetImageView` solo arrastra; el clic→heart+Tink vive solo en el pet del menú (`petClicked`). Distinguir clic de drag por umbral de movimiento (~3pt entre mouseDown/mouseUp) y disparar el mismo `petClicked`. El pet más visible es hoy el único que no se puede acariciar.
+- Implementado con `onPet`/`onHover` como closures del view (cableados en `showFloatingPet`), distancia al cuadrado contra `clickSlop²` en `mouseUp`. El drag queda intacto: solo un mouseUp a ≤3pt del mouseDown cuenta como caricia.
 
 ### 5.3 Burbujas de diálogo
 Globito ocasional junto al pet flotante con contexto corto ("compactando…", "3 sesiones activas", "90% ≈ 16:40"). Reusar el patrón del Toast (panel `ignoresMouseEvents`, `originNearPet()`), tipografía pequeña, auto-dismiss. Frecuencia baja (no ruido) y suprimida con tarjeta visible.

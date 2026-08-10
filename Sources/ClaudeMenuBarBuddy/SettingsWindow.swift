@@ -251,6 +251,12 @@ extension AppDelegate {
             floating.state = self.floatingPetVisible ? .on : .off
             form.wideRow(floating)
             form.note("The approval card appears at the pet, so hiding it also sends decisions to the menu bar dropdown instead.")
+
+            let calm = NSButton(checkboxWithTitle: "Calm pet — no idle motion",
+                                target: self, action: #selector(self.calmPetCheckboxChanged(_:)))
+            calm.state = self.calmPet ? .on : .off
+            form.wideRow(calm)
+            form.note("Turns off the gentle bob, the occasional stretch and the cursor reaction. The animations themselves stay.")
         }
     }
 
@@ -286,6 +292,11 @@ extension AppDelegate {
         let wanted = sender.state == .on
         guard wanted != floatingPetVisible else { return }
         toggleFloatingPet()
+    }
+
+    @objc func calmPetCheckboxChanged(_ sender: NSButton) {
+        calmPet = sender.state == .on
+        applyFidgetPolicy()
     }
 
     // MARK: - Safety

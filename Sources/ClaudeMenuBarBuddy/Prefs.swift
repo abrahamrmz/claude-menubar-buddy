@@ -30,6 +30,10 @@ extension Defaults.Keys {
     // Whether the burn rate is allowed to warn about a limit you haven't hit
     // yet but are on pace for.
     static let projectedWarnings = Key<Bool>("projectedWarnings", default: true)
+    // Kill-switch for the floating pet's ambient motion (bob, squash, cursor
+    // reaction) — the GIFs still animate, the pet just holds still between
+    // frames. See Fidgets.swift.
+    static let calmPet = Key<Bool>("calmPet", default: false)
 }
 
 extension AppDelegate {
