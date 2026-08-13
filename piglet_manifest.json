@@ -2,5 +2,32 @@
   "base_character_id": "b3c68031-66ad-4ea4-b69a-1195a020ef51",
   "base_prompt": "cyberpunk piglet mascot, anthropomorphic bipedal cartoon character, standing on two legs facing the viewer, arms at its sides, full body, round pink snout, small floppy ears, glowing magenta tech goggles pushed up on the forehead above both fully visible eyes, small neon circuit accents on the skin, friendly and charismatic",
   "base_south_url": "https://backblaze.pixellab.ai/file/pixellab-characters/5dfea3bd-f299-4bca-9ef3-cb4ec20d74e7/b3c68031-66ad-4ea4-b69a-1195a020ef51/rotations/south.png",
-  "seed": 20260808
+  "character_ids": {
+    "asleep": "6074ac86-c95a-4816-b032-9e49f3090465",
+    "celebrate": "365930a8-4011-4989-82dc-5563375baba7",
+    "critical": "c801495e-0fca-482a-8b24-165b1bb3408b",
+    "heart": "c40a2048-3718-4ec9-9de1-5f6ab132cfa9",
+    "pending": "6c7ad330-09cc-4925-926f-9d1170c7f3d6",
+    "stressed": "32b0a155-92e0-4b04-bcfa-23c168400259",
+    "tired": "f89c8ccc-6ea5-4368-abad-360bf186365b",
+    "working": "3f07f338-7d02-4abe-8ef3-2b9d121fa5d5"
+  },
+  "crop": [
+    26,
+    26,
+    90,
+    90
+  ],
+  "seed": 20260808,
+  "stills": {
+    "asleep": ".build/piglet/asleep.png",
+    "celebrate": ".build/piglet/celebrate.png",
+    "critical": ".build/piglet/critical.png",
+    "heart": ".build/piglet/heart.png",
+    "idle": ".build/piglet/idle.png",
+    "pending": ".build/piglet/pending.png",
+    "stressed": ".build/piglet/stressed.png",
+    "tired": ".build/piglet/tired.png",
+    "working": ".build/piglet/working.png"
+  }
 }

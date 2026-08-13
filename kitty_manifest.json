@@ -2,5 +2,32 @@
   "base_character_id": "18e1b21b-1918-4bfd-99ea-b6b2d730e6c4",
   "base_prompt": "cyberpunk cat mascot, standing upright on two hind legs facing the viewer, full body, pointed ears with glowing amber LED tips, small pink nose, fluffy fur, a segmented robotic tail with an amber glowing tip, both eyes natural and visible, friendly and charismatic",
   "base_south_url": "https://backblaze.pixellab.ai/file/pixellab-characters/5dfea3bd-f299-4bca-9ef3-cb4ec20d74e7/18e1b21b-1918-4bfd-99ea-b6b2d730e6c4/rotations/south.png",
-  "seed": 20260808
+  "character_ids": {
+    "asleep": "2baf3073-af11-447b-8e34-2d49e9d3d684",
+    "celebrate": "018d58f4-5d50-476a-97c2-c11c28304c16",
+    "critical": "3ca3123b-9a3d-4e06-bfa0-742a4bce408f",
+    "heart": "e6359d30-8d57-4a9f-8699-a4903b4501a3",
+    "pending": "c7cde03f-2c9f-4097-b8bc-47306c7a4635",
+    "stressed": "a795e879-ef55-47ba-9aa7-8583663a6fed",
+    "tired": "1fc2f717-86d8-4da5-bccd-426b543615b8",
+    "working": "0771e89b-8a4d-4736-9f55-da124be14ea8"
+  },
+  "crop": [
+    24,
+    23,
+    88,
+    87
+  ],
+  "seed": 20260808,
+  "stills": {
+    "asleep": ".build/kitty/asleep.png",
+    "celebrate": ".build/kitty/celebrate.png",
+    "critical": ".build/kitty/critical.png",
+    "heart": ".build/kitty/heart.png",
+    "idle": ".build/kitty/idle.png",
+    "pending": ".build/kitty/pending.png",
+    "stressed": ".build/kitty/stressed.png",
+    "tired": ".build/kitty/tired.png",
+    "working": ".build/kitty/working.png"
+  }
 }

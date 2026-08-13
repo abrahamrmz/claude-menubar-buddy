@@ -2,5 +2,32 @@
   "base_character_id": "ee73f02c-4afc-46ba-84ac-6d1886c6148e",
   "base_prompt": "cyberpunk panda mascot, standing upright on two hind legs facing the viewer, full body, round black ears, black eye patches, fluffy fur, one robotic arm with glowing green circuit lines and a small metal shoulder plate, both eyes natural and visible, friendly and charismatic",
   "base_south_url": "https://backblaze.pixellab.ai/file/pixellab-characters/5dfea3bd-f299-4bca-9ef3-cb4ec20d74e7/ee73f02c-4afc-46ba-84ac-6d1886c6148e/rotations/south.png",
-  "seed": 20260808
+  "character_ids": {
+    "asleep": "a65f9e6d-d638-44aa-aa9a-b400212be706",
+    "celebrate": "446d31bd-5944-49ef-88f5-f8da0ed0cf69",
+    "critical": "e6c7e45a-e966-4ad0-81c5-49ff1c75290b",
+    "heart": "ad26ad59-5afa-4c03-a67e-f7558a4e6f38",
+    "pending": "763014f9-1eb8-403d-b63a-a8b9ae3d0411",
+    "stressed": "a5b55364-bf61-4564-825b-b2484dfe3108",
+    "tired": "c99ebecd-bdef-49a6-ace2-cacae7eb3d7b",
+    "working": "809a8e03-01bc-45d3-93dc-5227d68af6f2"
+  },
+  "crop": [
+    27,
+    27,
+    91,
+    91
+  ],
+  "seed": 20260808,
+  "stills": {
+    "asleep": ".build/panda/asleep.png",
+    "celebrate": ".build/panda/celebrate.png",
+    "critical": ".build/panda/critical.png",
+    "heart": ".build/panda/heart.png",
+    "idle": ".build/panda/idle.png",
+    "pending": ".build/panda/pending.png",
+    "stressed": ".build/panda/stressed.png",
+    "tired": ".build/panda/tired.png",
+    "working": ".build/panda/working.png"
+  }
 }

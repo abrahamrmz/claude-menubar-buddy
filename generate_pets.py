@@ -35,10 +35,15 @@ Usage:  .venv/bin/python3 generate_pets.py <species> [mood ...]
         .venv/bin/python3 generate_pets.py <species> --base-only
 Needs Pillow (see .venv) and a PixelLab key in $PIXELLAB_KEY or
 ~/.pixellab_key. Already-generated moods are skipped unless named
-explicitly, so a rerun after an interruption costs nothing.
+explicitly, and animation frames are cached on disk, so a rerun after an
+interruption costs nothing. Naming a mood re-animates it; to also rebuild
+its 20-generation state (because you changed its prompt), delete that
+mood from the manifest's character_ids and stills first.
 """
 
 import base64
+import glob
+import http.client
 import io
 import json
 import os
@@ -125,6 +130,16 @@ OVERRIDES = {
         "class, the other arm at its side, alert attentive wide-open eyes, "
         "face fully visible, both eyes visible",
         "holding the paw raised high, waving it eagerly, ears twitching", 250),
+    # The shared "ears perked straight up" stood a pig's floppy ears on end
+    # and threw its arms wide: 62x64 against 52x59 for its other moods, and
+    # 7px taller than any of them. Since the crop box is one square shared by
+    # every mood, that single pose pushed the union to 62x67 and no canvas
+    # that keeps whole-pixel scaling could hold it. Alertness here is a lean
+    # and wide eyes, with the ears left alone.
+    ("piglet", "pending"): (
+        "alert and attentive, eyes wide open, leaning forward eagerly, ears "
+        "hanging naturally, arms at its sides, face fully visible",
+        "alert bouncing, leaning forward, ears jiggling", 250),
 }
 
 
@@ -225,6 +240,29 @@ def key():
         return f.read().strip()
 
 
+def fetch(request, attempts=5):
+    """urlopen that survives a dropped connection.
+
+    A full run makes ~500 requests, nearly all of them polls, and a single
+    `RemoteDisconnected` used to kill the species and discard every frame
+    still in memory — including moods whose 20-generation state was already
+    paid for. Only the transport is retried: an HTTPError is the server
+    saying something specific, and repeating it would just repeat the answer.
+    """
+    for attempt in range(attempts):
+        try:
+            with urllib.request.urlopen(request, timeout=60) as r:
+                return json.load(r) if r.headers.get_content_type() == "application/json" else r.read()
+        except urllib.error.HTTPError:
+            raise
+        except (urllib.error.URLError, http.client.HTTPException, OSError) as e:
+            if attempt == attempts - 1:
+                raise
+            pause = 3 * (attempt + 1)
+            print(f"  transport hiccup ({type(e).__name__}), retrying in {pause}s")
+            time.sleep(pause)
+
+
 def post(endpoint, payload):
     req = urllib.request.Request(
         f"{API}/{endpoint}", method="POST",
@@ -232,8 +270,9 @@ def post(endpoint, payload):
         headers={"Authorization": f"Bearer {TOKEN}",
                  "Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(req) as r:
-            return json.load(r)
+        # Not retried on a dropped connection: a submit that reached the
+        # server before the socket died would be charged twice.
+        return fetch(req, attempts=1)
     except urllib.error.HTTPError as e:
         sys.exit(f"{endpoint} failed ({e.code}): {e.read().decode()[:300]}")
 
@@ -246,8 +285,7 @@ def wait(job_id, label, timeout=900):
         req = urllib.request.Request(
             f"{API}/background-jobs/{job_id}",
             headers={"Authorization": f"Bearer {TOKEN}"})
-        with urllib.request.urlopen(req) as r:
-            job = json.load(r)
+        job = fetch(req)
         if job.get("status") == "completed":
             return job
         if job.get("status") == "failed":
@@ -299,8 +337,8 @@ def download(url, path):
     # Python doesn't, and the difference is only this header.
     request = urllib.request.Request(url, headers={"User-Agent": "claude-menubar-buddy"})
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with urllib.request.urlopen(request) as r, open(path, "wb") as f:
-        f.write(r.read())
+    with open(path, "wb") as f:
+        f.write(fetch(request))
 
 
 def ensure_base(species, manifest):
@@ -430,16 +468,38 @@ def crop_frames(frames, crop, label):
     return [frame.crop(crop) for frame in frames]
 
 
-def frames_for(species, mood, manifest):
+def cached_frames(species, mood):
+    """Animation output kept on disk, because it was paid for.
+
+    The GIFs can only be written once every mood is in hand (the crop box is
+    placed over all of them at once), so a dropped connection nine moods deep
+    used to discard every frame still in memory and the rerun bought them all
+    again. States were already saved before their download for exactly this
+    reason — see still_for — and frames deserve the same care.
+    """
+    paths = sorted(glob.glob(f".build/{species}/frames/{mood}_*.png"))
+    return [Image.open(p).convert("RGBA") for p in paths] if paths else None
+
+
+def frames_for(species, mood, manifest, rebuild=False):
     edit, action, _ = mood_spec(species, mood)
     print(f"{mood}:")
-    still = still_for(species, mood, edit, manifest)
-    print("  animate-with-text-v3 — 1 generation")
-    frames = animate(still, action)
-    # The loop already closes on itself, so the repeated final frame would
-    # only make the pet hang for an extra beat on the pose it just held.
-    if len(frames) > 1 and frames[0].tobytes() == frames[-1].tobytes():
-        frames = frames[:-1]
+    frames = None if rebuild else cached_frames(species, mood)
+    if frames:
+        print(f"  reusing {len(frames)} cached frames — no charge")
+    else:
+        still = still_for(species, mood, edit, manifest)
+        print("  animate-with-text-v3 — 1 generation")
+        frames = animate(still, action)
+        # The loop already closes on itself, so the repeated final frame would
+        # only make the pet hang for an extra beat on the pose it just held.
+        if len(frames) > 1 and frames[0].tobytes() == frames[-1].tobytes():
+            frames = frames[:-1]
+        os.makedirs(f".build/{species}/frames", exist_ok=True)
+        for i, frame in enumerate(frames):
+            frame.save(f".build/{species}/frames/{mood}_{i}.png")
+    # Composited after the cache rather than before it, so the bulb stays a
+    # function of the code instead of something frozen into a PNG.
     if species == "koala" and mood == "pending":
         frames = add_lightbulb(frames)
     return frames
@@ -489,7 +549,7 @@ def main():
     built = {}
     try:
         for mood in requested:
-            built[mood] = frames_for(species, mood, manifest)
+            built[mood] = frames_for(species, mood, manifest, rebuild=bool(named))
     finally:
         save(species, manifest)
 
