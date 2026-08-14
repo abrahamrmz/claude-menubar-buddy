@@ -180,12 +180,15 @@ def add_lightbulb(frames):
                     frame.putpixel((BULB_ORIGIN[0] + dx, BULB_ORIGIN[1] + dy), palette[ch])
     return frames
 
-# The nine that MoodEngine can't fake. thinking/excited/sad are omitted from
+# The ten that MoodEngine can't fake. thinking/excited/sad are omitted from
 # CORE because gifName already degrades them to working/celebrate/tired, which
-# read as the same thing; stressed and critical are not omitted, because they
-# have no fallback and the pet would look identical at 40% and 90% of a limit.
+# read as the same thing. The rest stay for the opposite reason: stressed and
+# critical have no fallback at all, so without them a pet looks identical at
+# 40% and 90% of a limit; and meditate only degrades to thinking, which these
+# pets don't have either, so it lands on plain idle and compaction becomes
+# invisible.
 CORE = ["idle", "pending", "working", "tired", "stressed",
-        "critical", "asleep", "heart", "celebrate"]
+        "critical", "asleep", "heart", "celebrate", "meditate"]
 FULL = list(MOODS)
 
 # Each pet gets its own neon AND its own piece of tech, worn somewhere
