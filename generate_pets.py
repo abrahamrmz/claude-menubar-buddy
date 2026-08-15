@@ -140,6 +140,25 @@ OVERRIDES = {
         "alert and attentive, eyes wide open, leaning forward eagerly, ears "
         "hanging naturally, arms at its sides, face fully visible",
         "alert bouncing, leaning forward, ears jiggling", 250),
+    # A panda's black eye patches swallow every expression the shared edits
+    # put in the eyes: droopy lids and X marks are invisible inside them, so
+    # tired, stressed and critical all came back as the same face — 17% of
+    # pixels apart, against 33-42% for the other pets, which collapsed the
+    # 50/70/85% ladder into one warning. idle and asleep still read fine, so
+    # tired stays as the anchor and these two move away from it using mouth,
+    # sweat and posture instead of eyes. The X marks are spelled out as white
+    # ON TOP of the patches, which is how heart got its eyes to show.
+    ("panda", "stressed"): (
+        "tense and anxious, both paws pressed against the cheeks in worry, "
+        "mouth open in a worried grimace, several sweat drops flying off the "
+        "head, shoulders hunched up",
+        "nervous fidgeting, quick shallow breathing", 220),
+    ("panda", "critical"): (
+        "exhausted and dizzy, both eyes screwed shut drawn as bold bright "
+        "white X marks clearly on top of the black eye patches, mouth wide "
+        "open panting with the tongue hanging out, large sweat drops, "
+        "swaying unsteadily",
+        "wobbling unsteadily, exhausted panting", 700),
 }
 
 
