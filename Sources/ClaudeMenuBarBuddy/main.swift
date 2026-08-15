@@ -108,22 +108,12 @@ struct ChoiceOption: Decodable {
     let description: String?
 }
 
-// Returns the menu item plus the NSImageView inside it, so callers that need
-// to swap the GIF later (e.g. mood changes) don't have to rebuild the item.
-// If target/action are given, a transparent NSButton is layered over the
-// GIF so clicking the pet (even mid-menu-tracking) fires the action —
-// AppKit only reliably delivers clicks to real controls inside a custom
-// NSMenuItem view, not to plain NSViews/NSImageViews via gesture recognizers.
 /// Every pet is pixel art, and Cocoa's default interpolation blurs it the
 /// moment the view is bigger than the source.
 ///
 /// Only when magnifying, and only when *both* axes fit: dropping interpolation
 /// while shrinking throws pixels away instead of averaging them, which is the
-/// one case where smoothing is the better answer. So the panda (160px of
-/// source in an 80pt menu box) and the firmware pets (108 wide in the same
-/// box) keep the smoothing they have always had, and the cropped koala — 64px
-/// of source, now magnified where it used to be shrunk — gets square blocks
-/// instead of the blur the crop would otherwise have introduced.
+/// one case where smoothing is the better answer.
 class PixelArtImageView: NSImageView {
     override func draw(_ dirtyRect: NSRect) {
         if let image = image, image.size.width <= bounds.width, image.size.height <= bounds.height {
@@ -131,37 +121,6 @@ class PixelArtImageView: NSImageView {
         }
         super.draw(dirtyRect)
     }
-}
-
-func gifMenuItem(named name: String, target: AnyObject? = nil, action: Selector? = nil) -> (NSMenuItem, NSImageView) {
-    let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-    let size = NSSize(width: 220, height: 90)
-    let container = NSView(frame: NSRect(origin: .zero, size: size))
-    // Square frame, not 128x64 — the GIFs aren't 2:1 (buddy is 128x128,
-    // species art varies per pet), so a non-square box forced a squash.
-    // scaleProportionallyUpOrDown then letterboxes each pet's real aspect
-    // ratio inside this square instead of distorting it.
-    let side: CGFloat = 80
-    let frame = NSRect(x: (size.width - side) / 2, y: (size.height - side) / 2, width: side, height: side)
-    let imageView = PixelArtImageView(frame: frame)
-    setGif(on: imageView, named: name)
-    // A menu starts closed, and a GIF inside a closed menu still loops at full
-    // rate for nobody. menuWillOpen/menuDidClose turn this back on and off.
-    imageView.animates = false
-    imageView.imageScaling = .scaleProportionallyUpOrDown
-    container.addSubview(imageView)
-    if let target = target, let action = action {
-        let button = NSButton(frame: frame)
-        button.title = ""
-        button.isBordered = false
-        button.target = target
-        button.action = action
-        button.toolTip = "Pet the buddy"
-        button.setAccessibilityLabel("Pet the buddy")
-        container.addSubview(button)
-    }
-    item.view = container
-    return (item, imageView)
 }
 
 func setGif(on imageView: NSImageView, named name: String) {
@@ -274,7 +233,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     var lastProjectionPct = 0
     var sessionsSubmenuTop: NSMenuItem!
     var historySubmenuTop: NSMenuItem!
-    var petImageView: NSImageView!
     var petMoodLineItem: NSMenuItem!
     // Tracks the last mood actually computed from usage, separate from
     // whatever GIF is on screen right now — a "heart" or "celebrate" flash
@@ -297,7 +255,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     // dropdown's pet loops all day behind a closed menu, and both pets loop
     // against a locked or sleeping display. Locked and asleep are separate
     // flags because waking the display doesn't unlock the screen.
-    var menuIsOpen = false
     var screenLocked = false
     var displayAsleep = false
     var animationsPaused: Bool { screenLocked || displayAsleep }
@@ -487,10 +444,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     func buildIdleMenu() {
         let menu = NSMenu()
         menu.delegate = self
-        let (petItem, imageView) = gifMenuItem(named: "\(selectedSpecies)_idle", target: self, action: #selector(petClicked))
-        petImageView = imageView
-        menu.addItem(petItem)
-        petMoodLineItem = statusMenuItem("🐼 Active and happy")
+        // No pet up here. A GIF you can only see by opening a menu is a pet
+        // nobody watches, and the one on the desktop is visible without a
+        // click and answers to being petted. The mood line stays: that is
+        // status text, which is what a menu is for.
+        petMoodLineItem = statusMenuItem("😊 Active and happy")
         menu.addItem(petMoodLineItem)
         menu.addItem(withTitle: "No pending requests", action: nil, keyEquivalent: "")
         menu.addItem(NSMenuItem.separator())
@@ -562,8 +520,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         menu.addItem(settingsItem)
         menu.addItem(withTitle: "Quit", action: #selector(quit), keyEquivalent: "q")
         idleMenu = menu
-        // petImageView was just recreated with the idle GIF — invalidate the
-        // same-mood skip so the next applyMoodGif really loads its GIF.
+        // petMoodLineItem was just recreated carrying its placeholder text —
+        // invalidate the same-mood skip so the next applyMoodGif really
+        // rewrites it.
         displayedMood = nil
     }
 
@@ -571,8 +530,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     // is computed fresh at that moment instead of on a background timer.
     // Updates item text in place; never reassigns statusItem.menu here.
     func menuWillOpen(_ menu: NSMenu) {
-        menuIsOpen = true
-        setMenuAnimations(menu, animating: !animationsPaused)
         guard menu === idleMenu else { return }
         usage = UsageReader.snapshot()
         updateUsageLabels()
@@ -592,38 +549,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         return health
     }
 
-    func menuDidClose(_ menu: NSMenu) {
-        menuIsOpen = false
-        setMenuAnimations(menu, animating: false)
-    }
 
-    /// Re-applies the animation policy to the two long-lived pets. Has to run
-    /// after every GIF swap, because setGif turns animation back on each time
-    /// it loads one.
+    /// Re-applies the animation policy to the floating pet. Has to run after
+    /// every GIF swap, because setGif turns animation back on each time it
+    /// loads one.
     func applyAnimationPolicy() {
         let floatingWanted = !animationsPaused
         if floatingImageView?.animates != floatingWanted {
             floatingImageView?.animates = floatingWanted
         }
-        let menuWanted = menuIsOpen && !animationsPaused
-        if petImageView?.animates != menuWanted {
-            petImageView?.animates = menuWanted
-        }
         // Fidgets pause under the same rules as GIF frames, plus their own
         // (occlusion, the Calm pet switch) — one choke point for both.
         applyFidgetPolicy()
-    }
-
-    /// Every GIF inside a menu's custom item views. Goes through the items
-    /// rather than through petImageView so the pending menu's own pet — a
-    /// different view that nothing else holds a reference to — is covered too.
-    func setMenuAnimations(_ menu: NSMenu, animating: Bool) {
-        for item in menu.items {
-            guard let view = item.view else { continue }
-            for subview in view.subviews {
-                (subview as? NSImageView)?.animates = animating
-            }
-        }
     }
 
     func updateUsageLabels() {

@@ -700,11 +700,6 @@ extension AppDelegate {
         collectedAnswers = [:]
 
         let menu = NSMenu()
-        // Delegate so this menu's own pet starts and stops animating with it,
-        // the same way the idle menu's does. menuWillOpen's usage refresh is
-        // guarded on identity, so it stays an idle-menu concern.
-        menu.delegate = self
-        menu.addItem(gifMenuItem(named: "\(selectedSpecies)_pending").0)
 
         // "tool — project" when the hook told us which session is asking;
         // several concurrent sessions otherwise look identical up here.

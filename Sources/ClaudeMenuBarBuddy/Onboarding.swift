@@ -183,8 +183,12 @@ extension AppDelegate {
     // MARK: - Pages
 
     private func welcomePage() -> NSView {
-        let (_, imageView) = gifMenuItem(named: "\(selectedSpecies)_idle")
+        let imageView = PixelArtImageView(frame: NSRect(x: 0, y: 0, width: 80, height: 80))
+        imageView.imageScaling = .scaleProportionallyUpOrDown
+        setGif(on: imageView, named: gifName(for: selectedSpecies, mood: "idle"))
         imageView.animates = true
+        imageView.widthAnchor.constraint(equalToConstant: 80).isActive = true
+        imageView.heightAnchor.constraint(equalToConstant: 80).isActive = true
         return page([
             centered(imageView),
             title("Approvals, without losing your place"),
@@ -298,11 +302,10 @@ extension AppDelegate {
             body("It also reacts to what's happening: heads-down while tools run, "
                  + "thinking while Claude does, and a little celebration when the "
                  + "limit resets."),
-            footnote("There are 20 pets — most animated with the pose choreography "
-                     + "from the Claude hardware buddy's firmware, plus a hand-drawn "
-                     + "panda and a pixel-art koala with the full set of moods. Pick "
-                     + "yours in Settings › Appearance, and drag the floating pet "
-                     + "anywhere you like — or turn it off from the menu."),
+            footnote("There are four pets — a cyberpunk koala, piglet, panda and "
+                     + "cat, each with its own tech and its own neon. Pick yours in "
+                     + "Settings › Appearance, and drag the pet anywhere you like — "
+                     + "or turn it off from the menu."),
         ])
     }
 

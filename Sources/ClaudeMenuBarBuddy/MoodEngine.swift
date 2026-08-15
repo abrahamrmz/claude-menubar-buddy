@@ -131,11 +131,11 @@ extension AppDelegate {
         }
     }
 
-    /// Not every pet has art for every mood. The eighteen firmware species
-    /// only ever drew seven poses, so on those, thinking, sad and excited
-    /// degrade to the nearest thing that says the same thing; buddy and
-    /// koala are the two with the full set. Ending at idle means a missing
-    /// GIF never leaves the previous one frozen on screen.
+    /// Not every pet has art for every mood. Only the koala carries the full
+    /// thirteen; the other three ship the CORE ten (see generate_pets.py), so
+    /// on those, thinking, sad and excited degrade to the nearest thing that
+    /// says the same thing. Ending at idle means a missing GIF never leaves
+    /// the previous one frozen on screen.
     func moodGifCandidates(_ mood: String) -> [String] {
         switch mood {
         case "thinking": return ["thinking", "working"]
@@ -168,16 +168,12 @@ extension AppDelegate {
         // The mood strings lead with an emoji, which VoiceOver would announce
         // by name ("panda face, active and happy") — drop it for the label.
         let spoken = String(text.drop(while: { !$0.isLetter }))
-        setGif(on: petImageView, named: gifName(for: selectedSpecies, mood: mood))
-        petImageView.setAccessibilityLabel(spoken)
         petMoodLineItem.attributedTitle = NSAttributedString(
             string: text,
             attributes: [.foregroundColor: NSColor.secondaryLabelColor, .font: NSFont.systemFont(ofSize: 11)]
         )
-        // Both pets follow the same species. Upstream pinned the floating one
-        // to the panda (Ray, 2026-07-12: "ทำแค่ panda ก็พอ") back when the
-        // dropdown only offered firmware pets that couldn't carry a mood set;
-        // the species picker is the desktop pet's picker now.
+        // The desktop pet is the only one that wears the art now — the menu
+        // keeps the mood as a line of text and nothing else.
         if let floatingImageView = floatingImageView {
             setGif(on: floatingImageView, named: gifName(for: selectedSpecies, mood: mood))
             floatingImageView.setAccessibilityLabel(spoken)

@@ -8,7 +8,7 @@ description: Build and install Claude Menu Bar Buddy — a hardware-free, native
 You are setting this up for **whoever is running you right now** — use *their*
 home directory, *their* username, *their* paths. Nothing here should be
 hardcoded to any other machine. This folder (containing this SKILL.md,
-`Package.swift`, `Sources/`, `generate_gifs.py`, `hook.sh`) is the complete,
+`Package.swift`, `Sources/`, `generate_pets.py`, `hook.sh`) is the complete,
 portable source — copy the whole folder to the target machine first if it
 isn't already there.
 
@@ -43,11 +43,10 @@ later), regenerate:
 
 ```bash
 cd <this-folder>
-python3 generate_gifs.py           # panda (pixel-art)
-python3 generate_species_gifs.py   # the other 16 species (ASCII-art, requires
-                                    # a sibling checkout of the M5Stick Buddy
-                                    # firmware repo at the path hardcoded near
-                                    # the top of that script — adjust if not present)
+# Only needed to change the art itself — the GIFs are checked in, so a
+# normal setup never runs this. Needs Pillow and a PixelLab API key.
+python3 -m venv .venv && .venv/bin/pip install pillow
+.venv/bin/python3 generate_pets.py <koala|piglet|panda|kitty>
 ```
 
 Confirm `Sources/ClaudeMenuBarBuddy/Resources/species.txt` lists the

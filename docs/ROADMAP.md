@@ -343,3 +343,16 @@ Camino crítico: 0 → 1.1 → 2.1 → 2.6 (los tres primeros ya cerrados). Rest
 
 - Cada item lleva su verificación arriba; además, al cerrar cada fase: `swift build` + `launchctl kickstart -k` + inyección de request de prueba (avisada) + selfie de tarjeta (`capture_card`/`capture_pet` flags) + revisión de CPU en reposo + commit/push por paquete de features como venimos haciendo.
 - Los hooks instalados (`~/.config/claude-menubar-buddy/`) se sincronizan con `cp` en cada cambio de hook.sh/notify-done.sh.
+
+#### 4.x ✅ Un solo pet, y sólo los generados (2026-08-15)
+Dos limpiezas pedidas juntas, y la segunda arrastró más de lo que parecía.
+
+**El pet del menú se fue.** Un GIF que sólo existe mientras el dropdown está abierto es un pet que nadie mira, y el del escritorio ya es visible sin click y responde a que lo acaricien. La línea de mood se queda: eso es texto de estado, que es para lo que sirve un menú. El pet del menú de pendientes se va por la misma razón.
+- Efecto en cadena: sin pets en menús, **ningún `NSMenuItem` tiene vista propia**, así que murieron `gifMenuItem`, `setMenuAnimations`, `menuIsOpen`, `petImageView` y el `menuDidClose` entero. `menuWillOpen` conserva sólo el refresco de uso, que ya estaba guardado por identidad.
+- `gifMenuItem` tenía un último usuario que no era un menú: el onboarding lo usaba para fabricarse un `NSImageView` y tiraba el `NSMenuItem`. Ahora construye la vista directamente.
+
+**Se retiran las 19 mascotas sin arte de PixelLab**: las 18 del firmware y el panda dibujado a mano. Quedan koala, piglet, panda y kitty. 174 GIFs y 2.2 MB fuera; `Resources/` pasa de ~2.5 MB a 352 KB.
+- Se borran también `generate_species_gifs.py` y `generate_gifs.py`. El primero no era sólo código muerto: **reescribe `species.txt` desde el firmware**, así que dejarlo habría resucitado las 18 y machacado la lista en su siguiente corrida.
+- **El riesgo real no era borrar, era la preferencia guardada.** `selectedSpecies` seguía diciendo `buddy` o `cat` en instalaciones reales, y un nombre sin arte resuelve a un GIF que no está en el bundle: `setGif` sale temprano y el pet queda **invisible, sin nada en pantalla que lo explique**. El accessor ahora verifica que exista el `_idle.gif` y cae al default si no. Comprobado poniendo `buddy` a mano: dibuja el koala, no un hueco. Se valida en cada lectura y no en una migración de arranque, para que retirar cualquier pet futuro se cure igual.
+- El default pasa de `buddy` a `koala`.
+- Verificado: 4 especies × 13 moods = 52 combinaciones, ninguna sin arte.

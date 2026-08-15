@@ -7,7 +7,10 @@ import Foundation
 // UserDefaults.standard under the same names).
 extension Defaults.Keys {
     static let floatingPetVisible = Key<Bool>("floatingPetVisible", default: true)
-    static let selectedSpecies = Key<String>("selectedSpecies", default: "buddy")
+    // Was "buddy" while the hand-drawn panda shipped. Anyone who picked one
+    // of the retired pets still has that name stored, so the accessor below
+    // checks the art exists rather than trusting it.
+    static let selectedSpecies = Key<String>("selectedSpecies", default: "koala")
     // Thresholds match ClaudeBar's scheme (see the community-project survey):
     // <50% used = healthy, 50-80% = warning, >80% = critical. Persist the
     // highest threshold already notified-for per limit so we don't re-fire
@@ -44,8 +47,21 @@ extension AppDelegate {
         set { Defaults[.floatingPetVisible] = newValue }
     }
 
+    /// The chosen pet, or the default when that pet's art is gone.
+    ///
+    /// Retiring the hand-drawn panda and the eighteen firmware species left
+    /// their names sitting in real users' preferences, and an unchecked one
+    /// resolves to a GIF that isn't in the bundle — setGif returns early and
+    /// the pet is simply invisible, with nothing on screen to explain why.
+    /// Checked on read rather than migrated once at launch, so retiring any
+    /// future pet heals itself the same way.
     var selectedSpecies: String {
-        get { Defaults[.selectedSpecies] }
+        get {
+            let stored = Defaults[.selectedSpecies]
+            let known = Bundle.module.url(forResource: "\(stored)_idle", withExtension: "gif",
+                                          subdirectory: "Resources") != nil
+            return known ? stored : Defaults.Keys.selectedSpecies.defaultValue
+        }
         set { Defaults[.selectedSpecies] = newValue }
     }
 
