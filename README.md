@@ -80,6 +80,8 @@ This app sits between Claude Code and your answer to "may I run this?", so its r
 
 **The hook fails safe.** A timeout, an error, or the app not running all return no decision, which means Claude Code falls back to its own prompt. Nothing is ever approved because something broke; the worst case is being asked twice.
 
+**A card is answerable for ~60 seconds.** The hook listens for the buddy's answer for about a minute, then hands the decision to the native prompt — so a diff you've been reading for longer than that gets decided in the terminal or VS Code, not on the card. The card knows this window too: once it closes, the card retires itself instead of collecting a decision nobody would receive, and the decision log gains no entry claiming otherwise. If you know a decision will take real reading time, ↗ hands it to the native prompt up front, which waits forever.
+
 ### The two standing grants
 
 Both approve things without showing you a card, so both are worth understanding before turning them on — and both stay visible in the menu bar the whole time they're active, because a grant you can't see is a grant you'll forget you gave.

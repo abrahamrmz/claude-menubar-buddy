@@ -385,11 +385,20 @@ La Fase 0 partió un `main.swift` de ~1400 líneas; hoy `ApprovalCard.swift` va 
 - **De paso, `CLAUDE_BUDDY_CONFIG_DIR`**: la instancia debug de las selfies ahora corre sobre un config dir aislado. Salió de un fallo real del arnés compartido: la primera tarjeta falsa inyectada en el dir real fue **aprobada por el usuario con ⌘⏎ en ~2 segundos, por reflejo** — la selfie capturó la tarjeta de atrás, y `decisions.jsonl` ganó aprobaciones de utilería. Con el dir aislado la app real ni se entera, los hotkeys reales siguen respondiendo tarjetas reales, y el bootout/bootstrap de la app durante capturas ya no hace falta. No amplía la superficie de confianza: quien puede poner env vars a esta app ya controla el plist que la lanza.
 - Nota de convivencia: se implementó con la 5.4 corriendo **en otra sesión en paralelo** (MoodEngine/arte). Por eso los movimientos fueron ediciones quirúrgicas (nunca reescrituras de archivo completo), el commit se armó por staging selectivo, y no hubo `kickstart` — el refactor no cambia comportamiento, así que la app corriendo puede esperar al siguiente relanzamiento natural.
 
-### 7.3 El techo de 60s del hook, visible en vez de silencioso
+### 7.3 ✅ El techo de 60s del hook, visible en vez de silencioso (2026-08-19)
 El hook espera respuesta 60s y luego cae al prompt nativo — correcto y es la base del fail-safe. Lo que falta es el otro lado: **la tarjeta se queda en pantalla pidiendo una decisión que ya nadie escucha**; responder después escribe un response file huérfano y el usuario cree que decidió. Dos remedios, el segundo barato porque el request JSON ya trae timestamp:
 1. Documentar el techo en README ("What it can see"): una decisión que tarda más de ~60s se responde en el prompt nativo, no en la tarjeta.
 2. Al vencer el plazo, la tarjeta se retira sola (o se marca "expiró — respóndelo en el prompt nativo") en el mismo poll de 1s que ya la maneja. Sin timer nuevo.
 - Verificar: inyectar request y no responder → a los ~60s la tarjeta se retira y el prompt nativo queda como único dueño de la decisión; `decisions.jsonl` no gana entrada fantasma.
+
+**Implementado 2026-08-19 — y la premisa del ítem resultó exagerada, lo cual acota el trabajo.** En el caso normal la tarjeta ya se retiraba sola: el hook borra su request file al rendirse (~55s) y `poll()` la desvanece al tick siguiente. Los huecos reales eran tres, y los tres se cerraron:
+1. **El hook matado con SIGKILL** (terminal cerrada a la brava) deja la request huérfana, y la tarjeta se quedaba pidiendo hasta la barrida de 75s. La constante ahora es `hookAnswerWindow = 60` (55s de poll del hook + margen), compartida entre `scanRequests` y `respond()` — peor caso 20s más corto, y con nombre en vez de dos números mágicos.
+2. **La decisión fantasma**: responder en ese hueco escribía un response file que nadie lee y una línea en `decisions.jsonl` afirmando que Claude recibió una decisión que no recibió. `respond()` ahora se rehúsa pasada la ventana: retira la request y pasa por `poll()`, que desvanece neutro (sin ✓/✕ — el buddy no decidió nada) o trae la siguiente de la fila. Cubre la carrera de sub-segundo que la barrida de 1s no alcanza.
+3. **README**: párrafo nuevo en el modelo de amenazas — la tarjeta es respondible ~60s, después decide el prompt nativo, y el ↗ existe justo para las decisiones que van a tomar tiempo real de lectura.
+- **Verificado con la instancia aislada** (`CLAUDE_BUDDY_CONFIG_DIR`): una request con ts 61s en el pasado se barre en <3s, ninguna tarjeta llega a mostrarse, `decisions.jsonl` queda vacío y cero response files. Que la barrida no se pasa de lista lo prueban las tarjetas reales frescas respondidas tras el relanzamiento. Los 40 tests de la 7.1 verdes.
+- **El arnés compartido volvió a perder contra el reflejo del usuario**: el primer intento de "inyectar y no responder" duró 4 segundos antes de que la tarjeta falsa recibiera su ⌘⏎ (segunda vez en dos fases — es un patrón, no un accidente, y es la razón de ser del config dir aislado). El test se rediseñó para que la request ya llegara expirada: lo que no muestra tarjeta no puede ser aprobado por reflejo.
+
+**Fase 7 completa** (7.1 ✅ · 7.2 ✅ · 7.3 ✅).
 
 ## Orden del segundo ciclo
 

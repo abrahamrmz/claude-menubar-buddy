@@ -495,9 +495,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         applyMoodGif(lastComputedMood)
     }
 
-    /// All live request files, oldest first. Expired ones (hook gave up at
-    /// ~55s; anything older is an orphan from a killed hook) are deleted on
-    /// sight so they can't wedge the queue.
+    /// How long after a request's `ts` its hook is still listening for a
+    /// response. hook.sh polls for 55s after writing the request (110 × 0.5s)
+    /// and then hands the decision to the native prompt; the margin covers
+    /// per-iteration overhead. Past this, an answer from the buddy reaches
+    /// nobody — the card must retire rather than collect it (see respond()).
+    static let hookAnswerWindow: TimeInterval = 60
+
+    /// All live request files, oldest first. Expired ones are deleted on
+    /// sight so they can't wedge the queue. Normally the hook removes its own
+    /// file when it gives up, and the card follows within a tick — this cut
+    /// is for the orphans (a hook killed with SIGKILL, a terminal window torn
+    /// down), which used to keep a card on screen asking a question whose
+    /// answerer was already gone.
     func scanRequests() -> [PendingRequest] {
         let fm = FileManager.default
         let now = Date().timeIntervalSince1970
@@ -513,7 +523,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         for url in urls {
             guard let data = try? Data(contentsOf: url),
                   let req = try? JSONDecoder().decode(PendingRequest.self, from: data) else { continue }
-            if let ts = req.ts, now - ts > 75 {
+            if let ts = req.ts, now - ts > Self.hookAnswerWindow {
                 try? fm.removeItem(at: url)
                 continue
             }

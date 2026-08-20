@@ -291,6 +291,20 @@ extension AppDelegate {
     /// generic "denied".
     func respond(_ decision: String, reason: String? = nil) {
         guard let id = currentRequestId, !isDismissing else { return }
+        // Nobody is listening past the hook's window: the native prompt owns
+        // the question now, and a response written here would be an orphan
+        // file plus a decisions.jsonl line claiming Claude was told something
+        // it never received. scanRequests already sweeps these once a second;
+        // this covers the sub-second race where the click lands first.
+        // Retiring goes through poll(), which fades the card neutrally (no
+        // ✓/✕ — the buddy decided nothing) or surfaces the next in line.
+        if let ts = currentRequest?.ts,
+           Date().timeIntervalSince1970 - ts > AppDelegate.hookAnswerWindow {
+            try? FileManager.default.removeItem(at: dirURL.appendingPathComponent("request_\(id).json"))
+            respondedIds.insert(id)
+            poll()
+            return
+        }
         writeDecision(id: id, request: currentRequest, decision: decision, reason: reason,
                       answers: decision == "answer" ? collectedAnswers : nil)
         // Verdict animation first — the decision is already on disk, so the
