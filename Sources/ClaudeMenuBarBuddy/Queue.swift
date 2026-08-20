@@ -34,6 +34,30 @@ extension AppDelegate {
         poll()
     }
 
+    /// The card's "+N ▾" badge — a button, so the line behind the card is
+    /// reachable, not just countable. Built here with the rest of the queue
+    /// machinery (moved from the card assembly in Fase 7.2); the card only
+    /// places it.
+    func queueBadgeButton(queued: Int) -> PressablePillButton {
+        let badge = PressablePillButton(title: "", target: self, action: #selector(showQueueMenu(_:)))
+        badge.isBordered = false
+        badge.wantsLayer = true
+        badge.layer?.backgroundColor = NSColor.systemOrange.cgColor
+        badge.layer?.cornerRadius = 9
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        badge.attributedTitle = NSAttributedString(string: "+\(queued) ▾", attributes: [
+            .font: NSFont.systemFont(ofSize: 11, weight: .medium),
+            .foregroundColor: NSColor.black,
+            .paragraphStyle: paragraph,
+        ])
+        let badgeWidth = ceil(badge.attributedTitle.size().width) + 16
+        badge.frame = NSRect(x: 0, y: 0, width: badgeWidth, height: 18)
+        badge.toolTip = "\(queued) more request\(queued == 1 ? "" : "s") waiting — click to pick one, or answer them all"
+        badge.setAccessibilityLabel("\(queued) more requests waiting. Show the queue.")
+        return badge
+    }
+
     /// One line per queued request, for the +N popup and the menu bar.
     /// Deliberately short — this is a "which one is that?" list, not a
     /// summary you should be deciding from. Deciding happens on the card.
