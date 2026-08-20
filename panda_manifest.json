@@ -6,10 +6,13 @@
     "asleep": "a65f9e6d-d638-44aa-aa9a-b400212be706",
     "celebrate": "446d31bd-5944-49ef-88f5-f8da0ed0cf69",
     "critical": "f309d3a7-520e-4e9c-96eb-2e195ece1ea8",
+    "excited": "06343dbb-f6c3-4021-89b0-e55ab5b8d437",
     "heart": "ad26ad59-5afa-4c03-a67e-f7558a4e6f38",
     "meditate": "cbf33a82-25f6-4050-8bd5-9d9f2b4933a0",
     "pending": "763014f9-1eb8-403d-b63a-a8b9ae3d0411",
+    "sad": "e0960a9a-907c-4d6f-b091-bcc820597364",
     "stressed": "ab10425f-1c3d-40c9-9b21-ff608b832e2f",
+    "thinking": "6063e404-c347-44d9-b803-aa7053de8eb2",
     "tired": "c99ebecd-bdef-49a6-ace2-cacae7eb3d7b",
     "working": "809a8e03-01bc-45d3-93dc-5227d68af6f2"
   },
@@ -24,11 +27,14 @@
     "asleep": ".build/panda/asleep.png",
     "celebrate": ".build/panda/celebrate.png",
     "critical": ".build/panda/critical.png",
+    "excited": ".build/panda/excited.png",
     "heart": ".build/panda/heart.png",
     "idle": ".build/panda/idle.png",
     "meditate": ".build/panda/meditate.png",
     "pending": ".build/panda/pending.png",
+    "sad": ".build/panda/sad.png",
     "stressed": ".build/panda/stressed.png",
+    "thinking": ".build/panda/thinking.png",
     "tired": ".build/panda/tired.png",
     "working": ".build/panda/working.png"
   }

@@ -159,6 +159,16 @@ OVERRIDES = {
         "open panting with the tongue hanging out, large sweat drops, "
         "swaying unsteadily",
         "wobbling unsteadily, exhausted panting", 700),
+    # Same patch problem as above, one mood later: star-shaped eyes drawn in
+    # their natural colour vanish into black, and excited would come back as
+    # another open-mouthed happy face indistinguishable from celebrate and
+    # heart. Spelled out as white ON TOP of the patches, the phrasing that
+    # already rescued heart's eyes and critical's X marks.
+    ("panda", "excited"): (
+        "excited and amazed, both eyes drawn as bold bright white four-pointed "
+        "stars clearly on top of the black eye patches, mouth open in a big "
+        "grin, arms at its sides",
+        "excited jumping up and down", 170),
 }
 
 
@@ -199,13 +209,14 @@ def add_lightbulb(frames):
                     frame.putpixel((BULB_ORIGIN[0] + dx, BULB_ORIGIN[1] + dy), palette[ch])
     return frames
 
-# The ten that MoodEngine can't fake. thinking/excited/sad are omitted from
-# CORE because gifName already degrades them to working/celebrate/tired, which
-# read as the same thing. The rest stay for the opposite reason: stressed and
-# critical have no fallback at all, so without them a pet looks identical at
-# 40% and 90% of a limit; and meditate only degrades to thinking, which these
-# pets don't have either, so it lands on plain idle and compaction becomes
-# invisible.
+# The ten a pet can't do without: stressed and critical have no fallback at
+# all, so a pet lacking them looks identical at 40% and 90% of a limit, and
+# meditate only degrades to thinking, so without it compaction is invisible.
+# thinking/excited/sad sat outside this set while the three newer pets were
+# being built, because gifName degrades them to working/celebrate/tired and
+# those read as roughly the same thing — a deliberate corner to cut first,
+# not a permanent shape. Every pet is now FULL; CORE is kept as the floor any
+# future pet has to clear.
 CORE = ["idle", "pending", "working", "tired", "stressed",
         "critical", "asleep", "heart", "celebrate", "meditate"]
 FULL = list(MOODS)
@@ -235,15 +246,15 @@ PETS = {
     "koala": (FULL, "cyberpunk koala mascot, round fluffy grey ears, big dark nose, "
                     "one glowing cyan bionic eye with a thin metal rim, small neon "
                     "circuit accents on the fur, friendly and charismatic"),
-    "piglet": (CORE, f"cyberpunk piglet mascot, {UPRIGHT_PIG}, round pink snout, small "
+    "piglet": (FULL, f"cyberpunk piglet mascot, {UPRIGHT_PIG}, round pink snout, small "
                      "floppy ears, glowing magenta tech goggles pushed up on the "
                      "forehead above both fully visible eyes, small neon circuit "
                      "accents on the skin, friendly and charismatic"),
-    "panda": (CORE, f"cyberpunk panda mascot, {UPRIGHT}, round black ears, black eye "
+    "panda": (FULL, f"cyberpunk panda mascot, {UPRIGHT}, round black ears, black eye "
                     "patches, fluffy fur, one robotic arm with glowing green circuit "
                     "lines and a small metal shoulder plate, both eyes natural and "
                     "visible, friendly and charismatic"),
-    "kitty": (CORE, f"cyberpunk cat mascot, {UPRIGHT}, pointed ears with glowing amber "
+    "kitty": (FULL, f"cyberpunk cat mascot, {UPRIGHT}, pointed ears with glowing amber "
                     "LED tips, small pink nose, fluffy fur, a segmented robotic tail "
                     "with an amber glowing tip, both eyes natural and visible, "
                     "friendly and charismatic"),

@@ -6,10 +6,13 @@
     "asleep": "6074ac86-c95a-4816-b032-9e49f3090465",
     "celebrate": "365930a8-4011-4989-82dc-5563375baba7",
     "critical": "c801495e-0fca-482a-8b24-165b1bb3408b",
+    "excited": "e3ddf0eb-a2cb-4e6e-8300-c32872c69dae",
     "heart": "c40a2048-3718-4ec9-9de1-5f6ab132cfa9",
     "meditate": "c1059b21-264c-4cb3-8e27-97c013f875c5",
     "pending": "6c7ad330-09cc-4925-926f-9d1170c7f3d6",
+    "sad": "d92ffd43-7e2d-4d56-9dc9-9c761578ea4e",
     "stressed": "32b0a155-92e0-4b04-bcfa-23c168400259",
+    "thinking": "3a120b67-f929-4491-93fd-a5e462743760",
     "tired": "f89c8ccc-6ea5-4368-abad-360bf186365b",
     "working": "3f07f338-7d02-4abe-8ef3-2b9d121fa5d5"
   },
@@ -24,11 +27,14 @@
     "asleep": ".build/piglet/asleep.png",
     "celebrate": ".build/piglet/celebrate.png",
     "critical": ".build/piglet/critical.png",
+    "excited": ".build/piglet/excited.png",
     "heart": ".build/piglet/heart.png",
     "idle": ".build/piglet/idle.png",
     "meditate": ".build/piglet/meditate.png",
     "pending": ".build/piglet/pending.png",
+    "sad": ".build/piglet/sad.png",
     "stressed": ".build/piglet/stressed.png",
+    "thinking": ".build/piglet/thinking.png",
     "tired": ".build/piglet/tired.png",
     "working": ".build/piglet/working.png"
   }
