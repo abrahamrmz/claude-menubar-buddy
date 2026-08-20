@@ -2,7 +2,9 @@
 
 A hardware-free, native macOS companion for [Claude Code](https://claude.com/claude-code): a desk pet that fields permission requests from a card on your desktop, and shows session status, token usage and plan limits at a glance. A software-only stand-in for Anthropic's [Claude Desktop Buddy](https://github.com/anthropics/claude-desktop-buddy) — no soldering, no BLE pairing.
 
-<img width="336" height="432" alt="image" src="https://github.com/user-attachments/assets/6fe47a82-6fde-4d50-a02d-f74e664113a9" />
+<img width="430" alt="The approval card floating above the pet: a Bash request from my-api with Allow armed, the always-allow row, a queued request behind it — and the koala asking for attention" src="docs/screenshot-card.png" />
+
+*A `git push` asking for permission: the full command, an always-allow-in-this-project row, one more request queued behind (`+1`), jump-to-session and hand-off buttons — and the koala with its paw up.*
 
 ## The card
 
