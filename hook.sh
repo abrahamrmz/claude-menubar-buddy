@@ -68,10 +68,17 @@ if [ -f "$DIR/auto_approve_edits" ]; then
   esac
 fi
 
+# Where this session lives. Needed this early because allowlist grants are
+# scoped by it; the project *name* below is only ever for display.
+CWD="$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null || echo "")"
+[ -z "$CWD" ] && CWD="$PWD"
+PROJECT_NAME=""
+[ -n "$CWD" ] && PROJECT_NAME="$(basename "$CWD")"
+
 # Fast path: Bash commands whose base command the user marked "Always allow"
 # from the approval card get approved instantly — no card, no waiting. The
 # list is maintained by the menu bar app (always_allow.json); removing an
-# entry from its "Auto-allowed Commands" submenu re-enables the card.
+# entry from Settings ▸ Safety re-enables the card.
 ALLOW_FILE="$DIR/always_allow.json"
 if [ "$TOOL" = "Bash" ] && [ -f "$ALLOW_FILE" ]; then
   FULL_CMD="$(echo "$INPUT" | jq -r '.tool_input.command // ""')"
@@ -92,8 +99,24 @@ if [ "$TOOL" = "Bash" ] && [ -f "$ALLOW_FILE" ]; then
     # app extracts when offering the "Always allow" button.
     CMD_BASE="$(printf '%s' "$FULL_CMD" \
       | awk '{for(i=1;i<=NF;i++){if($i !~ /^[A-Za-z_][A-Za-z0-9_]*=/){print $i; exit}}}')"
-    if [ -n "$CMD_BASE" ] && jq -e --arg c "$CMD_BASE" 'index($c) != null' "$ALLOW_FILE" >/dev/null 2>&1; then
-      jq -n --arg r "Always-allowed via Claude Menu Bar Buddy: $CMD_BASE" \
+    # Two scopes: `global` (allowed anywhere) and `projects[<absolute cwd>]`
+    # (allowed only where it was granted). Keyed by the full path and matched
+    # exactly — two checkouts can share a basename, and a prefix match would
+    # make a grant on /repo also cover /repo-secrets.
+    #
+    # A bare array is the pre-scopes shape of this file. Those entries were
+    # granted with no project in the picture, so they read as global; the app
+    # rewrites the file in the new shape on its next change.
+    SCOPE=""
+    if [ -n "$CMD_BASE" ]; then
+      SCOPE="$(jq -r --arg c "$CMD_BASE" --arg d "$CWD" '
+        (if type == "array" then {global: ., projects: {}} else . end)
+        | if ((.global // []) | index($c)) != null then "everywhere"
+          elif ((.projects[$d] // []) | index($c)) != null then "in this project"
+          else "" end' "$ALLOW_FILE" 2>/dev/null || echo "")"
+    fi
+    if [ -n "$SCOPE" ]; then
+      jq -n --arg r "Always-allowed $SCOPE via Claude Menu Bar Buddy: $CMD_BASE" \
         '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"allow",permissionDecisionReason:$r}}'
       exit 0
     fi
@@ -153,13 +176,8 @@ esac
 # --argjson wants a real number, and this one came out of a subshell.
 case "$HIDDEN" in ''|*[!0-9]*) HIDDEN=0 ;; esac
 
-# Project = basename of the session's cwd, so the approval UI can show which
-# repo/session is actually asking (avoids approving something from the wrong
-# project when several sessions run at once).
-CWD="$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null || echo "")"
-[ -z "$CWD" ] && CWD="$PWD"
-PROJECT_NAME=""
-[ -n "$CWD" ] && PROJECT_NAME="$(basename "$CWD")"
+# CWD / PROJECT_NAME are computed near the top — the allowlist fast path
+# needs them before it can decide, and it runs long before this point.
 
 # Who is hosting this session, so the app's "jump to session" button can raise
 # that exact window. The hook inherits the host app's environment: macOS sets

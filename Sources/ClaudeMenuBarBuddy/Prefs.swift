@@ -153,15 +153,55 @@ extension AppDelegate {
     var autoEditsFlagURL: URL { dirURL.appendingPathComponent("auto_approve_edits") }
     var autoEditsEnabled: Bool { FileManager.default.fileExists(atPath: autoEditsFlagURL.path) }
 
-    func readAlwaysAllow() -> [String] {
+    func readAlwaysAllow() -> AlwaysAllow {
         guard let data = try? Data(contentsOf: alwaysAllowURL),
-              let list = try? JSONSerialization.jsonObject(with: data) as? [String] else { return [] }
-        return list
+              let obj = try? JSONSerialization.jsonObject(with: data) else { return AlwaysAllow() }
+        // The file was a bare array before grants had scopes. Everything in
+        // one was granted everywhere, so that is where it stays: narrowing a
+        // permission the user gave would be a surprise in the safe direction,
+        // but a surprise, and a command that silently stopped being allowed
+        // would just look like the buddy had broken.
+        if let legacy = obj as? [String] { return AlwaysAllow(global: legacy) }
+        guard let dict = obj as? [String: Any] else { return AlwaysAllow() }
+        return AlwaysAllow(global: dict["global"] as? [String] ?? [],
+                           projects: dict["projects"] as? [String: [String]] ?? [:])
     }
 
-    func writeAlwaysAllow(_ list: [String]) {
-        if let data = try? JSONSerialization.data(withJSONObject: list.sorted(), options: [.prettyPrinted]) {
+    func writeAlwaysAllow(_ list: AlwaysAllow) {
+        // Projects that ran out of entries are dropped rather than left as
+        // empty arrays — a path in the file reads as "this project has a
+        // standing grant", and after the last Remove it doesn't.
+        var projects: [String: [String]] = [:]
+        for (path, commands) in list.projects where !commands.isEmpty {
+            projects[path] = commands.sorted()
+        }
+        let payload: [String: Any] = ["global": list.global.sorted(), "projects": projects]
+        if let data = try? JSONSerialization.data(withJSONObject: payload,
+                                                  options: [.prettyPrinted, .sortedKeys]) {
             try? data.write(to: alwaysAllowURL, options: [.atomic])
         }
+    }
+}
+
+/// The buddy's Bash allowlist, in two scopes: commands allowed everywhere,
+/// and commands allowed only in the session that granted them.
+///
+/// Projects are keyed by the session's **absolute cwd**, not by its name.
+/// Two checkouts can both be called `api`, and a grant leaking between them
+/// is exactly the kind of thing nobody would ever notice. The match is exact
+/// for the same reason a prefix would be wrong: `/repo` as a prefix also
+/// covers `/repo-secrets`, and a grant that widens by accident is the one
+/// failure this file exists to prevent.
+struct AlwaysAllow {
+    var global: [String] = []
+    var projects: [String: [String]] = [:]
+
+    /// Mirrors hook.sh's lookup — kept in Swift so the settings table can say
+    /// what the hook would actually do, but the hook remains the authority
+    /// (it decides with the app not running).
+    func allows(_ base: String, in cwd: String?) -> Bool {
+        if global.contains(base) { return true }
+        guard let cwd = cwd, !cwd.isEmpty else { return false }
+        return projects[cwd]?.contains(base) ?? false
     }
 }

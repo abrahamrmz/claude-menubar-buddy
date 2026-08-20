@@ -306,18 +306,56 @@ Globito ocasional junto al pet flotante con contexto corto ("compactando…", "3
 
 ## Fase 6 — Productividad
 
-### 6.1 Estadísticas de decisiones
+### 6.1 ✅ Estadísticas de decisiones (2026-08-19)
 `decisions.jsonl` ya tiene ts/tool/project/decision/host/answers. El submenú Decision History gana cabecera de resumen (hoy/semana: N aprobadas, M denegadas, tool más frecuente, proyecto más activo). Sin ventana nueva de entrada — el menú es el hábitat de la app.
 
-### 6.2 Always-allow por proyecto
+- **Ventana rodante en memoria, no cuentas persistidas** (`DecisionStats.swift`). Unas cuentas "hoy/semana" tendrían que enterarse de la medianoche y resetearse solas, y una que se saltara el rollover reportaría el número de ayer como el de hoy para siempre. Una ventana simplemente olvida lo que se le cae por atrás.
+- Sembrada una vez al arrancar desde el log **y su rotación**, en background; `writeDecision` la mantiene al día. Abrir el menú cuesta aritmética sobre unos cientos de structs en vez de reparsear 780 KB — que además se abre seguido. El merge deduplica por `ts` para no contar doble lo que se escribió mientras la siembra leía.
+- Las cuatro decisiones se cuentan aparte porque son cuatro cosas distintas: una respuesta a `AskUserQuestion` no es una aprobación, y un `pass` no es un deny sino la app absteniéndose. Las categorías en cero no se imprimen — un "0 denied" se lee como contador roto.
+- Verificado contra sus datos reales: `jq` sobre el log dio 1037 en la ventana / 77 hoy / 1033 allow / Bash 984 / pdl_mty 643, y la app dijo 1040 / 80 / 1036 / Bash 987 / pdl_mty 643 — los mismos **+3** en todos los contadores que se movieron, que son las decisiones ocurridas entre una medición y otra. Flag de debug nuevo `capture_stats` → `decision_stats.txt`, hermano de los selfies, porque un encabezado que vive en un `NSMenu` no es capturable.
+- De paso: el README afirmaba que `decisions.jsonl` "deliberately never rotated" — la Fase 4 le puso rotación a 1 MB y la frase se quedó. Corregida.
+
+### 6.2 ✅ Always-allow por proyecto (2026-08-19)
 Hoy `always_allow.json` es global. La fila quiet ofrece "Always allow `git push` **in proyX**"; `hook.sh` compara contra `{global: [...], projects: {...}}` usando el `cwd` que ya captura. Migración: la lista actual pasa a `global`. La tabla de Settings ▸ Safety gana columna de proyecto.
+
+- **La llave es el `cwd` absoluto, no el nombre del proyecto**, y el match es exacto. Dos checkouts pueden llamarse `api` los dos, y un permiso filtrándose entre ellos es exactamente lo que nadie notaría nunca; un prefijo, por su parte, convertiría un grant sobre `/repo` en uno sobre `/repo-secrets`.
+- **La tarjeta sólo puede estrechar; ensanchar cuesta más.** El botón ⌥⌘⏎ otorga siempre en el proyecto que preguntó. Pasar un permiso a "everywhere" es una decisión distinta y vive en Settings ▸ Safety, detrás de una confirmación que dice en cuántos proyectos va a valer. Que lo ancho cueste un viaje y lo estrecho un clic es el diseño, no un descuido.
+- Sin `cwd` (ssh/tmux, o un `hook.sh` viejo) no hay proyecto al que acotar: ahí el único permiso expresable es el global, y el botón dice "everywhere" en vez de prometer una estrechez que no puede cumplir.
+- **Compatibilidad hacia atrás en el hook, no en una migración.** Un array pelado es la forma pre-scopes del archivo; el hook lo normaliza en la misma expresión jq (`if type == "array" then {global: ., projects: {}}`), así que un usuario a medio actualizar nunca pierde permisos. La app reescribe en la forma nueva en su siguiente cambio.
+- `CWD`/`PROJECT_NAME` subieron al principio de `hook.sh` — el fast path los necesita para decidir y corría mucho antes de donde se calculaban.
+- La tabla de Settings desambigua los basenames que chocan mostrando también la carpeta padre (`work/api` vs `personal/api`). Dibujar los dos como "api" habría escondido justo el caso por el que existe la feature.
+- Verificado: los 8 casos de la expresión de lookup aislada (incluidos homónimos, `api-x` contra `api`, subdirectorio, y archivo corrupto → falla cerrado), luego 8 end-to-end contra el `hook.sh` real con payloads de `PreToolUse` — 3 fast-path con la redacción de scope correcta, 5 cayendo a la tarjeta — y las 3 formas vacías que la app puede escribir. La tabla, renderizada desde la app con dos checkouts homónimos sembrados.
+- **Trampa de verificación**: `launchctl bootout` **desregistra** el servicio, así que `kickstart` ya no lo encuentra y la app se queda caída; restaurar pide `bootstrap` con la ruta del plist. Distinto del gotcha de codesigning que ya estaba documentado (ése es sólo `kickstart` dos veces).
 
 ### 6.3 Configurables
 Toggle "Sounds" en Settings ▸ Behavior (Ping/Tink/Glass) · duración de meditación y staleness del plan como keys de Defaults (primero la key, UI solo si se pide) · unificar el umbral duplicado `MIN_SECONDS_TO_NOTIFY=30` (notify-done.sh) vs `toastMinSeconds` (app).
 
+## Fase 7 — Madurez (veredicto de la revisión 2026-08-19)
+
+Sale de una revisión completa del repo (2026-08-19). El diagnóstico: el diseño de seguridad y la documentación de decisiones están por encima de la media, pero **la verificación del proyecto es rigurosa y efímera** — selfies, inyección manual de requests, tests aislados que se escriben, prueban y se tiran. Excelente para cerrar cada fase, cero protección contra regresiones. Esta fase convierte ese veredicto en trabajo, empezando por lo que protege a todo lo demás.
+
+### 7.1 Tests committeados — primero los que guardan las promesas de seguridad
+Target `ClaudeMenuBarBuddyTests` en `Package.swift` para que `swift test` corra sin Xcode (mismo espíritu SPM-only del build). En orden de riesgo:
+1. **La validación de comandos del always-allow** (hook.sh). Es la pieza que decide qué corre sin tarjeta: los metacaracteres `;` `|` `&` `$` `` ` `` etc. deben mandar a tarjeta *siempre*, sin importar la primera palabra. Como vive en bash, el arnés es de fixtures, no XCTest: un script en `Tests/hook/` que alimenta requests JSON al `hook.sh` real con un config dir temporal y asserta la decisión (allow del fast-path / caída a tarjeta / `{}` en multiSelect). Los casos son los del README más los que un refactor rompería callado: `git; rm`, `cat $(x)`, newline embebido, entrada del allowlist con espacios.
+2. **La matemática del burn-rate** (`fiveHourSlope`). Los tests aislados de la 1.5 ya cubrieron los shapes reales (rollover, plano, recuperando, spread corto, fuera de ventana) — esta vez se committean en vez de tirarse. Si algo de esa lógica quedó pegado a I/O, extraerlo a función pura es parte del ítem.
+3. **Las cadenas de degradación de moods** (`gifName`/`moodGifCandidates` + el fallback de especie sin arte de la 4.x): 4 especies × 13 moods sin combinación muerta, y `selectedSpecies` huérfano cae al default. Hoy eso se verifica a mano en cada retiro de pet; un test lo hace en cada build.
+- Verificar: `swift test` verde en checkout limpio; romper a propósito un metacaracter del hook y un corte de rollover → ambos tests fallan.
+
+### 7.2 Partir `ApprovalCard.swift` y re-adelgazar `main.swift`
+La Fase 0 partió un `main.swift` de ~1400 líneas; hoy `ApprovalCard.swift` va en ~1100 y `main.swift` volvió a ~920. La tarjeta concentra layout + decisión + verdict + badge de cola, y es donde más se agrega feature por feature — mismo patrón que motivó la Fase 0. Cortes naturales: `CardLayout` (construcción visual por tipo de tool), `CardDecision` (respond/writeDecision/verdict) y dejar el badge de cola con `Queue.swift`, que ya es su tema. Sin cambios de comportamiento: es mover, no reescribir — hacerlo *antes* de la 6.x para que esas features caigan en archivos del tamaño correcto.
+- Verificar: `swift build` limpio, tarjeta sigue no-activante, selfie idéntica antes/después (`capture_card`).
+
+### 7.3 El techo de 60s del hook, visible en vez de silencioso
+El hook espera respuesta 60s y luego cae al prompt nativo — correcto y es la base del fail-safe. Lo que falta es el otro lado: **la tarjeta se queda en pantalla pidiendo una decisión que ya nadie escucha**; responder después escribe un response file huérfano y el usuario cree que decidió. Dos remedios, el segundo barato porque el request JSON ya trae timestamp:
+1. Documentar el techo en README ("What it can see"): una decisión que tarda más de ~60s se responde en el prompt nativo, no en la tarjeta.
+2. Al vencer el plazo, la tarjeta se retira sola (o se marca "expiró — respóndelo en el prompt nativo") en el mismo poll de 1s que ya la maneja. Sin timer nuevo.
+- Verificar: inyectar request y no responder → a los ~60s la tarjeta se retira y el prompt nativo queda como único dueño de la decisión; `decisions.jsonl` no gana entrada fantasma.
+
 ## Orden del segundo ciclo
 
 **4 → 5.1+5.2 → 5.4 → 5.3 → 6.1 → 6.2 → 6.3.** El arte (5.4) se intercala donde convenga: generar es esperar API. La 2.4 sigue disponible sin bloquear a nadie.
+
+**Fase 7 (agregada 2026-08-19): la 7.1 va primero de lo que reste** — es la que protege a las demás, y cada fase que se cierre sin ella es verificación que vuelve a evaporarse. La 7.2 conviene antes de entrar a la 6.x (que esas features caigan en archivos ya partidos); la 7.3 es independiente y chica, se intercala cuando toque tocar la tarjeta.
 
 ---
 

@@ -20,7 +20,7 @@ When a permission request comes in, the icon changes, a sound plays, and the dro
 - **Approve/Deny in the menu bar** for Bash, Write, Edit, WebFetch, and NotebookEdit tool calls — an alternative to answering permission prompts in the terminal or Claude Desktop
 - **Styled approval card** on the desktop, next to the floating pet: per-tool accent color and icon (teal Bash, orange Edit, purple Write, pink plans), project badge, the full command or a red/green mini-diff in a scrollable code block, and pill Allow/Deny buttons — non-activating, so deciding never steals focus from what you're typing
 - **Micro-interactions** — buttons visibly sink when pressed (also when triggered via hotkey), and deciding flashes a green ✓ / red ✕ verdict over the card before it fades out; queued requests then enter one at a time
-- **Always allow** (⚡ on Bash cards, or ⌥⌘⏎) — approve AND remember the base command (`gh`, `npm`, …) in a buddy-managed allowlist; from then on `hook.sh` auto-approves it in ~20ms with no card at all. Managed from `Settings ▸ Safety` (select an entry, press Remove, and its card comes back). Stored in `always_allow.json`, never touching `~/.claude/settings.json`.
+- **Always allow, in this project** (⚡ on Bash cards, or ⌥⌘⏎) — approve AND remember the base command (`gh`, `npm`, …) for the project that asked; from then on `hook.sh` auto-approves it there in ~20ms with no card at all. The grant is keyed on the session's full path, not the folder's name, so two checkouts both called `api` never inherit each other's permissions. Widening one to every project is a separate, confirmed action in `Settings ▸ Safety`, where the whole list is also readable and removable. Stored in `always_allow.json`, never touching `~/.claude/settings.json`.
 - **Auto-approve Edits mode** (⚡ on Edit/Write cards, or the menu toggle) — while on, file edits skip the card entirely; a ✏️ badge on the menu bar icon keeps the standing grant visible, and unchecking the menu item returns to ask-before-each-edit
 - **Answering questions, not just approving** — when Claude asks with named options (`AskUserQuestion`), the card shows those options as buttons with what each one means, pickable by click or ⌘1-4; several questions in one call are walked one at a time. The answer goes back through the tool's own `answers` field, so Claude receives an ordinary result rather than a blocked tool. Multi-select questions and free-text "Other" go straight to the native picker, which is the right place to type. **Plans** get their three real choices too — approve and review each edit (⌘⏎), approve and auto-accept from here (⌥⌘⏎), or keep planning (⇧⌘⏎, which tells Claude *why* rather than just refusing).
 - **Hand off to VS Code** (↗ on any card; it's also ⌥⌘⏎ on plan cards) — the hook returns immediately with no decision, so the native prompt appears right away with its full options (for plans: auto-accept, manually approve, tell Claude what to do). Long plans read better there than on a card.
@@ -35,8 +35,9 @@ When a permission request comes in, the icon changes, a sound plays, and the dro
 - **Doesn't go blind when Claude Code updates** — the buddy leans on four things Claude Code owes it no compatibility for: the hook contract, the transcript format, a plan-usage file that belongs to Claude Desktop, and the set of tools that ask permission. Approvals can't break (hooks are additive — if ours fails, the native prompt takes over), but those seams can shift quietly. So the setup check also records which Claude Code series it was last verified against and says so when that moves (minor versions only — patches ship too often to be worth a word), asserts the transcript still carries the fields it reads, and lists tools that ran without ever passing through the card. That last one is how a newly permission-gated tool announces itself instead of being noticed weeks later by its absence; the tool names cost nothing to collect, because they're picked up from lines the token counter is already parsing.
 - **Session status** — idle / active, based on recent Claude Code session file activity
 - **Active Sessions submenu** — lists each active session's project path and how long ago it was last active; click one to reveal that project folder in Finder
+- **Decision History submenu** — the last ten decisions, over a summary of the week: how many you allowed and denied today and over seven days, plus which tool asks most and which project is busiest. The counts come from a rolling window held in memory (seeded once at launch from the log), so opening the menu never re-reads a file that grows all day
 - **Mood pet** — the pet itself reacts to your 5-hour limit: active below 50%, visibly tired at 50%, feeling the pressure at 70%, running on fumes at 85%, and fast asleep (with drifting Zzz) once the limit is hit — same joke for all four pets. Being nearly out of budget outranks looking busy; the milder bands don't.
-- **Pet the buddy** — click the pet in the dropdown for a happy heart-eyes reaction
+- **Pet the buddy** — click the floating pet for a happy heart-eyes reaction; a click is told from a drag by how far the mouse moved, so petting never fights dragging
 - **Reactions** — a denied request gets three seconds of visible disappointment (downcast eyes, a tear), and a session the buddy hasn't met yet gets a star-eyed "hi!" the first time it says something. Both revert to the real mood on their own.
 - **Celebrate on refresh** — when the 5-hour limit rolls back over to healthy, the pet throws a little arms-up celebration (with a notification) instead of silently snapping back to idle
 - **Floating desktop pet** (Codex Pet-style) — an always-on-top, draggable pet that sits on your desktop independent of the menu bar dropdown, with the same mood system refreshed in the background every ~5s. It is the only pet on screen — the menu bar dropdown keeps the mood as a line of text, since a GIF you can only see by opening a menu is a pet nobody watches. Toggle it from the menu (`Floating Pet`); it wears whichever species you pick in `Settings ▸ Appearance`. `Pet Size` sets it to small, medium or large — three steps rather than a slider, because those are the sizes that land on whole screen pixels and keep the pixel art from blurring.
@@ -70,7 +71,7 @@ This app sits between Claude Code and your answer to "may I run this?", so its r
 
 **It reads your local Claude Code transcripts.** Every `.jsonl` under `~/.claude/projects/`, to count today's output tokens and tell which sessions are active. It sums the `usage` numbers and reads the last record of the newest file to tell a running tool from a thinking model. It also reads `~/Library/Application Support/Claude/plan-usage-history.json`, which Claude Desktop writes, for the limit bars.
 
-**It writes what you're being asked to approve to disk.** Each pending request lands in `~/.config/claude-menubar-buddy/request_<id>.json` — the command, or the diff, or the file content — and is deleted the moment it's answered. Every decision is then appended to `decisions.jsonl` along with the first 200 characters of what it was about, and that log is deliberately never rotated: it's your audit trail, and `Settings ▸ Safety` opens it. Both the hook and the app keep that directory owner-only (`0700`) — the shell's default umask would otherwise leave every pending command and diff readable by any other account on the machine.
+**It writes what you're being asked to approve to disk.** Each pending request lands in `~/.config/claude-menubar-buddy/request_<id>.json` — the command, or the diff, or the file content — and is deleted the moment it's answered. Every decision is then appended to `decisions.jsonl` along with the first 200 characters of what it was about — it's your audit trail, and `Settings ▸ Safety` opens it. It rotates once at ~1 MB into `decisions.1.jsonl`, so the last two megabytes stay greppable and older than that is genuinely gone. Both the hook and the app keep that directory owner-only (`0700`) — the shell's default umask would otherwise leave every pending command and diff readable by any other account on the machine.
 
 **Debug screenshots are off unless you ask for them.** The app can render the approval card, the pet, the menu bar icon or the settings panes straight to a PNG — an in-process render, because a non-activating panel comes out blank through ScreenCaptureKit. Useful while working on the layout, and a poor thing to leave standing: it photographs whatever is on the card, which can be a diff carrying a credential, and any process running as you can drop the file that asks for one. Set `CLAUDE_BUDDY_DEBUG=1` in the app's environment to turn it on. Without it the `capture_*` flags are never even looked at.
 
@@ -83,6 +84,17 @@ This app sits between Claude Code and your answer to "may I run this?", so its r
 Both approve things without showing you a card, so both are worth understanding before turning them on — and both stay visible in the menu bar the whole time they're active, because a grant you can't see is a grant you'll forget you gave.
 
 **Always allow `<command>`** remembers one base command in `always_allow.json`. It only ever speaks for a single command: anything carrying `;` `&` `|` `<` `>` `(` `)` `` ` `` `$` `\` or a newline gets a card regardless of its first word, since past that point the first word has stopped describing what will actually run. Keep the list to things that read and navigate — `cat`, `git`, `grep`, `ls`. An interpreter on that list (`python`, `node`, `swift`) is equivalent to allowing everything, because one clean command is all it takes.
+
+The file has two scopes:
+
+```json
+{
+  "global":   ["ls", "grep"],
+  "projects": { "/Users/you/repos/api": ["gh", "npm"] }
+}
+```
+
+The card only ever writes into `projects`, keyed on the session's absolute path — the match is exact, so a grant on `/repos/api` reaches neither `/repos/api-x` nor a second checkout at `/work/api`. `global` entries apply everywhere, which is why moving one there is a confirmed action in `Settings ▸ Safety` rather than a button on the card. A bare JSON array is the pre-scopes shape of this file and still reads as `global`; the app rewrites it in the new shape on its next change.
 
 **Auto-approve Edits** lets `Edit`/`Write`/`NotebookEdit` through without a card and puts a ✏️ on the menu bar icon for as long as it's on. It stops at the files that decide what runs on this machine tomorrow: `~/.ssh`, `~/.gnupg`, LaunchAgents and LaunchDaemons, `.git/hooks`, `~/.claude`, the buddy's own config directory, shell startup files, and the system directories. Anything relative, or containing `..`, gets a card too — there's no way to tell where those land, and "can't tell" has to mean "ask". The buddy's own config is on that list on purpose: without it, an auto-approved write could append to `always_allow.json` and widen the very grant that let it through.
 
@@ -131,13 +143,18 @@ Sources/ClaudeMenuBarBuddy/
   main.swift                           # bootstrap, AppDelegate core, menus, poll loop
   ApprovalCard.swift                   # the floating card: build, decide, verdict animation
   FloatingPet.swift                    # desktop pet window + dragging
+  Fidgets.swift                        # idle motion: bob, squash, cursor lean-in
+  SpeechBubble.swift                   # the pet's occasional one-liner
   MoodEngine.swift                     # which mood/GIF the pet shows, and when
   Toast.swift                          # turn-finished toast
   JumpToHost.swift                     # raise the editor/terminal hosting a session
   BurnRate.swift                       # how fast the 5-hour limit is going
   Queue.swift                          # picking from and answering the waiting line
+  DecisionStats.swift                  # the week of decisions behind the history summary
   StatusIcon.swift                     # the menu bar icon + accessibility label
   SettingsWindow.swift                 # settings window, panes, always-allow table
+  Onboarding.swift                     # first-run welcome pages
+  Health.swift                         # the setup check + update-drift assertions
   HotKeys.swift                        # global shortcuts (KeyboardShortcuts)
   Prefs.swift                          # Defaults keys + hook flag files
   UsageStats.swift                     # reads session JSONL + plan-usage-history.json

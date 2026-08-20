@@ -215,6 +215,14 @@ extension AppDelegate {
         let base = (req.tool == "Bash" && (req.hidden ?? 0) == 0)
             ? commandBase(from: req.hint) : nil
         currentCommandBase = base
+        // Which project the grant would be scoped to, or nil when the session
+        // has no cwd to scope by (ssh/tmux). The grant keys on the full path;
+        // this is only what the button calls it.
+        let grantScope: String? = {
+            guard let cwd = req.cwd, !cwd.isEmpty else { return nil }
+            if let project = req.project, !project.isEmpty { return project }
+            return (cwd as NSString).lastPathComponent
+        }()
         let isEditTool = ["Edit", "MultiEdit", "Write", "NotebookEdit"].contains(req.tool)
         let isPlan = req.tool == "ExitPlanMode"
         let hasQuietRow = question == nil && (base != nil || isEditTool || isPlan)
@@ -459,10 +467,16 @@ extension AppDelegate {
         if hasQuietRow {
             let quietButton: PressablePillButton
             if let base = base {
-                quietButton = pillButton(title: "⚡ Always allow \(base)", shortcut: "⌥⌘⏎",
+                // Scoped to the asking project by default. A standing grant
+                // is worth as much as it is narrow, and the project you are
+                // in is the one you just decided about — "everywhere" is a
+                // different, wider decision, so it lives in Settings ▸ Safety
+                // where it costs a deliberate trip and a confirmation.
+                let where_ = grantScope.map { "in \($0)" } ?? "everywhere"
+                quietButton = pillButton(title: "⚡ Always allow \(base) \(where_)", shortcut: "⌥⌘⏎",
                                          fill: NSColor.white.withAlphaComponent(0.07),
                                          textColor: accent, action: #selector(alwaysAllow),
-                                         accessibility: "Allow, and always allow \(base) from now on")
+                                         accessibility: "Allow, and always allow \(base) \(where_) from now on")
                 currentQuietAction = { [weak self] in self?.alwaysAllow() }
             } else if isEditTool {
                 quietButton = pillButton(title: "⚡ Auto-approve edits from now on", shortcut: "⌥⌘⏎",
@@ -848,7 +862,18 @@ extension AppDelegate {
             return
         }
         var list = readAlwaysAllow()
-        if !list.contains(base) { list.append(base) }
+        if let cwd = currentRequest?.cwd, !cwd.isEmpty {
+            var forProject = list.projects[cwd] ?? []
+            if !forProject.contains(base) { forProject.append(base) }
+            list.projects[cwd] = forProject
+        } else if !list.global.contains(base) {
+            // No cwd — an ssh/tmux session, or a request written by a hook
+            // older than the field. There is no project to scope to, so the
+            // only grant expressible is the wide one, and the card's own
+            // wording says "everywhere" in that case rather than implying a
+            // narrowness it can't deliver.
+            list.global.append(base)
+        }
         writeAlwaysAllow(list)
         respond("allow")
     }
@@ -1009,6 +1034,10 @@ extension AppDelegate {
             // For a question, "answer" alone says nothing — the log needs to
             // record what was actually chosen on the user's behalf.
             if let answers = answers { entry["answers"] = answers }
+            // Into the in-memory week as well as onto disk, so the summary in
+            // the menu is current without the log being re-read.
+            noteDecision(DecisionRecord(ts: entry["ts"] as? Double ?? Date().timeIntervalSince1970,
+                                        tool: req.tool, project: req.project ?? "", decision: decision))
             if let line = try? JSONSerialization.data(withJSONObject: entry) {
                 let logURL = dirURL.appendingPathComponent("decisions.jsonl")
                 // One rotation deep at ~1 MB (years of decisions): the menu

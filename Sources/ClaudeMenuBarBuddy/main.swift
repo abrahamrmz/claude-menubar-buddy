@@ -222,6 +222,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     var lastHealthAt = Date.distantPast
     weak var toastThresholdReadout: NSTextField?
     var alwaysAllowTable: AlwaysAllowTable?
+    // A week of decisions, for the Decision History summary. See
+    // DecisionStats.swift for why the window is held here and not re-read.
+    var recentDecisions: [DecisionRecord] = []
     // (sampled-at, tokens-today) for the fallback burn rate, pruned to 2h.
     // In memory on purpose: it measures the pace of the session you're in,
     // and a rate stitched across a restart would be measuring a gap.
@@ -380,6 +383,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         try? FileManager.default.setAttributes(
             [.posixPermissions: 0o700], ofItemAtPath: dirURL.path)
         sweepStaleArtifacts()
+        loadDecisionWindow()
 
         approvalHotKeys.onAllow = { [weak self] in self?.decideViaHotKey("allow") }
         approvalHotKeys.onDeny = { [weak self] in self?.decideViaHotKey("deny") }
@@ -614,6 +618,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     func updateHistorySubmenu() {
         guard let submenu = historySubmenuTop.submenu else { return }
         submenu.removeAllItems()
+        // Summary first: the ten most recent lines say what just happened,
+        // but "am I approving more than usual, and where?" is the question
+        // an audit trail is actually kept for.
+        let summaryLines = decisionSummaryLines()
+        for line in summaryLines {
+            let item = NSMenuItem(title: line, action: nil, keyEquivalent: "")
+            item.attributedTitle = NSAttributedString(
+                string: line,
+                attributes: [.foregroundColor: NSColor.secondaryLabelColor,
+                             .font: NSFont.systemFont(ofSize: 11)]
+            )
+            submenu.addItem(item)
+        }
+        if !summaryLines.isEmpty { submenu.addItem(NSMenuItem.separator()) }
         let logURL = dirURL.appendingPathComponent("decisions.jsonl")
         let timeFormatter = DateFormatter()
         timeFormatter.dateFormat = "HH:mm"
@@ -846,6 +864,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             captureIconSelfieIfRequested()
             captureSettingsSelfieIfRequested()
             captureOnboardingSelfieIfRequested()
+            captureDecisionStatsIfRequested()
         }
 
         processDoneMarkers()

@@ -324,7 +324,7 @@ extension AppDelegate {
             let table = AlwaysAllowTable(delegate: self)
             self.alwaysAllowTable = table
             form.wideRow(table.view)
-            form.note("Bash commands approved instantly, with no card, by whatever base command is listed. Select one and press Remove to bring its card back.")
+            form.note("Bash commands approved instantly, with no card. The card grants them in the project that asked; “Everywhere” covers all of them. Select one and press Remove to bring its card back.")
 
             form.header("AUDIT")
             let openLog = NSButton(title: "Reveal decision log…", target: self,
@@ -352,22 +352,60 @@ extension AppDelegate {
 
 /// The always-allow list as a real table, so entries can be read and removed
 /// without hunting through a submenu.
+///
+/// Also the only place a grant can be **widened**. The card only ever grants
+/// in the project that asked; turning one of those into "everywhere" is a
+/// different decision, and making it cost a trip here plus a confirmation is
+/// the point, not an oversight.
 final class AlwaysAllowTable: NSObject, NSTableViewDataSource, NSTableViewDelegate {
     let view = NSStackView()
     private let table = NSTableView()
     private let removeButton: NSButton
+    private let promoteButton: NSButton
     private weak var owner: AppDelegate?
-    private var commands: [String] = []
+
+    /// One row. `cwd` nil means the global scope.
+    private struct Entry {
+        let command: String
+        let cwd: String?
+        let scopeLabel: String
+    }
+    private var entries: [Entry] = []
+
+    /// Names for each project path, as short as they can be while still
+    /// telling them apart. Basenames normally, but the whole reason grants
+    /// key on the full path is that two checkouts can be called `api` — and a
+    /// table that drew both as "api" would hide exactly the case this feature
+    /// exists for. Those get their parent folder back.
+    private static func scopeLabels(for paths: [String]) -> [String: String] {
+        var byBasename: [String: [String]] = [:]
+        for path in paths { byBasename[(path as NSString).lastPathComponent, default: []].append(path) }
+        var labels: [String: String] = [:]
+        for (basename, sharing) in byBasename {
+            for path in sharing {
+                guard sharing.count > 1 else { labels[path] = basename; continue }
+                let parent = ((path as NSString).deletingLastPathComponent as NSString).lastPathComponent
+                labels[path] = parent.isEmpty ? path : "\(parent)/\(basename)"
+            }
+        }
+        return labels
+    }
 
     init(delegate: AppDelegate) {
         owner = delegate
         removeButton = NSButton(title: "Remove", target: nil, action: nil)
+        promoteButton = NSButton(title: "Allow everywhere…", target: nil, action: nil)
         super.init()
 
-        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("command"))
-        column.title = "Command"
-        table.addTableColumn(column)
-        table.headerView = nil
+        let command = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("command"))
+        command.title = "Command"
+        command.width = 150
+        table.addTableColumn(command)
+        let scope = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("scope"))
+        scope.title = "Where"
+        scope.width = 190
+        table.addTableColumn(scope)
+        table.headerView = NSTableHeaderView()
         table.dataSource = self
         table.delegate = self
         table.rowHeight = 20
@@ -378,47 +416,114 @@ final class AlwaysAllowTable: NSObject, NSTableViewDataSource, NSTableViewDelega
         scroll.hasVerticalScroller = true
         scroll.borderType = .bezelBorder
         scroll.translatesAutoresizingMaskIntoConstraints = false
-        scroll.heightAnchor.constraint(equalToConstant: 120).isActive = true
-        scroll.widthAnchor.constraint(equalToConstant: 320).isActive = true
+        // Taller than the one-column version was: scoping multiplies rows —
+        // the same command can now appear once per project.
+        scroll.heightAnchor.constraint(equalToConstant: 160).isActive = true
+        scroll.widthAnchor.constraint(equalToConstant: 360).isActive = true
 
-        removeButton.bezelStyle = .rounded
-        removeButton.target = self
+        for button in [removeButton, promoteButton] {
+            button.bezelStyle = .rounded
+            button.target = self
+            button.isEnabled = false
+        }
         removeButton.action = #selector(removeSelected)
-        removeButton.isEnabled = false
+        promoteButton.action = #selector(promoteSelected)
+
+        let buttons = NSStackView(views: [removeButton, promoteButton])
+        buttons.orientation = .horizontal
+        buttons.spacing = 8
 
         view.orientation = .vertical
         view.alignment = .leading
         view.spacing = 6
         view.addArrangedSubview(scroll)
-        view.addArrangedSubview(removeButton)
+        view.addArrangedSubview(buttons)
         reload()
     }
 
     func reload() {
-        commands = owner?.readAlwaysAllow().sorted() ?? []
+        let list = owner?.readAlwaysAllow() ?? AlwaysAllow()
+        // Global first: those are the entries that speak for every project,
+        // so they're the ones worth seeing without scrolling.
+        entries = list.global.sorted().map { Entry(command: $0, cwd: nil, scopeLabel: "Everywhere") }
+        let labels = Self.scopeLabels(for: Array(list.projects.keys))
+        for cwd in list.projects.keys.sorted(by: {
+            (labels[$0] ?? $0).localizedCaseInsensitiveCompare(labels[$1] ?? $1) == .orderedAscending
+        }) {
+            entries += (list.projects[cwd] ?? []).sorted().map {
+                Entry(command: $0, cwd: cwd, scopeLabel: labels[cwd] ?? cwd)
+            }
+        }
         table.reloadData()
-        removeButton.isEnabled = table.selectedRow >= 0
+        syncButtons()
+    }
+
+    private func syncButtons() {
+        let row = table.selectedRow
+        removeButton.isEnabled = row >= 0
+        // Nothing to widen about an entry that is already everywhere.
+        promoteButton.isEnabled = row >= 0 && row < entries.count && entries[row].cwd != nil
     }
 
     @objc private func removeSelected() {
         let row = table.selectedRow
-        guard row >= 0, row < commands.count, let owner = owner else { return }
+        guard row >= 0, row < entries.count, let owner = owner else { return }
+        let entry = entries[row]
         var list = owner.readAlwaysAllow()
-        list.removeAll { $0 == commands[row] }
+        if let cwd = entry.cwd {
+            list.projects[cwd]?.removeAll { $0 == entry.command }
+        } else {
+            list.global.removeAll { $0 == entry.command }
+        }
         owner.writeAlwaysAllow(list)
-        owner.buildIdleMenu()
         reload()
     }
 
-    func numberOfRows(in tableView: NSTableView) -> Int { commands.count }
+    /// Move a project-scoped grant to the global scope. Confirmed, because it
+    /// is the one action here that lets a command through somewhere the user
+    /// never approved it — including repos that don't exist yet.
+    @objc private func promoteSelected() {
+        let row = table.selectedRow
+        guard row >= 0, row < entries.count, let cwd = entries[row].cwd, let owner = owner else { return }
+        let entry = entries[row]
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Always allow ‘\(entry.command)’ in every project?"
+        alert.informativeText = """
+            Right now it runs without a card only in \(entry.scopeLabel). \
+            Allowing it everywhere covers every project on this Mac, including \
+            ones you haven't opened yet.
+            """
+        alert.addButton(withTitle: "Allow Everywhere")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        var list = owner.readAlwaysAllow()
+        list.projects[cwd]?.removeAll { $0 == entry.command }
+        if !list.global.contains(entry.command) { list.global.append(entry.command) }
+        owner.writeAlwaysAllow(list)
+        reload()
+    }
+
+    func numberOfRows(in tableView: NSTableView) -> Int { entries.count }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        let field = NSTextField(labelWithString: commands[row])
+        let entry = entries[row]
+        if tableColumn?.identifier.rawValue == "scope" {
+            let field = NSTextField(labelWithString: entry.scopeLabel)
+            field.font = .systemFont(ofSize: 12)
+            field.textColor = entry.cwd == nil ? .systemOrange : .secondaryLabelColor
+            // The full path is what the grant is actually keyed on, and two
+            // checkouts can share a basename — so it's a hover away, not lost.
+            field.toolTip = entry.cwd
+            return field
+        }
+        let field = NSTextField(labelWithString: entry.command)
         field.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
         return field
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
-        removeButton.isEnabled = table.selectedRow >= 0
+        syncButtons()
     }
 }

@@ -228,6 +228,11 @@ status when clicked. It stays that way until a permission request comes in.
   Nothing is wrong with the build — run the same `kickstart` a second time,
   or sleep a second between the two. Always confirm with `pgrep -f
   ClaudeMenuBarBuddy` rather than assuming the first one took.
+- `bootout` and `kickstart` are not two ways to restart. `bootout` *removes*
+  the job from the user domain, so the next `kickstart` reports "Could not
+  find service" and the app stays down — bringing it back takes
+  `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.claudemenubarbuddy.app.plist`.
+  Restarting a loaded job is `kickstart -k` and nothing else.
 - Don't skip the "merge, don't overwrite" step on settings.json — a naive
   overwrite would silently delete whatever permissions/hooks the user
   already had configured. Read first, merge, write.
