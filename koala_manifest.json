@@ -7,7 +7,9 @@
     "base": "bfcf4185-dce5-4bc4-9701-a5824b1e165e",
     "celebrate": "8ea97ef9-4ad9-46c4-ac14-4b4a2d6be7e5",
     "critical": "0a9aeabd-da8b-454e-9621-12e327452d87",
+    "dance": "9978222e-aca2-4094-a0d1-dfdead722c02",
     "excited": "eda15eec-6410-4e7b-a108-2ddefb338d5c",
+    "greet": "5cda0d62-258d-4075-ae3b-7183d6ecff3b",
     "heart": "39e42e0b-6779-49d1-a371-461bcdf3c622",
     "meditate": "e3244e93-99e8-44e8-9d44-0af857db0daa",
     "pending": "29832674-4268-42a4-a469-7afb46f40cd6",
@@ -15,7 +17,8 @@
     "stressed": "b1f9b7fe-2cec-4c6e-a54a-b1143bcf72b2",
     "thinking": "0162f01b-a400-4b51-ba17-5876514811c4",
     "tired": "cf98a583-a21e-46ec-a287-37cb23ed3054",
-    "working": "6182f71e-c034-4be0-ae88-f28ece2c535b"
+    "working": "6182f71e-c034-4be0-ae88-f28ece2c535b",
+    "yawn": "0ef11718-aeb0-4787-b056-ca3d1ecf8cfd"
   },
   "crop": [
     28,
@@ -28,7 +31,9 @@
     "asleep": ".build/koala/asleep.png",
     "celebrate": ".build/koala/celebrate.png",
     "critical": ".build/koala/critical.png",
+    "dance": ".build/koala/dance.png",
     "excited": ".build/koala/excited.png",
+    "greet": ".build/koala/greet.png",
     "heart": ".build/koala/heart.png",
     "idle": ".build/koala/idle.png",
     "meditate": ".build/koala/meditate.png",
@@ -37,6 +42,7 @@
     "stressed": ".build/koala/stressed.png",
     "thinking": ".build/koala/thinking.png",
     "tired": ".build/koala/tired.png",
-    "working": ".build/koala/working.png"
+    "working": ".build/koala/working.png",
+    "yawn": ".build/koala/yawn.png"
   }
 }

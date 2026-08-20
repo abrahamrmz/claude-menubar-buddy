@@ -117,6 +117,33 @@ MOODS = {
                   "meditating, slow deep breaths, floating gently up and down", 600),
 }
 
+# Gestures: moods a pet can have but doesn't need. Kept apart from MOODS so a
+# pet's entry in PETS decides whether it gets them — MOODS is the vocabulary
+# every pet speaks, this is the accent one of them has. Each degrades through
+# MoodPolicy's chains, so a pet without them is never left frozen: greet falls
+# back to excited, dance to celebrate, and yawn to plain idle, which simply
+# means that pet doesn't yawn.
+#
+# All three keep the arms low or beside the head on purpose. The koala's crop
+# box was frozen at 64px over its first thirteen moods and a raised-arm pose
+# is what comes closest to the ceiling — a wave that reaches over the head
+# would abort the crop after its state was already paid for.
+GESTURES = {
+    "greet":  ("one paw raised beside the head waving hello, the other arm at "
+               "its side, big friendly open-mouthed smile, face fully visible, "
+               "both eyes visible",
+               "waving hello, paw swinging side to side", 220),
+    "yawn":   ("yawning sleepily, mouth wide open in a big yawn, eyes squeezed "
+               "shut, one paw raised to cover the mouth, drowsy",
+               "a long slow yawn, head tilting back then settling", 550),
+    "dance":  ("dancing happily, hips swaying, arms swinging low at its sides, "
+               "one foot lifted mid-step, big open smile, face fully visible",
+               "dancing side to side, bobbing to a beat", 190),
+}
+
+# One table for lookups; PETS decides who gets what.
+ALL_MOODS = {**MOODS, **GESTURES}
+
 # Species-specific replacement for a mood's (edit, motion, tempo). The shared
 # MOODS table dresses every species alike; an entry here re-poses one species
 # without changing the family vocabulary. The koala's pending swaps "alert
@@ -173,7 +200,7 @@ OVERRIDES = {
 
 
 def mood_spec(species, mood):
-    return OVERRIDES.get((species, mood), MOODS[mood])
+    return OVERRIDES.get((species, mood), ALL_MOODS[mood])
 
 
 # A 6x8 pixel lightbulb, blinking above the koala's ear while it raises its
@@ -220,6 +247,10 @@ def add_lightbulb(frames):
 CORE = ["idle", "pending", "working", "tired", "stressed",
         "critical", "asleep", "heart", "celebrate", "meditate"]
 FULL = list(MOODS)
+# The koala is the pet this app was drawn for, so it's where a gesture gets
+# tried first. If one earns its keep the other three can buy it later — the
+# fallback chains mean nothing breaks in the meantime.
+FULL_PLUS_GESTURES = FULL + list(GESTURES)
 
 # Each pet gets its own neon AND its own piece of tech, worn somewhere
 # different on the body — an eye, a forehead, an arm, a tail — so they read
@@ -243,7 +274,7 @@ UPRIGHT = "standing upright on two hind legs facing the viewer, full body"
 UPRIGHT_PIG = ("anthropomorphic bipedal cartoon character, standing on two legs "
                "facing the viewer, arms at its sides, full body")
 PETS = {
-    "koala": (FULL, "cyberpunk koala mascot, round fluffy grey ears, big dark nose, "
+    "koala": (FULL_PLUS_GESTURES, "cyberpunk koala mascot, round fluffy grey ears, big dark nose, "
                     "one glowing cyan bionic eye with a thin metal rim, small neon "
                     "circuit accents on the fur, friendly and charismatic"),
     "piglet": (FULL, f"cyberpunk piglet mascot, {UPRIGHT_PIG}, round pink snout, small "
