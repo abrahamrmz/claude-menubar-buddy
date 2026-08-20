@@ -29,8 +29,10 @@ extension AppDelegate {
         case "critical": return "🥵 Running on fumes (85% of the 5h limit)"
         case "asleep": return "💤 Fast asleep (5h limit reached)"
         case "sad": return "😔 Aw, denied"
-        case "excited": return "🤩 A new session said hi!"
+        case "excited", "greet": return "🤩 A new session said hi!"
         case "meditate": return "🧘 Meditating — compacting context"
+        case "yawn": return "🥱 Nothing to do…"
+        case "dance": return "🎉 Back in business!"
         // Species-neutral on purpose: this line follows whichever pet is
         // selected, and a koala announcing itself with a panda face was a
         // leftover from when the panda was the only pet.
@@ -115,14 +117,56 @@ extension AppDelegate {
 
         if limitJustRefreshed {
             sendNotification(title: "Claude 5-hour limit refreshed", body: "Buddy is back and ready to go!")
-            if currentRequestId == nil { flashMood("celebrate", for: 4.0) }
+            // Two poses for the same good news, picked at random. The limit
+            // rolling over is the rarest happy event the buddy has, and a
+            // celebration that is pixel-identical every time stops reading as
+            // one. Pets without dance art fall through to celebrate anyway.
+            if currentRequestId == nil {
+                flashMood(Bool.random() ? "dance" : "celebrate", for: 4.0)
+            }
         } else if greetsNewSession && currentRequestId == nil {
-            flashMood("excited", for: 3.0)
+            // A wave, not a face: the koala greets with its paw up, and pets
+            // without the art degrade to the star-eyed excited it replaced.
+            flashMood("greet", for: 3.0)
         } else if flashWorkItem == nil && currentRequestId == nil {
             // Don't stomp an in-progress heart/celebrate flash (it reverts
             // to lastComputedMood by itself) or the pending pose.
             applyMoodGif(mood)
+            considerYawn()
         }
+    }
+
+    /// A yawn every so often while the pet has genuinely nothing to do.
+    ///
+    /// Deliberately the rarest thing on screen: the point is that idle time
+    /// *has* texture, which a yawn every minute would destroy — it would read
+    /// as a pet that is bored of you rather than one that has been waiting a
+    /// while. So it needs an unbroken stretch of idle first, and then only
+    /// fires on about one check in six, giving a typical gap of several
+    /// minutes with no fixed period to notice.
+    ///
+    /// Every suppression here is one the speech bubble and the fidgets already
+    /// honour: no yawning over a card, at a hidden pet, or while animations
+    /// are paused for a locked screen — a pose nobody can see still costs the
+    /// GIF swap, and would be waiting on screen at unlock.
+    func considerYawn() {
+        guard lastComputedMood == "idle", displayedMood == "idle",
+              floatingPetVisible, floatingWindow?.isVisible == true,
+              !animationsPaused, currentRequestId == nil,
+              flashWorkItem == nil else {
+            idleSinceYawn = 0
+            return
+        }
+        idleSinceYawn += 1
+        // The mood refresh runs every 5s, so 60 ticks is five unbroken
+        // minutes of nothing before the first roll — a pet that just finished
+        // a turn doesn't yawn at you — and a 1-in-12 chance per refresh after
+        // that puts the average gap around six minutes. Worth writing down
+        // because the first draft (24 ticks, 1-in-6) worked out to one every
+        // two and a half minutes, which is a fidget, not a sign of life.
+        guard idleSinceYawn >= 60, Int.random(in: 0..<12) == 0 else { return }
+        idleSinceYawn = 0
+        flashMood("yawn", for: 3.0)
     }
 
     // The degradation chains (thinking→working, meditate→thinking→idle, …)

@@ -229,6 +229,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     // A week of decisions, for the Decision History summary. See
     // DecisionStats.swift for why the window is held here and not re-read.
     var recentDecisions: [DecisionRecord] = []
+    // Consecutive mood refreshes spent doing nothing, counted by considerYawn.
+    var idleSinceYawn = 0
     // (sampled-at, tokens-today) for the fallback burn rate, pruned to 2h.
     // In memory on purpose: it measures the pace of the session you're in,
     // and a rate stitched across a restart would be measuring a gap.

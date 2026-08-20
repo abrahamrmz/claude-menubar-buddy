@@ -15,9 +15,12 @@ extension AppDelegate {
     /// happy" — wrong words at the right moment.
     func bubbleText(for mood: String) -> String? {
         switch mood {
-        case "meditate", "tired", "stressed", "critical", "asleep", "excited", "sad":
+        case "meditate", "tired", "stressed", "critical", "asleep", "excited", "greet", "sad":
             return petMoodText(mood)
-        case "celebrate": return "🎉 Back in business!"
+        case "celebrate", "dance": return "🎉 Back in business!"
+        // A yawn stays silent on purpose. It exists to give idle time some
+        // texture, and narrating it would turn "nothing is happening" into an
+        // announcement — the one reading it must never have.
         default: return nil
         }
     }

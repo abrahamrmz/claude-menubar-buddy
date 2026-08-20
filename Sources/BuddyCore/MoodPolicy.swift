@@ -7,14 +7,19 @@ import Foundation
 // `swift test` instead of by hand at every pet retirement.
 
 public enum MoodPolicy {
-    /// Every mood the app can ask a pet to wear — the keys of MOODS in
-    /// generate_pets.py, which is the source of truth for the art. The tests
-    /// audit this list against the shipped GIFs; a mood added in one place
-    /// but not the other fails there instead of showing up as a pet frozen
-    /// on its previous pose.
+    /// Every mood the app can ask a pet to wear — the keys of MOODS plus
+    /// GESTURES in generate_pets.py, which is the source of truth for the
+    /// art. The tests audit this list against the shipped GIFs; a mood added
+    /// in one place but not the other fails there instead of showing up as a
+    /// pet frozen on its previous pose.
+    ///
+    /// The last three are gestures: only the koala has art for them, and the
+    /// chains below carry the rest. That asymmetry is deliberate — a gesture
+    /// gets tried on one pet before it's bought for four.
     public static let allMoods = [
         "idle", "pending", "working", "thinking", "tired", "stressed",
         "critical", "asleep", "heart", "celebrate", "sad", "excited", "meditate",
+        "greet", "yawn", "dance",
     ]
 
     // The pet's mood follows the 5-hour limit, not the weekly one — it's
@@ -44,6 +49,15 @@ public enum MoodPolicy {
         case "thinking": return ["thinking", "working"]
         case "excited": return ["excited", "celebrate", "heart"]
         case "sad": return ["sad", "tired"]
+        // The three gestures. A wave is a greeting with its hand up, so a pet
+        // without one still greets — it just does it with its face.
+        case "greet": return ["greet", "excited", "celebrate", "heart"]
+        case "dance": return ["dance", "celebrate", "heart"]
+        // Nothing stands in for a yawn: it is a flourish on top of doing
+        // nothing, so a pet without the art simply carries on doing nothing.
+        // Anything else would turn "idle for a while" into a visible event on
+        // pets that have no way to express it.
+        case "yawn": return ["yawn", "idle"]
         // Species without meditation art sit compaction out looking
         // thoughtful — NOT asleep, whose Z means "limit reached" and would
         // read as a much worse thing than a tidy-up. Idle is spelled out as
