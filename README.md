@@ -1,94 +1,67 @@
 # Claude Menu Bar Buddy
 
-
-
-
-A hardware-free, native macOS menu bar companion for [Claude Code](https://claude.com/claude-code) — a desk pet that reacts to permission requests (Allow/Deny), and shows session status, token usage, and plan limits at a glance.
-
-It's a software-only stand-in for Anthropic's [Claude Desktop Buddy](https://github.com/anthropics/claude-desktop-buddy) (the M5StickC-based BLE hardware pet). No soldering, no BLE pairing, no separate device — just a 🐼 in your menu bar.
-
-## What it looks like
+A hardware-free, native macOS companion for [Claude Code](https://claude.com/claude-code): a desk pet that fields permission requests from a card on your desktop, and shows session status, token usage and plan limits at a glance. A software-only stand-in for Anthropic's [Claude Desktop Buddy](https://github.com/anthropics/claude-desktop-buddy) — no soldering, no BLE pairing.
 
 <img width="336" height="432" alt="image" src="https://github.com/user-attachments/assets/6fe47a82-6fde-4d50-a02d-f74e664113a9" />
 
-*(No pending requests · session status · tokens used today · 5-hour and weekly plan limits)*
+## The card
 
-When a permission request comes in, the icon changes, a sound plays, and the dropdown shows the tool + command with Allow/Deny buttons.
+When Claude Code needs a permission decision (Bash, Edit/MultiEdit/Write, NotebookEdit, WebFetch/WebSearch, plans, questions), a styled card appears next to the pet: per-tool accent and icon, project badge, and the **full** command or red/green mini-diff in a scrollable block — anything that didn't fit is called out in red, never silently cut. The panel is non-activating: deciding steals no focus from what you're typing.
 
-## Features
+- **Global shortcuts** — ⌘⏎ allow, ⇧⌘⏎ deny, ⌥⌘⏎ the card's quiet action, ⌘M jump to the asking window. Registered only while a card is up; remappable in Settings. Holding a shortcut's modifiers visibly arms the button it would push.
+- **Questions, not just permissions** — `AskUserQuestion` options become buttons (⌘1-4) answered through the tool's own `answers` field; multi-question calls are walked one at a time. Plans get their three real choices: approve each edit, approve + auto-accept, or keep planning (a deny that says *why*).
+- **A queue you can reach into** — the orange `+N` badge lists what's waiting, jumps to any request (⌘1-9), and offers allow/deny-all behind a confirmation, because answering things you haven't read is what this app exists to prevent.
+- **Hand off with ↗** — the native prompt appears immediately with its full options. Cards are answerable for ~60 seconds (the hook's window); after that the native prompt owns the decision and the card retires itself. Long reads belong on ↗ from the start.
+- **Standing grants** — ⚡ on a Bash card remembers the base command *for that project*; ⚡ on an edit card turns on auto-approve-edits. Both are covered in detail under [the two standing grants](#the-two-standing-grants).
 
-- **Approve/Deny in the menu bar** for Bash, Write, Edit, WebFetch, and NotebookEdit tool calls — an alternative to answering permission prompts in the terminal or Claude Desktop
-- **Styled approval card** on the desktop, next to the floating pet: per-tool accent color and icon (teal Bash, orange Edit, purple Write, pink plans), project badge, the full command or a red/green mini-diff in a scrollable code block, and pill Allow/Deny buttons — non-activating, so deciding never steals focus from what you're typing
-- **Micro-interactions** — buttons visibly sink when pressed (also when triggered via hotkey), and deciding flashes a green ✓ / red ✕ verdict over the card before it fades out; queued requests then enter one at a time
-- **Always allow, in this project** (⚡ on Bash cards, or ⌥⌘⏎) — approve AND remember the base command (`gh`, `npm`, …) for the project that asked; from then on `hook.sh` auto-approves it there in ~20ms with no card at all. The grant is keyed on the session's full path, not the folder's name, so two checkouts both called `api` never inherit each other's permissions. Widening one to every project is a separate, confirmed action in `Settings ▸ Safety`, where the whole list is also readable and removable. Stored in `always_allow.json`, never touching `~/.claude/settings.json`.
-- **Auto-approve Edits mode** (⚡ on Edit/Write cards, or the menu toggle) — while on, file edits skip the card entirely; a ✏️ badge on the menu bar icon keeps the standing grant visible, and unchecking the menu item returns to ask-before-each-edit
-- **Answering questions, not just approving** — when Claude asks with named options (`AskUserQuestion`), the card shows those options as buttons with what each one means, pickable by click or ⌘1-4; several questions in one call are walked one at a time. The answer goes back through the tool's own `answers` field, so Claude receives an ordinary result rather than a blocked tool. Multi-select questions and free-text "Other" go straight to the native picker, which is the right place to type. **Plans** get their three real choices too — approve and review each edit (⌘⏎), approve and auto-accept from here (⌥⌘⏎), or keep planning (⇧⌘⏎, which tells Claude *why* rather than just refusing).
-- **Hand off to VS Code** (↗ on any card; it's also ⌥⌘⏎ on plan cards) — the hook returns immediately with no decision, so the native prompt appears right away with its full options (for plans: auto-accept, manually approve, tell Claude what to do). Long plans read better there than on a card.
-- **A queue you can reach into** — when several sessions ask at once, the orange `+N` badge on the card is a button: it lists what's waiting (tool, project, command), lets you jump to any of them with ⌘1-9 or a click, and offers `Allow all` / `Deny all` for the whole line at once. The batch actions sit one level in behind a confirmation, because answering things you haven't read is exactly what this app exists to prevent — and the list above them is what makes it an informed choice. Picking a request pins it, so the queue doesn't re-sort it away underneath you.
-- **Jump to the session** (⧉ on the card, or ⌘M) — raises the exact window that's asking, then leaves the card up and pending so you can read the diff or plan in context and still answer with ⌘⏎. The hook records which app hosts each session, so with two VS Code windows open on two repos it brings forward the one holding *this* session's folder; terminals just come to the front. Hidden when there's no host to jump to (ssh, tmux).
-- **Global approval shortcuts** — ⌘⏎ approves, ⇧⌘⏎ denies, ⌥⌘⏎ takes the card's quiet action, from any app without switching focus; the hotkeys are registered only while a request is actually pending, so ⌘⏎ (and ⌘M for Minimize) keep working normally everywhere else
-- **Working vs thinking** — while a turn is in flight the pet types away on a little laptop when a tool is actually running, and switches to a paw-on-chin pose while the model itself is what everyone's waiting on. It can tell them apart because a running tool and a thinking model both leave the transcript quiet — but the record that went quiet says which. Back to idle (or the limit mood) a few seconds after the turn ends.
-- **Four pet characters** to choose from (`Settings ▸ Appearance`): a cyberpunk koala, piglet, panda and cat. Each wears its tech somewhere different — the koala's bionic eye, magenta goggles on the piglet's forehead, a green-circuit robotic arm on the panda, an amber-tipped robotic tail on the cat — so they read as four characters rather than one recoloured, and each keeps at least one organic eye free, because the moods are expressed there
-- **The pets are generated, not drawn**, and `generate_pets.py` is the source: prompts, seed and character IDs live in a manifest per pet, so the whole set rebuilds from a clean checkout. Each mood is an edit *of the base character's id*, which is what keeps the koala's bionic eye intact from pose to pose — it even survives as an X inside its own metal rim when the 5-hour limit runs out. All four carry the same thirteen moods; the koala additionally has three gestures (a wave hello, a yawn while nothing is happening, a dance when the limit rolls over) — a gesture gets tried on one pet before it's bought for four, and the others degrade through it. The art is cropped to a 64px canvas (`CROP` in that script): PixelLab returns the character small on a 120px field padded for animation room, and scaling that padding made a pet draw at less than half its possible size
-- **Settings window** (⌘, from the menu) — three tabs: **Behavior** (remap every shortcut, toast threshold, projected-limit warnings, start at login), **Appearance** (pet, menu bar icon style, floating pet), **Safety** (auto-approve edits, the auto-allowed command list, the decision log). The menu itself stays short and keeps what you'd want at a glance: status, usage, burn rate, sessions, history — plus the two standing grants, which change what the buddy does *without asking* and so don't belong behind a window.
-- **Welcome & setup check** (from the menu, and once on first run) — four short pages: what the card does, a setup check, your shortcuts, and what the pet's moods mean. The setup check is the useful half and it doesn't expire: it reads your actual `~/.claude/settings.json` and reports which tools really route through the buddy, whether `hook.sh` is installed and executable, whether the installed copy has drifted from the repo's, and whether `jq` is there. Every one of those fails *silently* otherwise — the hook just never fires and the buddy sits there looking perfectly healthy — so when something blocks approvals the menu says `⚠︎ Setup needs attention…` instead of leaving you to guess. It never edits `settings.json`; it prints the line to run and leaves the decision to you.
-- **Doesn't go blind when Claude Code updates** — the buddy leans on four things Claude Code owes it no compatibility for: the hook contract, the transcript format, a plan-usage file that belongs to Claude Desktop, and the set of tools that ask permission. Approvals can't break (hooks are additive — if ours fails, the native prompt takes over), but those seams can shift quietly. So the setup check also records which Claude Code series it was last verified against and says so when that moves (minor versions only — patches ship too often to be worth a word), asserts the transcript still carries the fields it reads, and lists tools that ran without ever passing through the card. That last one is how a newly permission-gated tool announces itself instead of being noticed weeks later by its absence; the tool names cost nothing to collect, because they're picked up from lines the token counter is already parsing.
-- **Session status** — idle / active, based on recent Claude Code session file activity
-- **Active Sessions submenu** — lists each active session's project path and how long ago it was last active; click one to reveal that project folder in Finder
-- **Decision History submenu** — the last ten decisions, over a summary of the week: how many you allowed and denied today and over seven days, plus which tool asks most and which project is busiest. The counts come from a rolling window held in memory (seeded once at launch from the log), so opening the menu never re-reads a file that grows all day
-- **Mood pet** — the pet itself reacts to your 5-hour limit: active below 50%, visibly tired at 50%, feeling the pressure at 70%, running on fumes at 85%, and fast asleep (with drifting Zzz) once the limit is hit — same joke for all four pets. Being nearly out of budget outranks looking busy; the milder bands don't.
-- **Pet the buddy** — click the floating pet for a happy heart-eyes reaction; a click is told from a drag by how far the mouse moved, so petting never fights dragging
-- **Reactions** — a denied request gets three seconds of visible disappointment (downcast eyes, a tear), and a session the buddy hasn't met yet gets waved at the first time it says something. Both revert to the real mood on their own.
-- **Yawns** — after five unbroken minutes of nothing to do, the koala occasionally yawns (roughly every six minutes, on a random roll, so there's no period to notice). It never yawns over a card, at a hidden pet, or behind a locked screen, and it says nothing while it does — narrating it would turn "nothing is happening" into an announcement.
-- **Celebrate on refresh** — when the 5-hour limit rolls back over to healthy, the pet throws a little arms-up celebration or a dance, picked at random (with a notification), instead of silently snapping back to idle. Two poses because it's the rarest happy event the buddy has, and one that's pixel-identical every time stops reading as a celebration
-- **Floating desktop pet** (Codex Pet-style) — an always-on-top, draggable pet that sits on your desktop independent of the menu bar dropdown, with the same mood system refreshed in the background every ~5s. It is the only pet on screen — the menu bar dropdown keeps the mood as a line of text, since a GIF you can only see by opening a menu is a pet nobody watches. Toggle it from the menu (`Floating Pet`); it wears whichever species you pick in `Settings ▸ Appearance`. `Pet Size` sets it to small, medium or large — three steps rather than a slider, because those are the sizes that land on whole screen pixels and keep the pixel art from blurring.
-- **Token usage today** — summed from local session transcripts, no network calls
-- **Plan usage** — 5-hour and weekly limit bars, read from the same file Claude Desktop itself writes, color-coded (green/orange/red at 50%/80% used). Only Claude Desktop refreshes that file: with it closed the reading goes stale, so after 30 minutes the bars turn gray with an age tag ("· 11d ago"), clicking the line opens Claude Desktop to refresh, and stale numbers stop driving the pet's mood and threshold notifications
-- **Menu bar icon** — a drawn panda silhouette (template image), so it follows the menu bar's own appearance instead of sitting in it as a fixed-color emoji: light or dark wallpaper, reduced transparency, and the inversion while the menu is open. A pending request turns it orange *and* widens its eyes (color alone isn't a signal everyone can read); auto-approve-edits adds a pencil; active sessions and queued requests show as a count beside it. `Menu Bar Icon ▸ Panda emoji` puts the original 🐼 back.
-- **Accessible controls** — the status button, approval card, its buttons, the pet, and the toast all carry VoiceOver labels that say what they are and what they'll do, rather than announcing decorative glyphs and shortcut symbols
-- **Burn rate** — a percentage tells you where you are; a slope tells you whether to keep going. With Claude Desktop running, the buddy fits a line through the recent 5-hour samples and shows `▲ 12%/h · 90% ≈ 16:40`, warning once per window when the current pace lands on 75% (and 90%) within the hour. It knows to cut the fit at a window rollover — the limit really does drop from 78% to 3% in nine minutes, and fitting across that would report nonsense. Without Desktop there are no live percentages to project from, so it degrades to output tokens per hour from local transcripts and says so (`~120K tok/h (plan % stale)`) rather than inventing a deadline.
-- **Threshold notifications** — a macOS notification fires the first time a limit crosses into the warning (50%) or critical (80%) band, so you don't have to keep the menu open to notice
-- **Turn-finished toast** — when a turn that took 15+ seconds finishes, a compact green card pops up at the pet with the project and duration (and the pet celebrates); quick back-and-forth stays silent, and the plain macOS banner only fires as a fallback when the app isn't running
-- **Login item** — starts automatically, no manual launch needed
-- Stats refresh in the background every ~5s, kept cheap by a per-file token cache that stats each transcript and reads only newly appended bytes (plus a fresh compute every time the menu opens)
-- **Quiet when nobody's looking** — the pet stops animating while the screen is locked or the display is asleep. A looping GIF redraws whether or not anyone can see it, and that was most of the app's idle wakeups: ~155/s down to ~36/s, which is the difference between a desk pet and a desk pet you notice in your battery
+## The pet
+
+Four generated pixel-art characters (cyberpunk koala, piglet, panda, cat — `Settings ▸ Appearance`), living in an always-on-top draggable window, three integer-scaled sizes. All four draw the same thirteen moods; the koala also waves at new sessions, yawns when nothing has happened for a while, and dances when the limit resets.
+
+- **It shows what Claude is doing**: typing on a laptop while a tool runs, paw-on-chin while the model thinks, lotus pose during context compaction, wide-eyed when a card is up.
+- **It shows how much budget is left**: tired at 50% of the 5-hour limit, stressed at 70%, running on fumes at 85%, asleep at 100% — and it celebrates the rollover.
+- Pettable (heart eyes), ambient fidgets with a "Calm pet" switch, occasional one-line speech bubbles with cooldowns, a compact toast when a long turn finishes.
+- `generate_pets.py` + one manifest per pet (prompts, seed, character ids) rebuild every GIF from a clean checkout through the PixelLab API.
+- **Quiet by design**: ~0% CPU idle. Animations pause when the screen locks or the display sleeps, transcripts are read incrementally off a per-file cache, and the menu bar keeps mood as a line of text — a GIF behind a closed menu is a pet nobody watches.
+
+## The menu
+
+Status and tokens today (from local transcripts), 5-hour/weekly limit bars (from the file Claude Desktop writes — gray with an age tag when stale), burn rate with a projection (`▲ 12%/h · 90% ≈ 16:40`, rollover-aware, degrades honestly when data is stale), active sessions, decision history with a weekly summary, and the two standing-grant toggles — which stay one click away on purpose, since they change what the buddy does *without asking*. Threshold and projected-limit notifications fire once per band. Everything else lives in Settings (⌘,).
+
+**Setup check** (first run, and always in the menu): reads your actual `~/.claude/settings.json` and reports what really routes through the buddy, whether the installed hook drifted from the repo's, whether `jq` exists — failures that are otherwise silent. It also notices when Claude Code's ground shifts: a new version series, transcript fields moving, or a tool that started asking permission without passing through the card. It never edits `settings.json`; it prints the line and leaves the decision to you.
 
 ## How it works
 
-A `PreToolUse` hook (`hook.sh`) is registered in `~/.claude/settings.json`. When Claude Code is about to run a tool that needs a permission decision, the hook:
+A `PreToolUse` hook (`hook.sh`) registered in `~/.claude/settings.json`:
 
-1. Writes the request (tool name + command/file/URL) to `~/.config/claude-menubar-buddy/pending_request.json`
-2. Polls for a response file for up to 60 seconds
-3. If you click Allow/Deny in the menu bar app, it writes `response_<id>.json`, which the hook picks up and returns as the tool decision
-4. If nothing responds in time, the hook returns nothing and Claude Code falls back to its normal interactive prompt — so this is additive, never a single point of failure
+1. Writes the request (tool + command/diff/questions) to `~/.config/claude-menubar-buddy/request_<id>.json`
+2. Polls ~55s for a response file
+3. A decision in the app writes `response_<id>.json`, which the hook returns as the tool decision
+4. No response in time → the hook returns nothing and Claude Code falls back to its normal prompt — additive, never a single point of failure
 
-No BLE, no external device, no cloud service — just local files.
+No BLE, no device, no cloud — just local files.
 
 ## What it can see, and what it can do
 
 This app sits between Claude Code and your answer to "may I run this?", so its reach is worth spelling out.
 
-**It makes no network connections at all.** No telemetry, no update check, no API client — grep the sources for `URLSession` and there is nothing to find. Everything below stays on the machine.
+**No network connections at all.** No telemetry, no update check, no API client — grep the sources for `URLSession` and there is nothing to find.
 
-**It reads your local Claude Code transcripts.** Every `.jsonl` under `~/.claude/projects/`, to count today's output tokens and tell which sessions are active. It sums the `usage` numbers and reads the last record of the newest file to tell a running tool from a thinking model. It also reads `~/Library/Application Support/Claude/plan-usage-history.json`, which Claude Desktop writes, for the limit bars.
+**It reads your local Claude Code transcripts** (`~/.claude/projects/**/*.jsonl`) for token counts and session activity, and `~/Library/Application Support/Claude/plan-usage-history.json` (written by Claude Desktop) for the limit bars.
 
-**It writes what you're being asked to approve to disk.** Each pending request lands in `~/.config/claude-menubar-buddy/request_<id>.json` — the command, or the diff, or the file content — and is deleted the moment it's answered. Every decision is then appended to `decisions.jsonl` along with the first 200 characters of what it was about — it's your audit trail, and `Settings ▸ Safety` opens it. It rotates once at ~1 MB into `decisions.1.jsonl`, so the last two megabytes stay greppable and older than that is genuinely gone. Both the hook and the app keep that directory owner-only (`0700`) — the shell's default umask would otherwise leave every pending command and diff readable by any other account on the machine.
+**It writes what you're being asked to approve to disk.** Each pending request lands in the config directory and is deleted the moment it's answered; every decision is appended to `decisions.jsonl` (your audit trail, opened from `Settings ▸ Safety`, rotated once at ~1 MB). The directory is kept owner-only (`0700`) by both the hook and the app.
 
-**Debug screenshots are off unless you ask for them.** The app can render the approval card, the pet, the menu bar icon or the settings panes straight to a PNG — an in-process render, because a non-activating panel comes out blank through ScreenCaptureKit. Useful while working on the layout, and a poor thing to leave standing: it photographs whatever is on the card, which can be a diff carrying a credential, and any process running as you can drop the file that asks for one. Set `CLAUDE_BUDDY_DEBUG=1` in the app's environment to turn it on. Without it the `capture_*` flags are never even looked at.
+**Debug captures are off unless you ask.** The `capture_*` flag files do nothing without `CLAUDE_BUDDY_DEBUG=1` in the app's environment — they render whatever is on screen, which can be a diff carrying a credential. `CLAUDE_BUDDY_CONFIG_DIR` points a test instance at an isolated config directory so the real queue, hotkeys and decision log are never shared with props.
 
-**It asks for none of the invasive macOS permissions.** No Accessibility (the global shortcuts are Carbon hot keys), no Screen Recording (the debug screenshots are rendered in-process), no camera, microphone, contacts or location. The one thing it takes is the ⌘⏎ / ⇧⌘⏎ / ⌥⌘⏎ / ⌘M combinations, and only while a card is actually on screen.
+**No invasive macOS permissions.** No Accessibility, no Screen Recording, no camera/microphone/contacts/location. It takes the approval shortcuts, and only while a card is on screen.
 
-**The hook fails safe.** A timeout, an error, or the app not running all return no decision, which means Claude Code falls back to its own prompt. Nothing is ever approved because something broke; the worst case is being asked twice.
-
-**A card is answerable for ~60 seconds.** The hook listens for the buddy's answer for about a minute, then hands the decision to the native prompt — so a diff you've been reading for longer than that gets decided in the terminal or VS Code, not on the card. The card knows this window too: once it closes, the card retires itself instead of collecting a decision nobody would receive, and the decision log gains no entry claiming otherwise. If you know a decision will take real reading time, ↗ hands it to the native prompt up front, which waits forever.
+**The hook fails safe, and the card knows the window.** A timeout, an error, or the app not running all mean Claude Code falls back to its own prompt — nothing is ever approved because something broke. The card is answerable for the same ~60s the hook listens; past that it retires itself rather than collect a decision nobody would receive, and the log gains no entry claiming otherwise.
 
 ### The two standing grants
 
-Both approve things without showing you a card, so both are worth understanding before turning them on — and both stay visible in the menu bar the whole time they're active, because a grant you can't see is a grant you'll forget you gave.
+Both approve things without showing a card, and both stay visible in the menu bar while active — a grant you can't see is a grant you'll forget you gave. Neither applies while the app isn't running.
 
-**Always allow `<command>`** remembers one base command in `always_allow.json`. It only ever speaks for a single command: anything carrying `;` `&` `|` `<` `>` `(` `)` `` ` `` `$` `\` or a newline gets a card regardless of its first word, since past that point the first word has stopped describing what will actually run. Keep the list to things that read and navigate — `cat`, `git`, `grep`, `ls`. An interpreter on that list (`python`, `node`, `swift`) is equivalent to allowing everything, because one clean command is all it takes.
-
-The file has two scopes:
+**Always allow `<command>`** remembers one base command in `always_allow.json`. It only ever speaks for a single command: anything carrying `;` `&` `|` `<` `>` `(` `)` `` ` `` `$` `\` or a newline gets a card regardless of its first word. Keep it to things that read and navigate — an interpreter on the list (`python`, `node`) is equivalent to allowing everything. Two scopes:
 
 ```json
 {
@@ -97,101 +70,76 @@ The file has two scopes:
 }
 ```
 
-The card only ever writes into `projects`, keyed on the session's absolute path — the match is exact, so a grant on `/repos/api` reaches neither `/repos/api-x` nor a second checkout at `/work/api`. `global` entries apply everywhere, which is why moving one there is a confirmed action in `Settings ▸ Safety` rather than a button on the card. A bare JSON array is the pre-scopes shape of this file and still reads as `global`; the app rewrites it in the new shape on its next change.
+The card only writes into `projects`, keyed on the session's absolute path and matched exactly — a grant on `/repos/api` reaches neither `/repos/api-x` nor another checkout. Widening to `global` is a confirmed action in `Settings ▸ Safety`, where the list is also readable and removable.
 
-**Auto-approve Edits** lets `Edit`/`Write`/`NotebookEdit` through without a card and puts a ✏️ on the menu bar icon for as long as it's on. It stops at the files that decide what runs on this machine tomorrow: `~/.ssh`, `~/.gnupg`, LaunchAgents and LaunchDaemons, `.git/hooks`, `~/.claude`, the buddy's own config directory, shell startup files, and the system directories. Anything relative, or containing `..`, gets a card too — there's no way to tell where those land, and "can't tell" has to mean "ask". The buddy's own config is on that list on purpose: without it, an auto-approved write could append to `always_allow.json` and widen the very grant that let it through.
+**Auto-approve Edits** lets edit tools through without a card, with a ✏️ on the icon while it's on. It stops at the files that decide what runs on this machine tomorrow: `~/.ssh`, `~/.gnupg`, LaunchAgents/Daemons, `.git/hooks`, `~/.claude`, shell startup files, system directories — and the buddy's own config, so an auto-approved write can't widen the very grant that let it through. Relative paths and `..` get a card too: "can't tell where it lands" means "ask".
 
-Neither grant is applied while the app isn't running. Both are announced by an icon, and with no icon on screen there is nothing doing the announcing.
+## Tests
+
+```bash
+swift test   # Swift Testing — Command Line Tools are enough, no Xcode
+```
+
+Forty tests guard the promises above: a fixture harness runs the **real `hook.sh`** in a throwaway `$HOME` (metacharacters must always reach a card, protected paths must survive auto-edits, allow/deny/answer round-trips), the burn-rate math is pinned to the shapes real data produced (window rollovers included), and every species × mood is audited against the shipped GIFs in both directions.
 
 ## Install
 
-See [`SKILL.md`](./SKILL.md) — it's written as a self-install skill for Claude Code itself. Clone this repo, open it in Claude Code, and ask Claude to read `SKILL.md` and install it. Claude will:
+See [`SKILL.md`](./SKILL.md) — written as a self-install skill for Claude Code itself: clone, open in Claude Code, ask it to read `SKILL.md` and install. It builds with `swift build`, installs the hook, merges the `PreToolUse` config (never overwriting yours), registers a login item and launches. Editing `settings.json` is intentionally never auto-approved by a hook.
 
-- generate the pet GIFs (if not already committed),
-- build the app with `swift build` (no Xcode required, just Command Line Tools),
-- install the hook script and merge the `PreToolUse` config into your own `~/.claude/settings.json` (never overwriting existing settings),
-- register a login item,
-- and launch it.
-
-You'll be asked to approve one native permission prompt along the way (editing `settings.json` itself is intentionally never auto-approved by a hook — that would be a way for a hook to grant itself more power unsupervised).
-
-### Manual install
-
-If you'd rather do it by hand:
+Manual install:
 
 ```bash
-git clone <this-repo>
-cd claude-menubar-buddy
-.venv/bin/python3 generate_pets.py <koala|piglet|panda|kitty>   # needs a PixelLab key
+git clone <this-repo> && cd claude-menubar-buddy
+.venv/bin/python3 generate_pets.py <koala|piglet|panda|kitty>   # only to regenerate art (PixelLab key)
 swift build
 mkdir -p ~/.config/claude-menubar-buddy
-cp hook.sh ~/.config/claude-menubar-buddy/hook.sh
-chmod +x ~/.config/claude-menubar-buddy/hook.sh
+cp hook.sh ~/.config/claude-menubar-buddy/ && chmod +x ~/.config/claude-menubar-buddy/hook.sh
 ```
 
-Then merge the `hooks.PreToolUse` block from `SKILL.md` into `~/.claude/settings.json` yourself (use your actual home directory in the `command` path, not `~`), and optionally set up the LaunchAgent plist shown there for auto-start at login.
+Then merge the `hooks.PreToolUse` block from `SKILL.md` into `~/.claude/settings.json` (real home directory in the path, not `~`), and optionally the LaunchAgent plist for start-at-login.
 
-## Requirements
-
-- macOS 13+
-- Swift 5.9+ (Xcode Command Line Tools — `xcode-select --install`)
-- Python 3 with Pillow (`pip3 install Pillow`) — only needed to (re)generate GIFs
-- `jq` (`brew install jq`) — used by the hook script
+**Requirements**: macOS 13+ · Swift 5.9+ (Command Line Tools) · `jq` · Python 3 + Pillow only to regenerate GIFs.
 
 ## Project layout
 
 ```
-Package.swift                          # Swift Package manifest
+Sources/BuddyCore/            # pure logic under test: burn-rate math, mood policy
 Sources/ClaudeMenuBarBuddy/
-  main.swift                           # bootstrap, AppDelegate core, menus, poll loop
-  ApprovalCard.swift                   # the floating card: build, decide, verdict animation
-  FloatingPet.swift                    # desktop pet window + dragging
-  Fidgets.swift                        # idle motion: bob, squash, cursor lean-in
-  SpeechBubble.swift                   # the pet's occasional one-liner
-  MoodEngine.swift                     # which mood/GIF the pet shows, and when
-  Toast.swift                          # turn-finished toast
-  JumpToHost.swift                     # raise the editor/terminal hosting a session
-  BurnRate.swift                       # how fast the 5-hour limit is going
-  Queue.swift                          # picking from and answering the waiting line
-  DecisionStats.swift                  # the week of decisions behind the history summary
-  StatusIcon.swift                     # the menu bar icon + accessibility label
-  SettingsWindow.swift                 # settings window, panes, always-allow table
-  Onboarding.swift                     # first-run welcome pages
-  Health.swift                         # the setup check + update-drift assertions
-  HotKeys.swift                        # global shortcuts (KeyboardShortcuts)
-  Prefs.swift                          # Defaults keys + hook flag files
-  UsageStats.swift                     # reads session JSONL + plan-usage-history.json
-  Resources/                           # generated GIFs + species.txt (checked in)
-hook.sh                                # the PreToolUse hook script
-notify-done.sh                         # UserPromptSubmit/Stop hook (working state + toast)
-generate_pets.py                       # generates every pet's GIFs through the PixelLab API
-<pet>_manifest.json                    # prompts, seed, character IDs and crop box per pet
-SKILL.md                               # self-install instructions for Claude Code
+  main.swift                  # bootstrap, AppDelegate state, poll loop
+  ApprovalCard.swift          # card assembly and lifecycle
+  CardLayout.swift            # card visual vocabulary (pills, accents, diff styling)
+  CardDecision.swift          # what answering does: respond, verdict, audit log
+  Menus.swift                 # the dropdown and its in-place refresh
+  Queue.swift                 # the waiting line: pick one, answer all
+  FloatingPet.swift           # desktop pet window · Fidgets / SpeechBubble / Toast
+  MoodEngine.swift            # signals → mood → GIF
+  BurnRate.swift              # the burn line + projected-limit notifications
+  Health.swift                # setup check + update-drift detection
+  SettingsWindow / Onboarding / StatusIcon / HotKeys / JumpToHost / Prefs / UsageStats / DecisionStats
+  Resources/                  # generated GIFs + species.txt (checked in)
+Tests/ClaudeMenuBarBuddyTests # hook fixtures, burn-rate shapes, art audit
+hook.sh                       # the PreToolUse hook
+notify-done.sh                # UserPromptSubmit/Stop/PreCompact hook
+generate_pets.py              # regenerates all pet art via PixelLab
+<pet>_manifest.json           # prompts, seed, character ids, crop box per pet
 ```
 
 ## Uninstall
 
 ```bash
-launchctl bootout gui/$(id -u)/com.claudemenubarbuddy.app   # or your LaunchAgent label
+launchctl bootout gui/$(id -u)/com.claudemenubarbuddy.app
 rm ~/Library/LaunchAgents/com.claudemenubarbuddy.app.plist
 rm -rf ~/.config/claude-menubar-buddy
 ```
 
-Then remove the `hooks.PreToolUse` entries pointing at `claude-menubar-buddy/hook.sh` from `~/.claude/settings.json`.
+Then remove the `hooks.PreToolUse` entries pointing at `hook.sh` from `~/.claude/settings.json`.
 
-## Why this exists instead of the hardware Buddy
+## Why this instead of the hardware Buddy
 
-Both are complementary, not competing — see the [Claude Desktop Buddy](https://github.com/anthropics/claude-desktop-buddy) project if you want the physical version too. This one exists because:
-
-- No hardware to buy or wait for shipping on
-- No BLE pairing, no Developer Mode toggle in Claude Desktop required
-- Covers Claude Code's own permission hooks directly, which the BLE bridge doesn't see
-- Compiles fresh from source on your machine, so there's nothing to code-sign or notarize, and no Gatekeeper friction
-
-If a hardware Buddy is also paired, they don't conflict: this app's hook resolves the decision first (before a native prompt is even shown); if it times out, the request falls through to the normal prompt, which the hardware Buddy can also see and approve from.
+They're complementary. This one needs no hardware or pairing, covers Claude Code's permission hooks directly (which the BLE bridge doesn't see), and compiles from source — nothing to notarize. If a hardware Buddy is also paired they don't conflict: this hook resolves first, and on timeout the request falls through to the prompt the hardware Buddy watches.
 
 ## License
 
 [MIT](./LICENSE) — use it, fork it, modify it freely.
 
-16 of the 17 pet designs (all except the panda, which is original pixel art drawn for this project) are rendered from ASCII-art poses in Anthropic's [claude-desktop-buddy](https://github.com/anthropics/claude-desktop-buddy) firmware (`src/buddies/*.cpp`), © 2026 Anthropic, PBC, also MIT licensed.
+All four current pets are original art generated for this project via PixelLab (see the manifests). Earlier versions rendered 18 additional pets from ASCII-art poses in Anthropic's [claude-desktop-buddy](https://github.com/anthropics/claude-desktop-buddy) firmware (© 2026 Anthropic, PBC, MIT) — retired in `1d4636f`, still in the git history.
