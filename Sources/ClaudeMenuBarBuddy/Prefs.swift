@@ -1,3 +1,4 @@
+import BuddyCore
 import Defaults
 import Foundation
 
@@ -57,10 +58,9 @@ extension AppDelegate {
     /// future pet heals itself the same way.
     var selectedSpecies: String {
         get {
-            let stored = Defaults[.selectedSpecies]
-            let known = Bundle.module.url(forResource: "\(stored)_idle", withExtension: "gif",
-                                          subdirectory: "Resources") != nil
-            return known ? stored : Defaults.Keys.selectedSpecies.defaultValue
+            MoodPolicy.resolvedSpecies(stored: Defaults[.selectedSpecies],
+                                       fallback: Defaults.Keys.selectedSpecies.defaultValue,
+                                       available: bundleHasGif)
         }
         set { Defaults[.selectedSpecies] = newValue }
     }

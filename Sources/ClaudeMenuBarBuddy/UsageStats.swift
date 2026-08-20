@@ -1,3 +1,4 @@
+import BuddyCore
 import Foundation
 
 // Reads Claude Code's local session transcripts (~/.claude/projects/**/*.jsonl)
@@ -47,13 +48,10 @@ enum UsageReader {
     static let planUsageURL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/Claude/plan-usage-history.json")
 
-    /// One reading of the plan limits, as Claude Desktop recorded it. The
-    /// history keeps ~100 of these at a ~15-minute cadence.
-    struct PlanSample {
-        let date: Date
-        let fiveHour: Int
-        let weekly: Int
-    }
+    /// One reading of the plan limits, as Claude Desktop recorded it (the
+    /// type lives in BuddyCore beside the burn-rate math that consumes it).
+    /// The history keeps ~100 of these at a ~15-minute cadence.
+    typealias PlanSample = BuddyCore.PlanSample
 
     /// The latest reading AND the recent samples, from ONE read of the file.
     /// Both come out of the same JSON and snapshot() runs every ~5s, so

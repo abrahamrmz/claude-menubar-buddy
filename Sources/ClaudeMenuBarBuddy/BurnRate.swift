@@ -1,8 +1,10 @@
 import AppKit
+import BuddyCore
 
-// How fast the 5-hour limit is being spent, and when it runs out at this
-// pace. A percentage on its own tells you where you are; a slope tells you
-// whether to keep going.
+// The burn line in the menu and its notifications. The math itself
+// (BurnRate.fiveHourSlope, projectedTime) lives in BuddyCore, where
+// `swift test` holds it to the shapes real data produced — rollover,
+// flat, recovering, short spread.
 //
 // Two sources, in order of preference:
 //   1. Claude Desktop's own plan-usage samples — a real % against the real
@@ -10,59 +12,6 @@ import AppKit
 //   2. Output tokens from local transcripts — always available, but it can
 //      only say "you're spending quickly", never "you'll hit 90% at 16:40",
 //      because nothing local knows what the limit is.
-enum BurnRate {
-    /// A drop this large between consecutive samples is the 5-hour window
-    /// rolling over, not a measurement. Real data: 78% → 3% in nine minutes.
-    /// Fitting across one of those would report a wildly negative slope.
-    static let resetDrop = 10
-
-    /// Percentage points per hour, fit over samples from the last `window`
-    /// seconds since the most recent rollover. nil when there isn't enough
-    /// to say anything honest.
-    static func fiveHourSlope(from samples: [UsageReader.PlanSample],
-                              window: TimeInterval = 3600) -> Double? {
-        let cutoff = Date().addingTimeInterval(-window)
-        var recent = samples.filter { $0.date >= cutoff }
-        // Keep only what's after the last rollover.
-        if let lastReset = recent.indices.dropFirst().last(where: {
-            recent[$0].fiveHour < recent[$0 - 1].fiveHour - resetDrop
-        }) {
-            recent = Array(recent[lastReset...])
-        }
-        guard recent.count >= 3,
-              let first = recent.first, let last = recent.last,
-              last.date.timeIntervalSince(first.date) >= 10 * 60 else { return nil }
-
-        // Least squares on (hours since the first sample, percent).
-        let xs = recent.map { $0.date.timeIntervalSince(first.date) / 3600 }
-        let ys = recent.map { Double($0.fiveHour) }
-        let n = Double(recent.count)
-        let sumX = xs.reduce(0, +)
-        let sumY = ys.reduce(0, +)
-        let sumXY = zip(xs, ys).reduce(0) { $0 + $1.0 * $1.1 }
-        let sumXX = xs.reduce(0) { $0 + $1 * $1 }
-        let denominator = n * sumXX - sumX * sumX
-        guard abs(denominator) > 1e-9 else { return nil }
-        return (n * sumXY - sumX * sumY) / denominator
-    }
-
-    /// When `pct` reaches `target` at this slope. nil if it never will (flat
-    /// or falling), or if it's already there.
-    static func projectedTime(pct: Int, target: Int, slope: Double) -> Date? {
-        guard slope > 0.5, pct < target else { return nil }
-        let hours = Double(target - pct) / slope
-        // Beyond a few hours the linear assumption is fiction — the 5-hour
-        // window will have rolled long before then.
-        guard hours <= 5 else { return nil }
-        return Date().addingTimeInterval(hours * 3600)
-    }
-
-    static func formatClock(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm"
-        return formatter.string(from: date)
-    }
-}
 
 extension AppDelegate {
     /// Output tokens per hour, from the in-memory ring buffer of

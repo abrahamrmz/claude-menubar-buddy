@@ -19,9 +19,18 @@ let package = Package(
         .package(url: "https://github.com/sindresorhus/Settings", from: "3.0.0"),
     ],
     targets: [
+        // The pure logic — burn-rate math, mood policy — split out of the
+        // executable so `swift test` can reach it. SPM can't link tests
+        // against an executable target's symbols without Xcode machinery,
+        // and this project builds with bare Command Line Tools on purpose.
+        .target(
+            name: "BuddyCore",
+            path: "Sources/BuddyCore"
+        ),
         .executableTarget(
             name: "ClaudeMenuBarBuddy",
             dependencies: [
+                "BuddyCore",
                 .product(name: "KeyboardShortcuts", package: "KeyboardShortcuts"),
                 .product(name: "Defaults", package: "Defaults"),
                 .product(name: "Settings", package: "Settings"),
@@ -30,6 +39,13 @@ let package = Package(
             resources: [
                 .copy("Resources")
             ]
-        )
+        ),
+        // Also hosts the hook.sh fixture harness (HookTests), which shells
+        // out to the real script — see Tests/ClaudeMenuBarBuddyTests.
+        .testTarget(
+            name: "ClaudeMenuBarBuddyTests",
+            dependencies: ["BuddyCore"],
+            path: "Tests/ClaudeMenuBarBuddyTests"
+        ),
     ]
 )

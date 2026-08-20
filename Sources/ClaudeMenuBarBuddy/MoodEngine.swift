@@ -1,4 +1,5 @@
 import AppKit
+import BuddyCore
 
 // The pet's mood pipeline: signals (turn markers, transcript activity, plan
 // limit %) → a single mood string → GIF swaps on both pets, with flash
@@ -13,17 +14,10 @@ extension AppDelegate {
         return Date().timeIntervalSince(sampled) > 30 * 60
     }
 
-    // The pet's mood follows the 5-hour limit, not the weekly one — it's
-    // the one that actually blocks you mid-session, so it's the one worth
-    // dramatizing. The ladder: <50% used = active, 50% = tired, 70% =
-    // stressed, 85% = critical, 100% = asleep.
+    // The limit ladder (<50% = active … 100% = asleep) lives in
+    // MoodPolicy, under test; this wrapper keeps the call sites short.
     func petMood(for pct: Int?) -> String {
-        guard let pct = pct else { return "idle" }
-        if pct >= 100 { return "asleep" }
-        if pct >= 85 { return "critical" }
-        if pct >= 70 { return "stressed" }
-        if pct >= 50 { return "tired" }
-        return "idle"
+        MoodPolicy.petMood(forFiveHourPct: pct)
     }
 
     func petMoodText(_ mood: String) -> String {
@@ -131,34 +125,18 @@ extension AppDelegate {
         }
     }
 
-    /// Not every pet has art for every mood. Only the koala carries the full
-    /// thirteen; the other three ship the CORE ten (see generate_pets.py), so
-    /// on those, thinking, sad and excited degrade to the nearest thing that
-    /// says the same thing. Ending at idle means a missing GIF never leaves
-    /// the previous one frozen on screen.
-    func moodGifCandidates(_ mood: String) -> [String] {
-        switch mood {
-        case "thinking": return ["thinking", "working"]
-        case "excited": return ["excited", "celebrate", "heart"]
-        case "sad": return ["sad", "tired"]
-        // Species without meditation art sit compaction out looking
-        // thoughtful — NOT asleep, whose Z means "limit reached" and would
-        // read as a much worse thing than a tidy-up. Idle is spelled out as
-        // the end of the chain rather than left to gifName's implicit
-        // fallback, so this list reads as the complete policy.
-        case "meditate": return ["meditate", "thinking", "idle"]
-        default: return [mood]
-        }
+    // The degradation chains (thinking→working, meditate→thinking→idle, …)
+    // live in MoodPolicy, where the tests audit every species × mood against
+    // the shipped art; the app's only contribution is which bundle to ask.
+    func gifName(for species: String, mood: String) -> String {
+        MoodPolicy.gifName(species: species, mood: mood, available: bundleHasGif)
     }
 
-    func gifName(for species: String, mood: String) -> String {
-        for candidate in moodGifCandidates(mood) {
-            if Bundle.module.url(forResource: "\(species)_\(candidate)", withExtension: "gif",
-                                 subdirectory: "Resources") != nil {
-                return "\(species)_\(candidate)"
-            }
-        }
-        return "\(species)_idle"
+    /// Whether the bundle ships this GIF — the `available` closure MoodPolicy
+    /// resolves against (Prefs.selectedSpecies uses it too).
+    func bundleHasGif(_ name: String) -> Bool {
+        Bundle.module.url(forResource: name, withExtension: "gif",
+                          subdirectory: "Resources") != nil
     }
 
     func applyMoodGif(_ mood: String) {
