@@ -400,11 +400,37 @@ El hook espera respuesta 60s y luego cae al prompt nativo — correcto y es la b
 
 **Fase 7 completa** (7.1 ✅ · 7.2 ✅ · 7.3 ✅).
 
+## Fase 8 — De proyecto personal a proyecto (análisis 2026-08-20)
+
+Sale de una segunda mirada tras cerrar la Fase 7, con una meta explícita del usuario: **que deje de ser solo un proyecto personal**. El diagnóstico esta vez no es de código sino de dependencias humanas: el proyecto descansa en disciplina (correr la suite, recordar qué commit era bueno, tener a Claude en la sesión para diagnosticar) en tres lugares donde podría descansar en máquinas. Cada ítem convierte una de esas disciplinas en infraestructura.
+
+### 8.1 CI — que los tests corran porque sí, no porque alguien se acordó
+Los 40 tests de la 7.1 protegen contra regresiones *si se corren*, y en este repo los commits salen de sesiones largas donde saltárselos es fácil. Workflow de GitHub Actions con runner de macOS: `swift build` + `swift test` en cada push a `personal`. Los runners traen toolchain de Swift y `jq` preinstalados, y el arnés del hook ya es autónomo (HOME desechable, shim de `pgrep`) — debería correr casi sin adaptación. De paso, `shellcheck` sobre `hook.sh` y `notify-done.sh`: el hook es la pieza de seguridad del proyecto, está en bash, y es lo único embarcado sin ningún analizador encima.
+- Riesgo: el arnés del hook asume timing local (polls de 0.5s); un runner lento puede necesitar márgenes más holgados. Ajustar el fixture, no el hook.
+- Verificar: push con la suite verde → check verde; romper a propósito un metacaracter del hook en una rama → el check falla en GitHub, no solo localmente. `shellcheck` limpio o con excepciones anotadas en el propio script.
+
+### 8.2 Releases etiquetados — un ancla llamada "esto funcionaba"
+El historial narra bien, pero ningún commit se llama "estado bueno conocido". Quien instala desde SKILL.md compila la punta de `personal`, incluido un commit a medias entre dos sesiones concurrentes — que ya existió: `63c9b98` dejó GIFs inertes esperando un cableado que llegó commits después. Un tag anotado (`v0.x`) por cada paquete de fases cerrado da a dónde regresar cuando algo se rompa, y SKILL.md gana la opción de recomendar el último tag en vez de la punta. Sin CHANGELOG: este roadmap ya es eso, y mantener dos historias es cómo una de las dos empieza a mentir.
+- Verificar: `git tag` lista al menos el estado post-Fase-7; `git checkout <tag>` + `swift build` + `swift test` verde en ese punto; SKILL.md menciona el tag.
+
+### 8.3 BuddyCore como regla, no como fase
+La extracción de la 7.1 cubrió burn-rate y mood policy, pero queda lógica pura atrapada en el ejecutable que ya demostró ser delicada: el ordenamiento y pinning de la cola (`orderedRequests` — un bug ahí reordena qué apruebas), la ventana rodante de `DecisionStats` (el razonamiento de medianoche/rollover documentado en 6.1 no tiene test), y los checks de `Health.swift` (`inspect(claudeSettings:)` toma la ruta como parámetro *justo para ser testeable*, y no lo está). No es una fase monolítica de mudanza: es la regla de que **cada vez que se toque uno de estos, se mueve a BuddyCore y se testea en el mismo commit**. La fase se marca completa cuando los tres nombrados estén bajo test, lleguen como lleguen.
+- Verificar: por cada extracción, la mutación obvia falla (invertir el orden de la cola, romper el corte de medianoche, quitar un matcher esperado) y el ejecutable delega con wrappers de una línea, como en 7.1.
+
+### 8.4 Log de diagnóstico opt-in
+Hoy, cuando algo se comporta raro, el método es selfies + inyección de requests — funciona, pero solo funciona con Claude en la sesión. Un `debug.log` en el config dir que solo escriba con `CLAUDE_BUDDY_DEBUG=1` (requests vistas y barridas por el poll, decisiones escritas, por qué se rehusó un `respond`, transiciones de mood) permite diagnosticar un "la tarjeta no salió" *después de que pasó*, sin reconstruir el momento. Mismo espíritu que los selfies: instrumentación que duerme a costo cero — sin el flag, ni se abre el archivo.
+- Riesgo: el log ve lo mismo que la tarjeta (comandos, diffs) — hereda la advertencia de los capture flags en el README y el `0700` del directorio; rotación como la de `decisions.jsonl`.
+- Verificar: sin flag, el archivo no existe y no hay I/O nuevo; con flag, una request inyectada deja su rastro completo (vista → mostrada → respondida/barrida); el README lo documenta junto a los capture flags.
+
+**Fuera de alcance, a sabiendas**: bundle `.app` firmado/notarizado (rompería la restricción SPM-only por un beneficio que este proyecto no necesita) y la 2.4 (sigue pospuesta por decisión del usuario; nada la bloquea).
+
 ## Orden del segundo ciclo
 
 **4 → 5.1+5.2 → 5.4 → 5.3 → 6.1 → 6.2 → 6.3.** El arte (5.4) se intercala donde convenga: generar es esperar API. La 2.4 sigue disponible sin bloquear a nadie.
 
 **Fase 7 (agregada 2026-08-19): la 7.1 va primero de lo que reste** — es la que protege a las demás, y cada fase que se cierre sin ella es verificación que vuelve a evaporarse. La 7.2 conviene antes de entrar a la 6.x (que esas features caigan en archivos ya partidos); la 7.3 es independiente y chica, se intercala cuando toque tocar la tarjeta.
+
+**Fase 8 (agregada 2026-08-20): la 8.1 primero** — es medio día y es la que vuelve permanente todo lo que la Fase 7 construyó; la 8.2 le sigue natural (el primer tag debería nacer con el CI ya verde, para que "estado bueno conocido" signifique algo verificado por máquina). La 8.3 no se agenda: es una regla que aplica en cada commit que toque esos archivos. La 8.4 se intercala cuando toque tocar el poll.
 
 ---
 
