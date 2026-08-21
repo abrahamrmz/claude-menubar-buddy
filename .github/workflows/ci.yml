@@ -1,0 +1,49 @@
+# Fase 8.1: the suite runs because a machine runs it, not because someone
+# remembered. Two jobs on purpose: the tests need a macOS runner (AppKit,
+# Swift Testing), but shellcheck doesn't — it rides the cheap Linux runner.
+name: CI
+
+on:
+  push:
+    branches: [personal]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: swift build + test (macOS)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      # The hook harness shells out to jq, same as the real hook. Runners
+      # preinstall it; this step exists so a missing jq fails with a line
+      # that says so, not with 12 cryptic test failures.
+      - name: Toolchain
+        run: |
+          swift --version
+          jq --version
+
+      - name: Cache SPM dependencies
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: spm-${{ runner.os }}-${{ hashFiles('Package.resolved') }}
+          restore-keys: spm-${{ runner.os }}-
+
+      - name: Build
+        run: swift build
+
+      - name: Test
+        run: swift test
+
+  shellcheck:
+    name: shellcheck (hook.sh, notify-done.sh)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: shellcheck hook.sh notify-done.sh

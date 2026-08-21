@@ -11,6 +11,8 @@ DIR="$HOME/.config/claude-menubar-buddy"
 # 700, not the umask's 755: the request files written below carry the command,
 # diff or file content being approved. -m only applies when the directory is
 # actually created, which is why the app also re-asserts the mode at launch.
+# shellcheck disable=SC2174  # -m only reaches the deepest dir — which is the
+# one that holds the sensitive files; ~/.config keeps the umask like any XDG dir.
 mkdir -m 700 -p "$DIR"
 
 INPUT="$(cat)"
@@ -56,7 +58,7 @@ if [ -f "$DIR/auto_approve_edits" ]; then
         */Library/LaunchAgents/*|*/Library/LaunchDaemons/*) ;;
         */.git/hooks/*) ;;
         "$HOME"/.claude/*|"$HOME"/.config/claude-menubar-buddy/*) ;;
-        "$HOME"/Library/"Application Support"/Claude/*) ;;
+        "$HOME/Library/Application Support/Claude/"*) ;;
         */.zshrc|*/.zshenv|*/.zprofile|*/.bashrc|*/.bash_profile|*/.profile) ;;
         /etc/*|/usr/*|/bin/*|/sbin/*|/Library/*) ;;
         *)
@@ -207,7 +209,7 @@ RESPONSE_FILE="$DIR/response_${ID}.json"
 trap 'rm -f "$REQUEST_FILE" "$RESPONSE_FILE"; exit 0' TERM HUP INT
 
 # Poll for up to 55s (keep under the hook's own timeout, set to 60s in settings.json)
-for i in $(seq 1 110); do
+for _ in $(seq 1 110); do
   if [ -f "$RESPONSE_FILE" ]; then
     RESPONSE="$(cat "$RESPONSE_FILE" 2>/dev/null || echo '{}')"
     DECISION="$(echo "$RESPONSE" | jq -r '.decision // ""' 2>/dev/null || echo "")"

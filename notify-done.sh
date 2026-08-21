@@ -11,6 +11,7 @@ set -euo pipefail
 
 DIR="$HOME/.config/claude-menubar-buddy"
 # 700 for the same reason hook.sh uses it — see the note there.
+# shellcheck disable=SC2174  # same note as hook.sh: the deep dir is the point.
 mkdir -m 700 -p "$DIR"
 
 INPUT="$(cat)"
