@@ -1,6 +1,6 @@
 ---
 name: install-claude-menubar-buddy
-description: Build and install Claude Menu Bar Buddy — a hardware-free, native macOS menu bar app that shows a panda that reacts to Claude Code permission requests (Allow/Deny), session status, token usage today, and 5-hour/weekly plan limits. Self-installing — no code signing, no download, compiles fresh on the user's own machine from source in this folder.
+description: Build and install Claude Menu Bar Buddy — a hardware-free, native macOS menu bar app with a pixel-art desk pet that fields Claude Code permission requests from a card (Allow/Deny), and shows session status, token usage today, and 5-hour/weekly plan limits. Self-installing — no code signing, no download, compiles fresh on the user's own machine from source in this folder.
 ---
 
 # Claude Menu Bar Buddy — Self-Install Skill
@@ -12,12 +12,24 @@ hardcoded to any other machine. This folder (containing this SKILL.md,
 portable source — copy the whole folder to the target machine first if it
 isn't already there.
 
-**What this gives the user:** a menu bar icon (panda by default — 17 pets
-available via "Choose Buddy" in the menu). When Claude Code needs a
-Bash/Write/Edit/WebFetch/NotebookEdit permission decision, it shows up there
-(with sound) instead of only in the terminal/Claude Desktop — click Allow or
-Deny. The menu also shows session status, tokens used today, and plan usage
-(5-hour + weekly limits), refreshed each time it's opened.
+**What this gives the user:** a menu bar icon plus a desktop pet (cyberpunk
+koala by default — piglet, panda and kitty available in
+`Settings ▸ Appearance`). When Claude Code needs a permission decision
+(Bash, edits, WebFetch/WebSearch, plans, questions), a card appears next to
+the pet — Allow/Deny with global shortcuts, no focus stolen. The menu shows
+session status, tokens used today, and plan usage (5-hour + weekly limits),
+refreshed each time it's opened.
+
+**If this folder is a git clone, install from the latest tag, not the tip:**
+
+```bash
+git checkout "$(git describe --tags --abbrev=0)"
+```
+
+Tags are known-good states — CI ran the build and the full test suite on
+that exact commit before it was tagged. The tip of the working branch can be
+mid-work between sessions. Skip this only if the user explicitly wants the
+latest commit (then run `swift test` yourself before installing).
 
 ## Prerequisites check
 

@@ -92,6 +92,7 @@ Manual install:
 
 ```bash
 git clone <this-repo> && cd claude-menubar-buddy
+git checkout "$(git describe --tags --abbrev=0)"   # latest known-good state (CI-verified)
 .venv/bin/python3 generate_pets.py <koala|piglet|panda|kitty>   # only to regenerate art (PixelLab key)
 swift build
 mkdir -p ~/.config/claude-menubar-buddy
