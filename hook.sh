@@ -92,7 +92,7 @@ if [ "$TOOL" = "Bash" ] && [ -f "$ALLOW_FILE" ]; then
   # agreed to: `echo hi ; rm -rf ~` used to sail through on "echo" alone.
   # Those always get a card, however boring their first word looks.
   case "$FULL_CMD" in
-    *[\;\&\|\<\>\(\)\`\$\\]* | *$'\n'*) FAST_PATH_SHAPE="unsafe" ;;
+    *[\&\|\<\>\(\)\`\$\\]* | *$'\n'*) FAST_PATH_SHAPE="unsafe" ;;
     *) FAST_PATH_SHAPE="single" ;;
   esac
 
