@@ -17,7 +17,7 @@ jobs:
     name: swift build + test (macOS)
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # The hook harness shells out to jq, same as the real hook. Runners
       # preinstall it; this step exists so a missing jq fails with a line
@@ -44,6 +44,6 @@ jobs:
     name: shellcheck (hook.sh, notify-done.sh)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: shellcheck
         run: shellcheck hook.sh notify-done.sh
