@@ -53,7 +53,7 @@ This app sits between Claude Code and your answer to "may I run this?", so its r
 
 **It writes what you're being asked to approve to disk.** Each pending request lands in the config directory and is deleted the moment it's answered; every decision is appended to `decisions.jsonl` (your audit trail, opened from `Settings ▸ Safety`, rotated once at ~1 MB). The directory is kept owner-only (`0700`) by both the hook and the app.
 
-**Debug captures are off unless you ask.** The `capture_*` flag files do nothing without `CLAUDE_BUDDY_DEBUG=1` in the app's environment — they render whatever is on screen, which can be a diff carrying a credential. `CLAUDE_BUDDY_CONFIG_DIR` points a test instance at an isolated config directory so the real queue, hotkeys and decision log are never shared with props.
+**Debug captures are off unless you ask.** The `capture_*` flag files do nothing without `CLAUDE_BUDDY_DEBUG=1` in the app's environment — they render whatever is on screen, which can be a diff carrying a credential. The same flag turns on a flight recorder, `debug.log` in the config directory (rotated once at ~1 MB): when a card went up, when a request was swept as expired, what decision was written, mood changes — metadata only, never the command or diff itself, so "the card didn't show" is diagnosable after the fact. Without the flag the file isn't even opened. `CLAUDE_BUDDY_CONFIG_DIR` points a test instance at an isolated config directory so the real queue, hotkeys and decision log are never shared with props.
 
 **No invasive macOS permissions.** No Accessibility, no Screen Recording, no camera/microphone/contacts/location. It takes the approval shortcuts, and only while a card is on screen.
 

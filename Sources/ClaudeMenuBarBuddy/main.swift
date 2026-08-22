@@ -526,6 +526,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             guard let data = try? Data(contentsOf: url),
                   let req = try? JSONDecoder().decode(PendingRequest.self, from: data) else { continue }
             if let ts = req.ts, now - ts > Self.hookAnswerWindow {
+                DebugLog.note("swept expired request \(req.id) (\(req.tool)) — \(Int(now - ts))s old, window is \(Int(Self.hookAnswerWindow))s")
                 try? fm.removeItem(at: url)
                 continue
             }
@@ -587,6 +588,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
                 // in the terminal, or the session was cancelled. Neutral
                 // fade, deliberately distinct from the ✓/✕ verdict flash:
                 // the buddy did not approve anything here.
+                DebugLog.note("request \(currentRequestId ?? "?") resolved outside the app (timeout, terminal, or cancelled) — card retired neutrally")
                 if let window = statusBubbleWindow, window.isVisible {
                     isDismissing = true
                     NSAnimationContext.runAnimationGroup({ ctx in
@@ -605,6 +607,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             return
         }
         if first.id != currentRequestId {
+            DebugLog.note("card up: \(first.id) (\(first.tool)\(first.project.map { ", \($0)" } ?? "")) — \(requests.count - 1) queued behind")
             setPending(first, queued: requests.count - 1)
         } else if requests.count - 1 != lastQueuedCount {
             // Same request on screen but the line behind it changed length.

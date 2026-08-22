@@ -449,12 +449,21 @@ La extracción de la 7.1 cubrió burn-rate y mood policy, pero queda lógica pur
 - 14 tests nuevos (74 en total). Mutaciones: quitar `MultiEdit` de la lista cayó en el pin de los nueve (la mutación que nombra la cláusula de esta fase), aceptar cualquier hook como nuestro en el test del hook ajeno, y tratar el matcher combinado como string opaco en el suyo.
 - **La fase cierra pero la regla no**: los tres nombrados están bajo test, y cualquier lógica pura que se toque de aquí en adelante sigue el mismo camino — mover, testear, mutar, en el mismo commit.
 
-### 8.4 Log de diagnóstico opt-in
+### 8.4 ✅ Log de diagnóstico opt-in (2026-08-22)
 Hoy, cuando algo se comporta raro, el método es selfies + inyección de requests — funciona, pero solo funciona con Claude en la sesión. Un `debug.log` en el config dir que solo escriba con `CLAUDE_BUDDY_DEBUG=1` (requests vistas y barridas por el poll, decisiones escritas, por qué se rehusó un `respond`, transiciones de mood) permite diagnosticar un "la tarjeta no salió" *después de que pasó*, sin reconstruir el momento. Mismo espíritu que los selfies: instrumentación que duerme a costo cero — sin el flag, ni se abre el archivo.
 - Riesgo: el log ve lo mismo que la tarjeta (comandos, diffs) — hereda la advertencia de los capture flags en el README y el `0700` del directorio; rotación como la de `decisions.jsonl`.
 - Verificar: sin flag, el archivo no existe y no hay I/O nuevo; con flag, una request inyectada deja su rastro completo (vista → mostrada → respondida/barrida); el README lo documenta junto a los capture flags.
 
+**Implementado 2026-08-22** (`DebugLog.swift`, cinco puntos de anclaje):
+- **El gate es `debugCapturesEnabled`, el mismo de los selfies** — la regla de la 1.4 aplicada de nuevo: el gate pertenece al mecanismo, no a quien se acuerde de pedirlo. `@autoclosure` en `note()` para que sin flag ni siquiera se construya la interpolación: costo cero de verdad, no "casi cero".
+- **El riesgo del plan se estrechó por diseño**: el plan asumía que el log vería comandos y diffs; se decidió que registre solo metadata (evento, tool, id, proyecto) — la traza necesita decir qué le PASÓ a una request, y su contenido ya vive en el request file mientras está viva y en `decisions.jsonl` al decidirse. La advertencia del README quedó proporcional.
+- Cinco eventos: barrida de request expirada (con edad y ventana), tarjeta arriba (con cola detrás), decisión escrita, respond rehusado fuera de ventana, y transiciones de mood. Rotación espejo de `decisions.jsonl` (1 MB → `.1`).
+- **Verificado con la instancia aislada, en dos fases**: sin flag, cero `debug.log` tras request inyectada y retirada (el archivo ni se abre); con flag, la traza completa salió en una corrida — barrida de la expirada ("61s old, window is 60s"), tarjeta arriba, decisión escrita y moods.
+- **El reflejo del usuario atacó dos veces más (cuarta y quinta documentadas), y la segunda fue útil**: la tarjeta de utilería de la Fase B recibió su ⌘⏎ a los 2.7s — en el dir aislado, sin consecuencias, y verificando en vivo la línea de `writeDecision` que el guion pensaba simular borrando el request. El patrón ya no es anécdota: es un fixture humano.
+
 **Fuera de alcance, a sabiendas**: bundle `.app` firmado/notarizado (rompería la restricción SPM-only por un beneficio que este proyecto no necesita) y la 2.4 (sigue pospuesta por decisión del usuario; nada la bloquea).
+
+**Fase 8 completa** (8.1 ✅ · 8.2 ✅ · 8.3 ✅ · 8.4 ✅) — etiquetada como `v0.2.0`.
 
 ## Orden del segundo ciclo
 

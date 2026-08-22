@@ -185,6 +185,7 @@ extension AppDelegate {
 
     func applyMoodGif(_ mood: String) {
         guard mood != displayedMood else { return }
+        DebugLog.note("mood \(displayedMood ?? "—") → \(mood)")
         displayedMood = mood
         let text = petMoodText(mood)
         // The mood strings lead with an emoji, which VoiceOver would announce

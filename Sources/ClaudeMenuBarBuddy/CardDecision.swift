@@ -222,6 +222,7 @@ extension AppDelegate {
     func writeDecision(id: String, request: PendingRequest?, decision: String,
                        reason: String? = nil, answers: [String: String]? = nil) {
         let responseURL = dirURL.appendingPathComponent("response_\(id).json")
+        DebugLog.note("decision \(decision) written for \(id)\(request.map { " (\($0.tool))" } ?? "")")
         var payload: [String: Any] = ["decision": decision]
         if let reason = reason { payload["reason"] = reason }
         if let answers = answers { payload["answers"] = answers }
@@ -300,6 +301,7 @@ extension AppDelegate {
         // ✓/✕ — the buddy decided nothing) or surfaces the next in line.
         if let ts = currentRequest?.ts,
            Date().timeIntervalSince1970 - ts > AppDelegate.hookAnswerWindow {
+            DebugLog.note("refused \(decision) for \(id): past the \(Int(AppDelegate.hookAnswerWindow))s answer window — nobody is listening, no log entry written")
             try? FileManager.default.removeItem(at: dirURL.appendingPathComponent("request_\(id).json"))
             respondedIds.insert(id)
             poll()
