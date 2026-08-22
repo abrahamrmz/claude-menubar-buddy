@@ -1,3 +1,4 @@
+import BuddyCore
 import Foundation
 
 // What the buddy can verify about its own installation, by reading the world
@@ -32,15 +33,9 @@ struct BuddyHealth {
     var blockingProblems: [Check] { checks.filter { !$0.ok && !$0.optional } }
     var isHealthy: Bool { blockingProblems.isEmpty }
 
-    /// Matchers SKILL.md wires up. The file-and-web tools are permission
-    /// decisions; ExitPlanMode and AskUserQuestion are the card answering a
-    /// question instead (a plan to accept three ways, and a multiple-choice
-    /// ask). MultiEdit and WebSearch were the card's own blind spot for a
-    /// while — both had an accent color and a fast path but no matcher, so
-    /// their cards could never arrive.
-    static let expectedMatchers = ["Bash", "Write", "Edit", "MultiEdit",
-                                   "WebFetch", "WebSearch", "NotebookEdit",
-                                   "ExitPlanMode", "AskUserQuestion"]
+    /// The lists and the analyses live in BuddyCore (`HealthPolicy`), under
+    /// test; this file reads the world and words the remedies.
+    static let expectedMatchers = HealthPolicy.expectedMatchers
 
     static var hookURL: URL { dirURL.appendingPathComponent("hook.sh") }
     static var notifyURL: URL { dirURL.appendingPathComponent("notify-done.sh") }
@@ -100,39 +95,23 @@ struct BuddyHealth {
                          detail: "Can't read \(path)",
                          remedy: "Ask Claude Code to run SKILL.md — step 4 wires the hook up.")
         }
-        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        switch HealthPolicy.wiring(settingsJSON: data) {
+        case .notJSON:
             return Check(title: title, ok: false,
                          detail: "\(path) isn't valid JSON — Claude Code ignores the whole file",
                          remedy: "python3 -c \"import json; json.load(open('\(path)'))\" will point at the syntax error.")
-        }
-
-        let hooks = root["hooks"] as? [String: Any]
-        let preToolUse = hooks?["PreToolUse"] as? [[String: Any]] ?? []
-        var wired: [String] = []
-        for entry in preToolUse {
-            guard let matcher = entry["matcher"] as? String,
-                  let commands = entry["hooks"] as? [[String: Any]] else { continue }
-            let usesOurHook = commands.contains { command in
-                guard let text = command["command"] as? String else { return false }
-                return text.contains("claude-menubar-buddy/hook.sh")
-            }
-            // One matcher can cover several tools ("Bash|Edit").
-            if usesOurHook { wired.append(contentsOf: matcher.split(separator: "|").map(String.init)) }
-        }
-
-        guard !wired.isEmpty else {
+        case .notWired:
             return Check(title: title, ok: false,
                          detail: "No PreToolUse hook in \(path) points at hook.sh",
                          remedy: "Ask Claude Code to read SKILL.md and do step 4. It never edits settings.json without your approval.")
-        }
-        let missing = expectedMatchers.filter { !wired.contains($0) }
-        guard missing.isEmpty else {
+        case .partial(let wired, let missing):
             return Check(title: title, ok: false,
-                         detail: "\(wired.count) of \(expectedMatchers.count) tools wired — missing \(missing.joined(separator: ", "))",
+                         detail: "\(wired) of \(expectedMatchers.count) tools wired — missing \(missing.joined(separator: ", "))",
                          remedy: "Those tools will keep using Claude Code's own prompt. SKILL.md step 4 lists the entries to add.")
+        case .complete(let count):
+            return Check(title: title, ok: true,
+                         detail: "All \(count) tools route through the card", remedy: nil)
         }
-        return Check(title: title, ok: true,
-                     detail: "All \(expectedMatchers.count) tools route through the card", remedy: nil)
     }
 
     /// hook.sh parses tool JSON with jq. Looking this up in $PATH would lie:
@@ -238,11 +217,8 @@ struct BuddyHealth {
         return version
     }
 
-    /// Major.minor only. Claude Code ships patch releases constantly, and a
-    /// check that cried wolf on every one of them would be trained away
-    /// within a week. A minor bump is where the tool surface actually moves.
     private static func series(_ version: String) -> String {
-        version.split(separator: ".").prefix(2).joined(separator: ".")
+        HealthPolicy.series(version)
     }
 
     static func markCurrentVersionVerified() {
@@ -259,22 +235,21 @@ struct BuddyHealth {
         }
         let recorded = (try? String(contentsOf: verifiedVersionURL, encoding: .utf8))?
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let recorded, !recorded.isEmpty else {
-            // First run: record what we're looking at rather than nagging
-            // about a comparison we've never had the chance to make.
+        switch HealthPolicy.versionAnchor(recorded: recorded, current: current) {
+        case .firstRun:
             try? series(current).write(to: verifiedVersionURL, atomically: true, encoding: .utf8)
             return Check(title: title, ok: true, detail: "Claude Code \(current)", remedy: nil)
-        }
-        guard recorded != series(current) else {
+        case .verified:
             return Check(title: title, ok: true, detail: "Claude Code \(current)", remedy: nil)
+        case .moved(let from, let to):
+            return Check(
+                title: title, ok: false,
+                detail: "Claude Code moved \(from) → \(to) since the buddy was last checked",
+                remedy: "Nothing is broken — the other checks here still pass. But parts of "
+                      + "the hook contract we rely on aren't documented, so this is worth "
+                      + "a look after a version bump.",
+                optional: true)
         }
-        return Check(
-            title: title, ok: false,
-            detail: "Claude Code moved \(recorded) → \(series(current)) since the buddy was last checked",
-            remedy: "Nothing is broken — the other checks here still pass. But parts of "
-                  + "the hook contract we rely on aren't documented, so this is worth "
-                  + "a look after a version bump.",
-            optional: true)
     }
 
     /// The transcripts are the buddy's other source of truth: token counts,
@@ -295,13 +270,8 @@ struct BuddyHealth {
                                + "files. Worth reporting if it persists.",
                          optional: true)
         }
-        let message = sample["message"] as? [String: Any]
-        let hasUsage = (message?["usage"] as? [String: Any])?["output_tokens"] is Int
-        let hasContent = message?["content"] is [[String: Any]]
-        guard hasUsage, hasContent else {
-            var missing: [String] = []
-            if !hasUsage { missing.append("message.usage.output_tokens (token counts)") }
-            if !hasContent { missing.append("message.content[] (working vs thinking)") }
+        let missing = HealthPolicy.missingTranscriptFields(in: sample)
+        guard missing.isEmpty else {
             return Check(title: title, ok: false,
                          detail: "Format changed — missing \(missing.joined(separator: ", "))",
                          remedy: "The buddy reads these directly; nothing warns when they move.",
@@ -328,10 +298,7 @@ struct BuddyHealth {
                          detail: "Skipped — no tool use recorded yet",
                          remedy: nil, optional: true)
         }
-        let unwatched = seen
-            .subtracting(expectedMatchers)
-            .subtracting(deliberatelyUngated)
-            .sorted()
+        let unwatched = HealthPolicy.unwatchedTools(seen: seen)
         guard !unwatched.isEmpty else {
             return Check(title: title, ok: true,
                          detail: "Every tool you've used either routes through the card or reads only",
@@ -344,16 +311,6 @@ struct BuddyHealth {
                   + "alongside the others in ~/.claude/settings.json.",
             optional: true)
     }
-
-    /// Tools we've looked at and decided don't need a card: they read, or they
-    /// only touch the session's own bookkeeping. Agent is here because a
-    /// subagent's own tool calls fire their own hooks — gating the spawn as
-    /// well would ask twice for the same work.
-    static let deliberatelyUngated: Set<String> = [
-        "Read", "Glob", "Grep", "NotebookRead", "TodoWrite", "Task", "Agent",
-        "Skill", "ToolSearch", "TaskOutput", "TaskStop", "SendMessage",
-        "BashOutput", "KillShell", "SlashCommand",
-    ]
 
     private static func newestTranscript() -> URL? {
         let root = FileManager.default.homeDirectoryForCurrentUser
