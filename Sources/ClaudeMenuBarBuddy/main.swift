@@ -1,4 +1,5 @@
 import AppKit
+import BuddyCore
 import Foundation
 import Settings
 
@@ -226,9 +227,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     var lastHealthAt = Date.distantPast
     weak var toastThresholdReadout: NSTextField?
     var alwaysAllowTable: AlwaysAllowTable?
-    // A week of decisions, for the Decision History summary. See
-    // DecisionStats.swift for why the window is held here and not re-read.
-    var recentDecisions: [DecisionRecord] = []
+    // A week of decisions, for the Decision History summary. The window's
+    // logic lives in BuddyCore; see DecisionStats.swift for why it's held
+    // in memory and not re-read from the log.
+    var decisions = DecisionWindow()
     // Consecutive mood refreshes spent doing nothing, counted by considerYawn.
     var idleSinceYawn = 0
     // (sampled-at, tokens-today) for the fallback burn rate, pruned to 2h.
