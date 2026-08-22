@@ -530,7 +530,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             if respondedIds.contains(req.id) { continue }
             requests.append(req)
         }
-        return requests.sorted { ($0.ts ?? 0) < ($1.ts ?? 0) }
+        // Unordered on purpose: ordering (age + pin) is QueuePolicy's job,
+        // and every consumer goes through orderedRequests().
+        return requests
     }
 
     func poll() {

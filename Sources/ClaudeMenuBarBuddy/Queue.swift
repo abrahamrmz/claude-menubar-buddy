@@ -1,4 +1,5 @@
 import AppKit
+import BuddyCore
 
 // When several sessions ask at once, the card shows one and the rest wait
 // behind a +N badge. This is the machinery for reaching past the front of
@@ -6,18 +7,16 @@ import AppKit
 extension AppDelegate {
     /// Live requests in the order the card will surface them: oldest first,
     /// except that a request the user picked jumps to the front and stays
-    /// there until it's answered.
+    /// there until it's answered. The rule itself lives in BuddyCore
+    /// (`QueuePolicy`), under test; this wrapper feeds it the scan and keeps
+    /// the surviving pin.
     func orderedRequests() -> [PendingRequest] {
-        var requests = scanRequests()
-        guard let pinned = pinnedRequestId else { return requests }
-        guard let index = requests.firstIndex(where: { $0.id == pinned }) else {
-            // Answered elsewhere, or the hook gave up — stop holding a spot
-            // for something that no longer exists.
-            pinnedRequestId = nil
-            return requests
-        }
-        if index > 0 { requests.insert(requests.remove(at: index), at: 0) }
-        return requests
+        let result = QueuePolicy.ordered(scanRequests(),
+                                         id: { $0.id },
+                                         ts: { $0.ts },
+                                         pinned: pinnedRequestId)
+        pinnedRequestId = result.pinned
+        return result.items
     }
 
     /// Bring the request at `index` (0 = the card already on screen) to the
