@@ -510,3 +510,24 @@ Dos limpiezas pedidas juntas, y la segunda arrastró más de lo que parecía.
 - **El riesgo real no era borrar, era la preferencia guardada.** `selectedSpecies` seguía diciendo `buddy` o `cat` en instalaciones reales, y un nombre sin arte resuelve a un GIF que no está en el bundle: `setGif` sale temprano y el pet queda **invisible, sin nada en pantalla que lo explique**. El accessor ahora verifica que exista el `_idle.gif` y cae al default si no. Comprobado poniendo `buddy` a mano: dibuja el koala, no un hueco. Se valida en cada lectura y no en una migración de arranque, para que retirar cualquier pet futuro se cure igual.
 - El default pasa de `buddy` a `koala`.
 - Verificado: 4 especies × 13 moods = 52 combinaciones, ninguna sin arte.
+
+#### Pulido ✅ El retiro de los emojis (2026-08-25)
+Pedido como "quitar todos los emojis si aún hay alguno". El censo corrigió la premisa: la mayoría de lo que parecía emoji eran **glifos de texto monocromos** (`→ ✓ ✕ ⇧ ↗ ⚠︎`), que son vocabulario de la tarjeta y se quedan. Lo pictográfico de verdad vivía en cuatro lugares, y las decisiones fueron:
+
+- **Solo producto**: app, hook, README y SKILL.md. Este roadmap conserva sus ✅ — los docs internos no cuentan.
+- **Las líneas de mood quedan en texto plano** (`Active and happy`, sin prefijo). De paso se fueron los dos strips de VoiceOver que existían solo para quitarles el emoji.
+- **El modo de icono "emoji" (🐼 literal) se retiró completo**: key de Prefs, popup de Settings y la rama entera de `applyStatusIcon`. La preferencia huérfana en instalaciones reales simplemente deja de leerse — mismo patrón de auto-curación que las especies retiradas.
+- **La fila ⚡ de standing grants ahora lleva `bolt.fill` template** dentro del attributed title del pill (`pillButton` ganó un parámetro `symbol:`); el ✏️ del icono ya era SF Symbol en la rama template.
+
+Regla 8.3 aplicada: `petMoodText`/`bubbleText` eran política pura y migraron a `MoodPolicy.moodLine`/`bubbleLine` en BuddyCore, con 3 tests nuevos (77 en total) — incluido el invariante "ninguna línea lleva emoji", que es lo que impide que uno se cuele de vuelta. Ambas mutaciones (prefijo 😔 reintroducido; `default` del bubble narrando de más) murieron por el test diseñado.
+
+La verificación e2e dejó otra anécdota para el fixture humano: la tarjeta de utilería del selfie fue aprobada **a los 2.1 segundos** (#6), matando la captura — y el flight recorder de la 8.4 lo contó solo (`card up … decision allow written` con timestamps). El selfie se rehizo pre-armando `capture_card` antes de lanzar la instancia.
+
+## Preguntas abiertas (post-Fase 8) — para responder con calma
+Anotadas 2026-08-25, de la lluvia de ideas de siguientes pasos. Ninguna bloquea a las demás.
+
+1. **¿Qué significa v1.0?** Está reservada para "deja de ser proyecto personal". Falta la lista concreta: ¿screenshot del README al día? ¿CONTRIBUTING mínimo? ¿la 6.3 es prerequisito o post-1.0? ¿Distribución real (Homebrew tap, binario en el release) o "clónalo y compílalo" es el producto?
+2. **La regla 8.3 en régimen permanente.** ¿Migrar proactivamente la lógica pura que queda (parsing de UsageStats, política de always-allow en CardDecision), o dejar que "tocas → migras" lo haga orgánicamente? ¿El protocolo hook↔app (request/response JSON) merece número de versión antes de que un tercero dependa de él?
+3. **El binario corriendo vs. el repo.** ¿Un check en Health de "el binario en ejecución no es el del último tag", o un ítem de menú "Relanzar con el build actual"? (Sin red: comparar solo contra lo local.)
+4. **Lo pospuesto.** ¿La 2.4 (web+QR) sigue pospuesta o la madurez cambia el cálculo? ¿La 6.3 tal como está escrita aún refleja lo que se quiere?
+5. **Micro-interacciones nuevas.** ¿Poses que faltan, sonido opcional en la tarjeta, algo al completar una racha de decisiones?

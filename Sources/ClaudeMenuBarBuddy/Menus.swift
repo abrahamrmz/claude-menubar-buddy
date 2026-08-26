@@ -22,7 +22,7 @@ extension AppDelegate {
         // nobody watches, and the one on the desktop is visible without a
         // click and answers to being petted. The mood line stays: that is
         // status text, which is what a menu is for.
-        petMoodLineItem = statusMenuItem("😊 Active and happy")
+        petMoodLineItem = statusMenuItem(petMoodText("idle"))
         menu.addItem(petMoodLineItem)
         menu.addItem(withTitle: "No pending requests", action: nil, keyEquivalent: "")
         menu.addItem(NSMenuItem.separator())
@@ -316,8 +316,8 @@ extension AppDelegate {
 
     /// Menu bar title while no request is pending: pet plus the number of
     /// sessions currently active (hidden when zero) — same at-a-glance
-    /// signal Masko showed. ✏️ marks auto-approve-edits mode: a standing
-    /// grant of power should never be invisible.
+    /// signal Masko showed. The pencil glyph marks auto-approve-edits mode:
+    /// a standing grant of power should never be invisible.
     func updateIdleTitle() {
         guard currentRequestId == nil else { return }
         var label = lastActiveCount > 0

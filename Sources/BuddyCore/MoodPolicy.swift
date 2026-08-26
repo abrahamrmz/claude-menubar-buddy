@@ -76,6 +76,46 @@ public enum MoodPolicy {
         return "\(species)_idle"
     }
 
+    /// The menu line for a mood: plain text, deliberately emoji-free — the
+    /// pet already carries the feeling in pixels, and the menu keeps it as
+    /// words (which is also what VoiceOver reads, unmangled).
+    public static func moodLine(_ mood: String) -> String {
+        switch mood {
+        case "thinking": return "Thinking it over..."
+        case "working": return "Working — running tools"
+        case "tired": return "Getting tired..."
+        case "stressed": return "Feeling the pressure (70% of the 5h limit)"
+        case "critical": return "Running on fumes (85% of the 5h limit)"
+        case "asleep": return "Fast asleep (5h limit reached)"
+        case "sad": return "Aw, denied"
+        case "excited", "greet": return "A new session said hi!"
+        case "meditate": return "Meditating — compacting context"
+        case "yawn": return "Nothing to do…"
+        case "dance": return "Back in business!"
+        // Species-neutral on purpose: this line follows whichever pet is
+        // selected, and a koala announcing itself with a panda face was a
+        // leftover from when the panda was the only pet.
+        default: return "Active and happy"
+        }
+    }
+
+    /// What a mood transition is worth saying out loud at the pet. Nil for
+    /// the moods that are either self-explanatory (heart — you just petted
+    /// it) or too frequent to narrate (idle/working/thinking would bubble
+    /// all day). celebrate gets its own line instead of moodLine because
+    /// that helper has no celebrate case and would fall through to "Active
+    /// and happy" — wrong words at the right moment. A yawn stays silent on
+    /// purpose: it exists to give idle time some texture, and narrating it
+    /// would turn "nothing is happening" into an announcement.
+    public static func bubbleLine(_ mood: String) -> String? {
+        switch mood {
+        case "meditate", "tired", "stressed", "critical", "asleep", "excited", "greet", "sad":
+            return moodLine(mood)
+        case "celebrate", "dance": return "Back in business!"
+        default: return nil
+        }
+    }
+
     /// The chosen pet, or the fallback when that pet's art is gone.
     ///
     /// Retiring the hand-drawn panda and the eighteen firmware species left

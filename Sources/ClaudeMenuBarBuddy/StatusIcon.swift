@@ -3,14 +3,12 @@ import AppKit
 // What the menu bar actually shows. One function owns the whole icon so the
 // three places that used to poke `statusItem.button?.title` can't drift.
 //
-// The default is a drawn template image rather than the 🐼 emoji: a template
-// follows the menu bar's own appearance (light wallpaper, dark wallpaper,
-// "Reduce transparency", the highlight while the menu is open) instead of
-// being a fixed-color glyph sitting in it. The emoji is still one click away
-// for anyone who wants the color back.
+// A drawn template image, always: a template follows the menu bar's own
+// appearance (light wallpaper, dark wallpaper, "Reduce transparency", the
+// highlight while the menu is open) instead of being a fixed-color glyph
+// sitting in it. The app shipped with a literal panda emoji and kept it as a
+// preference for a while; it retired with the rest of the emoji vocabulary.
 extension AppDelegate {
-    var usesTemplateIcon: Bool { iconStyle == "template" }
-
     /// Panda as a silhouette: filled ears + head with the eye patches punched
     /// OUT of the mask. That inversion is what keeps it recognizable in
     /// monochrome — a solid blob would just read as a circle.
@@ -61,15 +59,6 @@ extension AppDelegate {
         guard let button = statusItem.button else { return }
         button.setAccessibilityLabel(accessibility)
         button.toolTip = accessibility
-
-        guard usesTemplateIcon else {
-            button.image = nil
-            button.imagePosition = .noImage
-            button.contentTintColor = nil
-            let badge = pending ? "❗" : (autoEdits ? "✏️" : "")
-            button.title = "🐼\(badge)" + (count > 0 ? "\(count)" : "")
-            return
-        }
 
         button.image = pandaIcon(pending: pending, autoEdits: autoEdits)
         button.title = count > 0 ? " \(count)" : ""

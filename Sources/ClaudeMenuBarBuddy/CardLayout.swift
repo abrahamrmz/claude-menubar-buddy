@@ -141,8 +141,12 @@ extension AppDelegate {
     /// inside the title so it never reads as part of the action name.
     /// `accessibility` spells the action out for VoiceOver, which would
     /// otherwise announce the decorative ✓/✕ and the raw shortcut glyphs.
+    /// `symbol` puts an SF Symbol ahead of the title in the title's own
+    /// color — the template replacement for the emoji the grant row used to
+    /// lead with.
     func pillButton(title: String, shortcut: String, fill: NSColor, textColor: NSColor,
-                    action: Selector, accessibility: String) -> PressablePillButton {
+                    action: Selector, accessibility: String,
+                    symbol: String? = nil) -> PressablePillButton {
         let button = PressablePillButton(title: "", target: self, action: action)
         button.isBordered = false
         button.wantsLayer = true
@@ -150,11 +154,30 @@ extension AppDelegate {
         button.layer?.cornerRadius = 16
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
-        let text = NSMutableAttributedString(string: title, attributes: [
+        let text = NSMutableAttributedString()
+        if let symbol = symbol,
+           let image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
+               .withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
+                   .applying(.init(paletteColors: [textColor]))) {
+            let attachment = NSTextAttachment()
+            attachment.image = image
+            // Nudged below the baseline so the glyph sits optically centered
+            // against the 13pt title instead of riding its cap height.
+            attachment.bounds = NSRect(x: 0, y: -1.5, width: image.size.width, height: image.size.height)
+            // The paragraph style must reach the attachment too: layout takes
+            // the alignment from the paragraph's first character, which this
+            // now is.
+            let lead = NSMutableAttributedString(attachment: attachment)
+            lead.append(NSAttributedString(string: " "))
+            lead.addAttributes([.paragraphStyle: paragraph],
+                               range: NSRange(location: 0, length: lead.length))
+            text.append(lead)
+        }
+        text.append(NSAttributedString(string: title, attributes: [
             .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
             .foregroundColor: textColor,
             .paragraphStyle: paragraph,
-        ])
+        ]))
         text.append(NSAttributedString(string: "  \(shortcut)", attributes: [
             .font: NSFont.systemFont(ofSize: 12, weight: .regular),
             .foregroundColor: textColor.withAlphaComponent(0.55),

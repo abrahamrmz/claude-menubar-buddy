@@ -1,4 +1,5 @@
 import AppKit
+import BuddyCore
 import Defaults
 
 // Occasional speech bubble at the floating pet: one short line of context
@@ -7,22 +8,10 @@ import Defaults
 // the bubble is seasoning, and the cooldowns below are what keep it from
 // becoming a chat log.
 extension AppDelegate {
-    /// What a mood transition is worth saying out loud. Nil for the moods
-    /// that are either self-explanatory (heart — you just petted it) or too
-    /// frequent to narrate (idle/working/thinking would bubble all day).
-    /// celebrate gets its own line instead of petMoodText because that
-    /// helper has no celebrate case and would fall through to "Active and
-    /// happy" — wrong words at the right moment.
+    // Which transitions are worth narrating — and which stay silent — is
+    // policy, so it lives in MoodPolicy with the words themselves.
     func bubbleText(for mood: String) -> String? {
-        switch mood {
-        case "meditate", "tired", "stressed", "critical", "asleep", "excited", "greet", "sad":
-            return petMoodText(mood)
-        case "celebrate", "dance": return "🎉 Back in business!"
-        // A yawn stays silent on purpose. It exists to give idle time some
-        // texture, and narrating it would turn "nothing is happening" into an
-        // announcement — the one reading it must never have.
-        default: return nil
-        }
+        MoodPolicy.bubbleLine(mood)
     }
 
     /// Shows a bubble unless something outranks it. The suppressions are the
@@ -45,15 +34,15 @@ extension AppDelegate {
         speechBubbleDismissWork?.cancel()
 
         let font = NSFont.systemFont(ofSize: 11, weight: .medium)
-        // Measured by the field itself, not by NSString.size: the leading
-        // emoji draws from Apple Color Emoji, which the plain measurement
-        // under-counts — the first render came out ellipsized by exactly
-        // that difference.
+        // Measured by the field itself, not by NSString.size — the field is
+        // what draws, so the field is what gets to say how wide it is. (The
+        // gap was first noticed with the since-retired emoji prefixes, but
+        // the principle outlives them.)
         let label = NSTextField(labelWithString: text)
         label.font = font
         label.sizeToFit()
-        // +6: sizeToFit is knife-edge and the actual draw (color emoji,
-        // subpixel rounding) needs a hair more before the ellipsis backs off.
+        // +6: sizeToFit is knife-edge and subpixel rounding in the actual
+        // draw needs a hair more before the ellipsis backs off.
         let textWidth = ceil(label.frame.width) + 6
         let height: CGFloat = 26
         // The cap only exists so a pathological string can't build a banner
@@ -84,7 +73,7 @@ extension AppDelegate {
         pill.wantsLayer = true
         pill.layer?.cornerRadius = height / 2
         pill.layer?.masksToBounds = true
-        pill.setAccessibilityLabel(String(text.drop(while: { !$0.isLetter })))
+        pill.setAccessibilityLabel(text)
         window.contentView = pill
 
         label.textColor = .labelColor

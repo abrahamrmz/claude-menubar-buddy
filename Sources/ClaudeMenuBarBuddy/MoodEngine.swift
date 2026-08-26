@@ -20,24 +20,11 @@ extension AppDelegate {
         MoodPolicy.petMood(forFiveHourPct: pct)
     }
 
+    // The words live in MoodPolicy, under test — including the invariant
+    // that they stay plain text (the emoji prefixes retired with the rest of
+    // the app's emoji vocabulary).
     func petMoodText(_ mood: String) -> String {
-        switch mood {
-        case "thinking": return "🤔 Thinking it over..."
-        case "working": return "⚡ Working — running tools"
-        case "tired": return "😅 Getting tired..."
-        case "stressed": return "😰 Feeling the pressure (70% of the 5h limit)"
-        case "critical": return "🥵 Running on fumes (85% of the 5h limit)"
-        case "asleep": return "💤 Fast asleep (5h limit reached)"
-        case "sad": return "😔 Aw, denied"
-        case "excited", "greet": return "🤩 A new session said hi!"
-        case "meditate": return "🧘 Meditating — compacting context"
-        case "yawn": return "🥱 Nothing to do…"
-        case "dance": return "🎉 Back in business!"
-        // Species-neutral on purpose: this line follows whichever pet is
-        // selected, and a koala announcing itself with a panda face was a
-        // leftover from when the panda was the only pet.
-        default: return "😊 Active and happy"
-        }
+        MoodPolicy.moodLine(mood)
     }
 
     /// True while any Claude Code turn is actually in flight, going by the
@@ -188,9 +175,6 @@ extension AppDelegate {
         DebugLog.note("mood \(displayedMood ?? "—") → \(mood)")
         displayedMood = mood
         let text = petMoodText(mood)
-        // The mood strings lead with an emoji, which VoiceOver would announce
-        // by name ("panda face, active and happy") — drop it for the label.
-        let spoken = String(text.drop(while: { !$0.isLetter }))
         petMoodLineItem.attributedTitle = NSAttributedString(
             string: text,
             attributes: [.foregroundColor: NSColor.secondaryLabelColor, .font: NSFont.systemFont(ofSize: 11)]
@@ -199,7 +183,7 @@ extension AppDelegate {
         // keeps the mood as a line of text and nothing else.
         if let floatingImageView = floatingImageView {
             setGif(on: floatingImageView, named: gifName(for: selectedSpecies, mood: mood))
-            floatingImageView.setAccessibilityLabel(spoken)
+            floatingImageView.setAccessibilityLabel(text)
         }
         // A transition worth narrating gets a one-line speech bubble at the
         // pet; showSpeechBubble applies its own suppressions and cooldowns,

@@ -130,4 +130,48 @@ struct MoodPolicyTests {
     @Test func defaultSpeciesHasIdleArt() throws {
         #expect(try shippedGifs().contains("koala_idle"))
     }
+
+    // MARK: - The mood lines
+
+    /// The lines are plain text by decision, not by accident: the emoji
+    /// prefixes retired with the rest of the app's emoji vocabulary, and this
+    /// is the invariant that keeps one from sneaking back. Every line — for
+    /// every known mood and the unknown-mood fallback — starts with a letter
+    /// and carries no emoji-presentation scalar.
+    @Test func moodLinesArePlainText() {
+        for mood in MoodPolicy.allMoods + ["no-such-mood"] {
+            let line = MoodPolicy.moodLine(mood)
+            #expect(line.first?.isLetter == true,
+                    "\"\(line)\" (\(mood)) leads with something that isn't a letter")
+            #expect(line.unicodeScalars.allSatisfy { !$0.properties.isEmojiPresentation },
+                    "\"\(line)\" (\(mood)) contains an emoji")
+        }
+    }
+
+    /// A few lines pinned verbatim, so a reworded state is a decision that
+    /// shows up in a diff here — the words are UI.
+    @Test func moodLinesPinned() {
+        #expect(MoodPolicy.moodLine("idle") == "Active and happy")
+        #expect(MoodPolicy.moodLine("asleep") == "Fast asleep (5h limit reached)")
+        #expect(MoodPolicy.moodLine("meditate") == "Meditating — compacting context")
+    }
+
+    /// Which transitions the speech bubble narrates. The silent ones are the
+    /// design: idle/working/thinking would bubble all day, heart explains
+    /// itself, and a yawn narrated stops being texture and becomes an
+    /// announcement.
+    @Test func bubbleLinesNarrateOnlyWhatIsWorthSaying() {
+        for mood in ["idle", "working", "thinking", "heart", "yawn", "pending"] {
+            #expect(MoodPolicy.bubbleLine(mood) == nil, "\(mood) should stay silent")
+        }
+        for mood in ["meditate", "tired", "stressed", "critical", "asleep", "excited", "greet", "sad"] {
+            #expect(MoodPolicy.bubbleLine(mood) == MoodPolicy.moodLine(mood),
+                    "\(mood)'s bubble should say what the menu line says")
+        }
+        // celebrate has no menu line of its own; falling through to the
+        // default would cheer "Active and happy" at the exact moment of the
+        // limit reset — right moment, wrong words.
+        #expect(MoodPolicy.bubbleLine("celebrate") == "Back in business!")
+        #expect(MoodPolicy.bubbleLine("dance") == "Back in business!")
+    }
 }

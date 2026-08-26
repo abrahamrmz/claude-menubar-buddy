@@ -33,8 +33,8 @@ fi
 ID="$(uuidgen)"
 TOOL="$(echo "$INPUT" | jq -r '.tool_name // "unknown"')"
 
-# Fast path: auto-approve-edits mode. Toggled from the app's menu (or the ⚡
-# row on an Edit card); while the flag file exists, file-modifying tools
+# Fast path: auto-approve-edits mode. Toggled from the app's menu (or the
+# standing-grant row on an Edit card); while the flag file exists, file-modifying tools
 # skip the card entirely. Delete the flag (or uncheck the menu item) to go
 # back to ask-before-each-edit.
 if [ -f "$DIR/auto_approve_edits" ]; then

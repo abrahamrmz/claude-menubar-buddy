@@ -14,7 +14,7 @@ When Claude Code needs a permission decision (Bash, Edit/MultiEdit/Write, Notebo
 - **Questions, not just permissions** — `AskUserQuestion` options become buttons (⌘1-4) answered through the tool's own `answers` field; multi-question calls are walked one at a time. Plans get their three real choices: approve each edit, approve + auto-accept, or keep planning (a deny that says *why*).
 - **A queue you can reach into** — the orange `+N` badge lists what's waiting, jumps to any request (⌘1-9), and offers allow/deny-all behind a confirmation, because answering things you haven't read is what this app exists to prevent.
 - **Hand off with ↗** — the native prompt appears immediately with its full options. Cards are answerable for ~60 seconds (the hook's window); after that the native prompt owns the decision and the card retires itself. Long reads belong on ↗ from the start.
-- **Standing grants** — ⚡ on a Bash card remembers the base command *for that project*; ⚡ on an edit card turns on auto-approve-edits. Both are covered in detail under [the two standing grants](#the-two-standing-grants).
+- **Standing grants** — the lightning row on a Bash card remembers the base command *for that project*; on an edit card it turns on auto-approve-edits. Both are covered in detail under [the two standing grants](#the-two-standing-grants).
 
 ## The pet
 
@@ -74,7 +74,7 @@ Both approve things without showing a card, and both stay visible in the menu ba
 
 The card only writes into `projects`, keyed on the session's absolute path and matched exactly — a grant on `/repos/api` reaches neither `/repos/api-x` nor another checkout. Widening to `global` is a confirmed action in `Settings ▸ Safety`, where the list is also readable and removable.
 
-**Auto-approve Edits** lets edit tools through without a card, with a ✏️ on the icon while it's on. It stops at the files that decide what runs on this machine tomorrow: `~/.ssh`, `~/.gnupg`, LaunchAgents/Daemons, `.git/hooks`, `~/.claude`, shell startup files, system directories — and the buddy's own config, so an auto-approved write can't widen the very grant that let it through. Relative paths and `..` get a card too: "can't tell where it lands" means "ask".
+**Auto-approve Edits** lets edit tools through without a card, with a pencil glyph on the menu bar icon while it's on. It stops at the files that decide what runs on this machine tomorrow: `~/.ssh`, `~/.gnupg`, LaunchAgents/Daemons, `.git/hooks`, `~/.claude`, shell startup files, system directories — and the buddy's own config, so an auto-approved write can't widen the very grant that let it through. Relative paths and `..` get a card too: "can't tell where it lands" means "ask".
 
 ## Tests
 

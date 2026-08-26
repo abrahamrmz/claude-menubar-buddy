@@ -305,22 +305,25 @@ extension AppDelegate {
                 // different, wider decision, so it lives in Settings ▸ Safety
                 // where it costs a deliberate trip and a confirmation.
                 let where_ = grantScope.map { "in \($0)" } ?? "everywhere"
-                quietButton = pillButton(title: "⚡ Always allow \(base) \(where_)", shortcut: "⌥⌘⏎",
+                quietButton = pillButton(title: "Always allow \(base) \(where_)", shortcut: "⌥⌘⏎",
                                          fill: NSColor.white.withAlphaComponent(0.07),
                                          textColor: accent, action: #selector(alwaysAllow),
-                                         accessibility: "Allow, and always allow \(base) \(where_) from now on")
+                                         accessibility: "Allow, and always allow \(base) \(where_) from now on",
+                                         symbol: "bolt.fill")
                 currentQuietAction = { [weak self] in self?.alwaysAllow() }
             } else if isEditTool {
-                quietButton = pillButton(title: "⚡ Auto-approve edits from now on", shortcut: "⌥⌘⏎",
+                quietButton = pillButton(title: "Auto-approve edits from now on", shortcut: "⌥⌘⏎",
                                          fill: NSColor.white.withAlphaComponent(0.07),
                                          textColor: accent, action: #selector(autoApproveEditsFromCard),
-                                         accessibility: "Allow, and auto-approve edits from now on")
+                                         accessibility: "Allow, and auto-approve edits from now on",
+                                         symbol: "bolt.fill")
                 currentQuietAction = { [weak self] in self?.autoApproveEditsFromCard() }
             } else {
-                quietButton = pillButton(title: "⚡ Yes — and auto-accept edits from here", shortcut: "⌥⌘⏎",
+                quietButton = pillButton(title: "Yes — and auto-accept edits from here", shortcut: "⌥⌘⏎",
                                          fill: NSColor.white.withAlphaComponent(0.07),
                                          textColor: accent, action: #selector(autoApproveEditsFromCard),
-                                         accessibility: "Approve the plan and auto-approve its edits from now on")
+                                         accessibility: "Approve the plan and auto-approve its edits from now on",
+                                         symbol: "bolt.fill")
                 currentQuietAction = { [weak self] in self?.autoApproveEditsFromCard() }
             }
             quietButton.layer?.cornerRadius = 13

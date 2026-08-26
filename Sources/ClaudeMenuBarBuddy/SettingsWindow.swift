@@ -238,14 +238,6 @@ extension AppDelegate {
             species.action = #selector(self.speciesPopupChanged(_:))
             form.row("Buddy", species)
 
-            let icon = NSPopUpButton()
-            icon.addItems(withTitles: ["Monochrome (adapts)", "Panda emoji"])
-            icon.selectItem(at: self.usesTemplateIcon ? 0 : 1)
-            icon.target = self
-            icon.action = #selector(self.iconStylePopupChanged(_:))
-            form.row("Menu bar icon", icon)
-            form.note("Monochrome follows the menu bar's own appearance — light or dark wallpaper, and the inversion while the menu is open.")
-
             let floating = NSButton(checkboxWithTitle: "Show the floating desktop pet",
                                     target: self, action: #selector(self.floatingPetCheckboxChanged(_:)))
             floating.state = self.floatingPetVisible ? .on : .off
@@ -281,16 +273,6 @@ extension AppDelegate {
         } else if let floatingImageView = floatingImageView {
             setGif(on: floatingImageView, named: gifName(for: selectedSpecies, mood: "pending"))
             applyAnimationPolicy()
-        }
-    }
-
-    @objc func iconStylePopupChanged(_ sender: NSPopUpButton) {
-        iconStyle = sender.indexOfSelectedItem == 0 ? "template" : "emoji"
-        buildIdleMenu()
-        if currentRequestId == nil {
-            setIdle()
-        } else if let req = currentRequest {
-            applyPendingStatusIcon(for: req, queued: lastQueuedCount)
         }
     }
 

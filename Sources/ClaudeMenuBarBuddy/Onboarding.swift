@@ -257,7 +257,7 @@ extension AppDelegate {
             // auto-approve for edits, auto-accept for a plan. It was once
             // described here as "deny quietly", which is the most dangerous
             // possible way to be wrong about a key.
-            (.approvalQuiet, "The card's ⚡ row — always-allow this command, or auto-approve edits"),
+            (.approvalQuiet, "The card's standing-grant row — always-allow this command, or auto-approve edits"),
             (.jumpToHost, "Jump to the editor or terminal that's asking"),
         ]
         var rows: [NSView] = [

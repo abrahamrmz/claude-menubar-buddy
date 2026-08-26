@@ -23,10 +23,6 @@ extension Defaults.Keys {
     // "small" | "medium" | "large" — see floatingPetSide for why those three
     // point sizes and not a free slider.
     static let floatingPetSize = Key<String>("floatingPetSize", default: "medium")
-    // "template" = drawn monochrome panda that follows the menu bar's
-    // appearance; "emoji" = the literal 🐼 the app shipped with, for anyone
-    // who wants the color back.
-    static let iconStyle = Key<String>("iconStyle", default: "template")
     // Turns shorter than this don't get a finish toast — you were watching
     // anyway. (The macOS banner threshold lives in notify-done.sh; this one
     // is deliberately lower because a toast at the pet is less intrusive.)
@@ -78,11 +74,6 @@ extension AppDelegate {
     var notifiedWeekly: Int {
         get { Defaults[.notifiedWeekly] }
         set { Defaults[.notifiedWeekly] = newValue }
-    }
-
-    var iconStyle: String {
-        get { Defaults[.iconStyle] }
-        set { Defaults[.iconStyle] = newValue }
     }
 
     var toastMinSeconds: Int {

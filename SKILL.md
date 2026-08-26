@@ -224,7 +224,7 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.claudemenubarbuddy.a
 ps aux | grep ClaudeMenuBarBuddy | grep -v grep
 ```
 
-Tell the user to look for the 🐼 in their menu bar. It should show idle
+Tell the user to look for the monochrome panda silhouette in their menu bar. It should show idle
 status when clicked. It stays that way until a permission request comes in.
 
 ## Notes for whoever's running this skill
