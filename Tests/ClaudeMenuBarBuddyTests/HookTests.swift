@@ -177,11 +177,22 @@ struct HookTests {
         assertAllowed(try h.run(bash("ls -la")), reasonContains: "everywhere")
     }
 
-    /// FOO=bar prefixes are env assignments, not the base command.
-    @Test func envAssignmentPrefixIsSkippedWhenExtractingBase() throws {
+    /// An env assignment prefix disqualifies the fast path. The first word
+    /// still reads `git`, but the assignment decides what that word resolves
+    /// to — which is the same failure the metacharacter screen exists to
+    /// prevent, just spelled without any metacharacter.
+    @Test(arguments: [
+        "FOO=bar BAZ_2=x git status",              // harmless-looking, same shape
+        "PATH=/tmp/evil git status",               // picks a different binary
+        "DYLD_INSERT_LIBRARIES=/tmp/x.dylib git status",  // foreign code in the real one
+        "GIT_SSH_COMMAND=/tmp/evil.sh git fetch",  // git's own exec hook
+    ])
+    func envAssignmentPrefixGetsACard(command: String) throws {
         let h = try Harness(allowlist: #"{"global":["git"],"projects":{}}"#)
         defer { h.cleanup() }
-        assertAllowed(try h.run(bash("FOO=bar BAZ_2=x git status")), reasonContains: "git")
+        let run = try h.run(bash(command))
+        #expect(run.cardShown, "fast-pathed past the card: \(command)")
+        #expect(run.stdout.isEmpty, "emitted a decision for: \(command)")
     }
 
     @Test func projectGrantOnlySpeaksForItsProject() throws {
@@ -265,6 +276,22 @@ struct HookTests {
         "/Library/LaunchDaemons/evil.plist",
         "notes.txt",                    // relative: can't tell where it lands
         "/tmp/proyX/../../etc/passwd",  // .. : same
+        // A project's own settings can register hooks — an auto-approved
+        // write here would run code on the next tool call, turning this
+        // grant into a wider one.
+        "/tmp/proyX/.claude/settings.json",
+        "/tmp/proyX/.claude/settings.local.json",
+        // core.fsmonitor / core.pager / an `!` alias: execution on the next
+        // git command, without ever touching .git/hooks.
+        "/tmp/proyX/.git/config",
+        "/tmp/proyX/.envrc",            // direnv runs it on the next cd
+        "/tmp/proyX/.vscode/tasks.json",  // can run on folderOpen
+        "~HOME~/.gitconfig",
+        "~HOME~/.oh-my-zsh/custom/evil.zsh",
+        "~HOME~/.zlogin",
+        "~HOME~/.bash_login",
+        "~HOME~/.config/fish/config.fish",
+        "/private/etc/hosts",           // /etc through its real path
     ])
     func autoEditsStopsAtProtectedPaths(path: String) throws {
         let h = try Harness(autoEdits: true)

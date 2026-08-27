@@ -56,11 +56,30 @@ if [ -f "$DIR/auto_approve_edits" ]; then
         ""|[!/]*|*..*) ;;
         */.ssh/*|*/.gnupg/*) ;;
         */Library/LaunchAgents/*|*/Library/LaunchDaemons/*) ;;
-        */.git/hooks/*) ;;
-        "$HOME"/.claude/*|"$HOME"/.config/claude-menubar-buddy/*) ;;
+        # All of .git, not only hooks/: `.git/config` is code execution just
+        # the same — core.fsmonitor and core.pager name a program, and an
+        # alias starting with `!` is a shell line — and it fires on the very
+        # next git command. Nothing legitimate auto-edits inside .git anyway,
+        # so the whole directory is cheaper to defend than an enumeration.
+        */.git/*) ;;
+        # Any .claude, not just $HOME's: Claude Code reads a PROJECT's
+        # .claude/settings.json too, and settings can register hooks — so an
+        # auto-approved write there installs code that runs on the next tool
+        # call, using this grant to manufacture a wider one. Same reason the
+        # buddy's own config is on the list.
+        */.claude/*|"$HOME"/.config/claude-menubar-buddy/*) ;;
         "$HOME/Library/Application Support/Claude/"*) ;;
-        */.zshrc|*/.zshenv|*/.zprofile|*/.bashrc|*/.bash_profile|*/.profile) ;;
-        /etc/*|/usr/*|/bin/*|/sbin/*|/Library/*) ;;
+        # Sourced on the next shell…
+        */.zshrc|*/.zshenv|*/.zprofile|*/.zlogin) ;;
+        */.bashrc|*/.bash_profile|*/.bash_login|*/.profile) ;;
+        */.oh-my-zsh/*|*/.config/fish/*) ;;
+        # …on the next `cd` into the directory (direnv)…
+        */.envrc) ;;
+        # …on the next git command, or when the editor opens the folder
+        # (.vscode/tasks.json runs a command on folderOpen).
+        "$HOME"/.gitconfig|*/.vscode/*) ;;
+        # /etc is a symlink to /private/etc, and a glob can't see through it.
+        /etc/*|/private/etc/*|/usr/*|/bin/*|/sbin/*|/Library/*) ;;
         *)
           jq -n '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"allow",permissionDecisionReason:"Auto-approved edit via Claude Menu Bar Buddy"}}'
           exit 0
@@ -96,11 +115,21 @@ if [ "$TOOL" = "Bash" ] && [ -f "$ALLOW_FILE" ]; then
     *) FAST_PATH_SHAPE="single" ;;
   esac
 
+  # An env assignment in front is not decoration: it decides what the base
+  # name RESOLVES to. `PATH=/tmp/evil ls` is the allowlisted `ls` in spelling
+  # only, and `DYLD_INSERT_LIBRARIES=/tmp/x.dylib ls` loads foreign code into
+  # the real one without altering the word at all. The grant said "ls", so
+  # only a bare `ls` may ride on it — a prefix means a card, like any other
+  # way of making the first word stop describing what runs.
+  FIRST_TOKEN="$(printf '%s' "$FULL_CMD" | awk '{print $1; exit}')"
+  case "$FIRST_TOKEN" in
+    [A-Za-z_]*=*) FAST_PATH_SHAPE="unsafe" ;;
+  esac
+
   if [ "$FAST_PATH_SHAPE" = "single" ]; then
-    # First token that isn't an env assignment (FOO=bar) — the same base the
-    # app extracts when offering the "Always allow" button.
-    CMD_BASE="$(printf '%s' "$FULL_CMD" \
-      | awk '{for(i=1;i<=NF;i++){if($i !~ /^[A-Za-z_][A-Za-z0-9_]*=/){print $i; exit}}}')"
+    # With assignments disqualified above, the first token IS the command —
+    # the same base the app extracts when offering the "Always allow" button.
+    CMD_BASE="$FIRST_TOKEN"
     # Two scopes: `global` (allowed anywhere) and `projects[<absolute cwd>]`
     # (allowed only where it was granted). Keyed by the full path and matched
     # exactly — two checkouts can share a basename, and a prefix match would
