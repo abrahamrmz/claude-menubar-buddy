@@ -5,10 +5,10 @@ import AppKit
 // disk. Split out of ApprovalCard.swift (Fase 7.2), which keeps the card's
 // assembly and lifecycle; the visual vocabulary lives in CardLayout.swift.
 extension AppDelegate {
-    /// First token of the command that isn't an env assignment — must match
-    /// hook.sh's extraction so the button's promise ("gh won't ask again")
-    /// is exactly what the fast path later honors. Returns nil for anything
-    /// that doesn't look like a plain command name.
+    /// First token of the command — must match hook.sh's extraction so the
+    /// button's promise ("gh won't ask again") is exactly what the fast path
+    /// later honors. Returns nil for anything that doesn't look like a plain
+    /// command name.
     ///
     /// Also nil the moment the command can chain, substitute, redirect or
     /// expand. hook.sh refuses to fast-path those — an allowlist entry names
@@ -17,16 +17,19 @@ extension AppDelegate {
     /// exact shapes where the promise would be most dangerous if it did.
     /// The character set is the same one hook.sh screens on; they have to
     /// agree or the button and the fast path drift apart.
+    ///
+    /// An env assignment in front is nil for the same reason, and it is the
+    /// subtler case: the word stays `ls`, but `PATH=` changes which binary
+    /// that word finds and `DYLD_INSERT_LIBRARIES=` loads foreign code into
+    /// the right one. hook.sh sends those to a card, so no button here.
     func commandBase(from hint: String) -> String? {
         let shellMetacharacters = CharacterSet(charactersIn: ";&|<>()`$\\\n")
         guard hint.rangeOfCharacter(from: shellMetacharacters) == nil else { return nil }
-        for token in hint.split(whereSeparator: { $0 == " " || $0 == "\t" }) {
-            if token.range(of: "^[A-Za-z_][A-Za-z0-9_]*=", options: .regularExpression) != nil { continue }
-            let base = String(token)
-            guard base.range(of: "^[A-Za-z0-9_./-]+$", options: .regularExpression) != nil else { return nil }
-            return base
-        }
-        return nil
+        guard let token = hint.split(whereSeparator: { $0 == " " || $0 == "\t" }).first else { return nil }
+        guard token.range(of: "^[A-Za-z_][A-Za-z0-9_]*=", options: .regularExpression) == nil else { return nil }
+        let base = String(token)
+        guard base.range(of: "^[A-Za-z0-9_./-]+$", options: .regularExpression) != nil else { return nil }
+        return base
     }
 
     /// Hotkey path: flash the matching button's pressed state first, so

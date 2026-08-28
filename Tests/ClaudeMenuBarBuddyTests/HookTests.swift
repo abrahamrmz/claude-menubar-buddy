@@ -177,11 +177,36 @@ struct HookTests {
         assertAllowed(try h.run(bash("ls -la")), reasonContains: "everywhere")
     }
 
-    /// FOO=bar prefixes are env assignments, not the base command.
-    @Test func envAssignmentPrefixIsSkippedWhenExtractingBase() throws {
-        let h = try Harness(allowlist: #"{"global":["git"],"projects":{}}"#)
+    /// An env assignment prefix disqualifies the fast path. The first word
+    /// still reads `git`, but the assignment decides what that word resolves
+    /// to — which is the same failure the metacharacter screen exists to
+    /// prevent, just spelled without any metacharacter.
+    @Test(arguments: [
+        "FOO=bar BAZ_2=x git status",              // harmless-looking, same shape
+        "PATH=/tmp/evil git status",               // picks a different binary
+        "DYLD_INSERT_LIBRARIES=/tmp/x.dylib git status",  // foreign code in the real one
+        "GIT_SSH_COMMAND=/tmp/evil.sh git fetch",  // git's own exec hook
+        // Same guard on a different granted word — the prefix must
+        // disqualify the fast path no matter which grant it rides on.
+        "PATH=/tmp/evil ls",
+        "DYLD_INSERT_LIBRARIES=/tmp/x.dylib ls",
+    ])
+    func envAssignmentPrefixGetsACard(command: String) throws {
+        let h = try Harness(allowlist: #"{"global":["git","ls"],"projects":{}}"#)
         defer { h.cleanup() }
-        assertAllowed(try h.run(bash("FOO=bar BAZ_2=x git status")), reasonContains: "git")
+        let run = try h.run(bash(command))
+        #expect(run.cardShown, "fast-pathed past the card: \(command)")
+        #expect(run.stdout.isEmpty, "emitted a decision for: \(command)")
+    }
+
+    /// The env-assignment guard must not collateral-damage the legitimate
+    /// fast path it sits in front of — global and per-project grants still
+    /// have to fire instantly for a plain, unprefixed command.
+    @Test func legitimateFastPathSurvivesTheEnvGuard() throws {
+        let h = try Harness(allowlist: #"{"global":["git"],"projects":{"/tmp/proyX":["npm"]}}"#)
+        defer { h.cleanup() }
+        assertAllowed(try h.run(bash("git status")), reasonContains: "everywhere")
+        assertAllowed(try h.run(bash("npm test", cwd: "/tmp/proyX")), reasonContains: "in this project")
     }
 
     @Test func projectGrantOnlySpeaksForItsProject() throws {
@@ -265,13 +290,85 @@ struct HookTests {
         "/Library/LaunchDaemons/evil.plist",
         "notes.txt",                    // relative: can't tell where it lands
         "/tmp/proyX/../../etc/passwd",  // .. : same
+        // A project's own settings can register hooks — an auto-approved
+        // write here would run code on the next tool call, turning this
+        // grant into a wider one.
+        "/tmp/proyX/.claude/settings.json",
+        "/tmp/proyX/.claude/settings.local.json",
+        // core.fsmonitor / core.pager / an `!` alias: execution on the next
+        // git command, without ever touching .git/hooks.
+        "/tmp/proyX/.git/config",
+        "/tmp/proyX/.envrc",            // direnv runs it on the next cd
+        "/tmp/proyX/.vscode/tasks.json",  // can run on folderOpen
+        "~HOME~/.gitconfig",
+        "~HOME~/.oh-my-zsh/custom/evil.zsh",
+        "~HOME~/.zlogin",
+        "~HOME~/.bash_login",
+        "~HOME~/.config/fish/config.fish",
+        "/private/etc/hosts",           // /etc through its real path
+        // Case-insensitivity: APFS is case-insensitive by default, so a
+        // differently-cased spelling must resolve to the same guarded file.
+        "/tmp/proyX/.GIT/config",
+        "/tmp/proyX/.Git/config",
+        "/tmp/proyX/.Claude/settings.json",
+        "~HOME~/.SSH/authorized_keys",
+        "~HOME~/.ZSHRC",
+        "~HOME~/.GitConfig",
+        // Path normalization: doubled/leading slashes and `.` segments must
+        // collapse to the same guarded path, not slip past a literal match.
+        "~HOME~/.config/claude-menubar-buddy//always_allow.json",
+        "~HOME~/./.gitconfig",
+        "//etc/paths.d/evil",
+        "/etc/paths.d/evil",            // path_helper sources this into PATH
+        "/private/etc/paths.d/evil",    // the same file, its real path
+        // Git paths beyond a plain .git/ directory.
+        "/tmp/p/subrepo/.git",          // worktree/submodule pointer: a FILE named .git
+        "/tmp/repo.git/hooks/post-receive",  // bare repo
+        "~HOME~/.config/git/config",    // XDG git config
+        // Claude Code's own config, wherever it lives.
+        "~HOME~/.claude.json",
+        "/tmp/p/.mcp.json",
+        // Shell logout hooks run on session close, same class as .zshrc.
+        "~HOME~/.zlogout",
+        "~HOME~/.bash_logout",
+        // VS Code's global (not per-project) task runner config.
+        "~HOME~/Library/Application Support/Code/User/tasks.json",
     ])
     func autoEditsStopsAtProtectedPaths(path: String) throws {
         let h = try Harness(autoEdits: true)
         defer { h.cleanup() }
-        let resolved = path.replacingOccurrences(of: "~HOME~", with: h.home.path)
+        // The fixture $HOME lives under /var/folders/..., itself a symlink
+        // to /private/var/folders/...; the hook canonicalizes paths, so an
+        // expected path built from the unresolved $HOME would assert
+        // against a spelling the hook never actually sees.
+        let resolvedHome = URL(fileURLWithPath: h.home.path).resolvingSymlinksInPath().path
+        let resolved = path.replacingOccurrences(of: "~HOME~", with: resolvedHome)
         let run = try h.run(edit(resolved))
         #expect(run.cardShown, "auto-approved a protected path: \(resolved)")
+    }
+
+    /// The denylist must stay narrow: a path that merely contains a
+    /// protected substring ("hooks", "git", "vscode"...) as an ordinary path
+    /// component has to keep auto-approving, or the fix trades the false
+    /// negatives it closed for false positives that break the mode outright.
+    @Test(arguments: [
+        "/tmp/proyecto/src/main.swift",
+        "/tmp/proyecto/src/hooks/useThing.ts",  // "hooks/" is common in React
+        "/tmp/proyecto/package.json",
+        "~HOME~/Documents/notas.txt",
+        "/tmp/proyecto/gitconfig-template.md",
+        "/tmp/proyecto/src/git/client.ts",
+        "/tmp/digit/file.txt",                  // "digit" contains "git", not the dotfile
+        "/tmp/proyecto/docs/vscode-setup.md",
+    ])
+    func autoEditsStillAllowsOrdinaryPaths(path: String) throws {
+        let h = try Harness(autoEdits: true)
+        defer { h.cleanup() }
+        let resolvedHome = URL(fileURLWithPath: h.home.path).resolvingSymlinksInPath().path
+        let resolved = path.replacingOccurrences(of: "~HOME~", with: resolvedHome)
+        let run = try h.run(edit(resolved))
+        assertAllowed(run, reasonContains: "Auto-approved edit")
+        #expect(!run.cardShown, "protected an ordinary path: \(resolved)")
     }
 
     /// The flag only covers file-editing tools — Bash with the flag up still

@@ -63,18 +63,22 @@ This app sits between Claude Code and your answer to "may I run this?", so its r
 
 Both approve things without showing a card, and both stay visible in the menu bar while active — a grant you can't see is a grant you'll forget you gave. Neither applies while the app isn't running.
 
-**Always allow `<command>`** remembers one base command in `always_allow.json`. It only ever speaks for a single command: anything carrying `;` `&` `|` `<` `>` `(` `)` `` ` `` `$` `\` or a newline gets a card regardless of its first word. Keep it to things that read and navigate — an interpreter on the list (`python`, `node`) is equivalent to allowing everything. Two scopes:
+**Always allow `<command>`** remembers one base command in `always_allow.json`. It only ever speaks for a single command: anything carrying `;` `&` `|` `<` `>` `(` `)` `` ` `` `$` `\` or a newline gets a card regardless of its first word, and so does an env assignment in front — `PATH=/tmp/evil ls` is the allowlisted `ls` in spelling only.
+
+Keep the list to things that read and navigate. What the screen can't catch is a command that takes another command as an *argument*: `find -exec`, `git -c core.fsmonitor=…`, `npm run`, and any interpreter (`python`, `node`) are each equivalent to allowing everything, without a metacharacter in sight. Two scopes:
 
 ```json
 {
   "global":   ["ls", "grep"],
-  "projects": { "/Users/you/repos/api": ["gh", "npm"] }
+  "projects": { "/Users/you/repos/api": ["cat", "pwd"] }
 }
 ```
 
 The card only writes into `projects`, keyed on the session's absolute path and matched exactly — a grant on `/repos/api` reaches neither `/repos/api-x` nor another checkout. Widening to `global` is a confirmed action in `Settings ▸ Safety`, where the list is also readable and removable.
 
-**Auto-approve Edits** lets edit tools through without a card, with a pencil glyph on the menu bar icon while it's on. It stops at the files that decide what runs on this machine tomorrow: `~/.ssh`, `~/.gnupg`, LaunchAgents/Daemons, `.git/hooks`, `~/.claude`, shell startup files, system directories — and the buddy's own config, so an auto-approved write can't widen the very grant that let it through. Relative paths and `..` get a card too: "can't tell where it lands" means "ask".
+**Auto-approve Edits** lets edit tools through without a card, with a pencil glyph on the menu bar icon while it's on. It stops at the files that decide what runs on this machine tomorrow: `~/.ssh`, `~/.gnupg`, LaunchAgents/Daemons, all of `.git/` (`config` names a program in `core.fsmonitor` just as `hooks/` holds one — and in a worktree or submodule `.git` is a plain file saying where the real one lives), any `.claude/` — a *project's* settings can register hooks, not just `~`'s — along with `~/.claude.json`, where each `mcpServers` entry is a command Claude Code spawns on the next session; shell startup files *and* the logout ones, `.envrc`, `.vscode/` at either scope, both spellings of git's global config (`~/.gitconfig` and `~/.config/git/config`), system directories — and the buddy's own config, so an auto-approved write can't widen the very grant that let it through. Relative paths and `..` get a card too: "can't tell where it lands" means "ask".
+
+A path is settled before it is matched, because one file answers to many spellings. Repeated slashes are squeezed, `/./` and symlinks resolved (`/etc` is really `/private/etc`, and a home directory can sit behind a link of its own), and the comparison is case-insensitive: on the case-insensitive volume macOS formats by default, a write to `.GIT/config` lands in `.git/config`, and a list that only knew the lowercase spelling would be a list you could walk around.
 
 ## Tests
 

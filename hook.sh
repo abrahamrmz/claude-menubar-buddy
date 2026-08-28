@@ -52,20 +52,127 @@ if [ -f "$DIR/auto_approve_edits" ]; then
       #     widen the very grant that let it through;
       #   - anything not absolute or containing "..", because a glob can't
       #     tell where those land, and "can't tell" has to mean "ask".
+      #
+      # Checked on the path as it arrived: a relative path or one carrying
+      # ".." can't be placed by globs that name absolute locations, and the
+      # canonicalisation below may not be able to place it either.
+      EDIT_SAFE=1
       case "$EDIT_PATH" in
-        ""|[!/]*|*..*) ;;
-        */.ssh/*|*/.gnupg/*) ;;
-        */Library/LaunchAgents/*|*/Library/LaunchDaemons/*) ;;
-        */.git/hooks/*) ;;
-        "$HOME"/.claude/*|"$HOME"/.config/claude-menubar-buddy/*) ;;
-        "$HOME/Library/Application Support/Claude/"*) ;;
-        */.zshrc|*/.zshenv|*/.zprofile|*/.bashrc|*/.bash_profile|*/.profile) ;;
-        /etc/*|/usr/*|/bin/*|/sbin/*|/Library/*) ;;
-        *)
-          jq -n '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"allow",permissionDecisionReason:"Auto-approved edit via Claude Menu Bar Buddy"}}'
-          exit 0
-          ;;
+        ""|[!/]*|*..*) EDIT_SAFE=0 ;;
       esac
+
+      # The patterns below name real files, but a glob only ever compares
+      # text — and one file answers to many spellings. `/tmp/p//.git/config`
+      # and `/tmp/p/./.git/config` are the doubled and dotted spellings of a
+      # path that matches; `/etc/x` is a symlink to the `/private/etc/x` the
+      # list already knows about. Each one opens the protected file while
+      # missing the pattern that protects it, so settle the spelling first:
+      # squeeze repeated slashes (`pwd -P` collapses them inside a path but
+      # keeps a leading `//`, and leaves the spelling untouched when the
+      # directory can't be entered at all), then let `pwd -P` resolve
+      # symlinks and `/./` out of the directory part. The basename is
+      # appended rather than resolved because Write's target need not exist
+      # yet. Both loops shorten the string every pass, so neither can spin.
+      #
+      # $HOME goes through the same mill: the patterns anchored on it are
+      # compared against a resolved path, so an unresolved $HOME would sail
+      # past every one of them the moment a home directory sits behind a
+      # symlink. Canonical only matches canonical.
+      if [ "$EDIT_SAFE" = 1 ]; then
+        canonicalise() {
+          local p="$1" d r q tail
+          while [ "${p#//}" != "$p" ]; do p="${p#/}"; done
+          while :; do
+            case "$p" in
+              *//*) q="${p%%//*}/${p#*//}"; [ "$q" = "$p" ] && break; p="$q" ;;
+              *) break ;;
+            esac
+          done
+          d="${p%/*}"; tail="${p##*/}"
+          [ -z "$d" ] && d="/"
+          # Climb to the nearest directory that exists, carrying the part that
+          # doesn't yet. A Write creates what isn't there — the whole
+          # `Application Support/Code/User/` chain can be missing — and
+          # stopping at the first failed `cd` would hand the patterns a path
+          # still spelled the way it arrived, against a $HOME already resolved.
+          while :; do
+            if r="$(cd "$d" 2>/dev/null && pwd -P)"; then
+              [ "$r" = "/" ] && r=""
+              printf '%s/%s' "$r" "$tail"
+              return
+            fi
+            case "$d" in /|"") break ;; esac
+            tail="${d##*/}/$tail"
+            d="${d%/*}"
+            [ -z "$d" ] && d="/"
+          done
+          printf '%s' "$p"
+        }
+        EDIT_CANON="$(canonicalise "$EDIT_PATH")"
+        # The `||` is load-bearing under `set -e`: an unreadable $HOME would
+        # otherwise take the whole hook down with the failed substitution,
+        # turning a path question into no decision at all.
+        HOME_CANON="$(cd "$HOME" 2>/dev/null && pwd -P)" || HOME_CANON="$HOME"
+        [ -z "$HOME_CANON" ] && HOME_CANON="$HOME"
+
+        # …and match it case-insensitively, because the spelling that reaches
+        # the file is not the only one that opens it: APFS is case-insensitive
+        # by default, so a Write to `.GIT/config` lands in `.git/config` while
+        # sailing past `*/.git/*`. That one gap would undo every pattern here.
+        # On a case-sensitive volume this only costs a card nobody needed,
+        # which is the side to be wrong on.
+        shopt -s nocasematch
+        case "$EDIT_CANON" in
+          */.ssh/*|*/.gnupg/*) EDIT_SAFE=0 ;;
+          */Library/LaunchAgents/*|*/Library/LaunchDaemons/*) EDIT_SAFE=0 ;;
+          # All of .git, not only hooks/: `.git/config` is code execution just
+          # the same — core.fsmonitor and core.pager name a program, and an
+          # alias starting with `!` is a shell line — and it fires on the very
+          # next git command. Nothing legitimate auto-edits inside .git anyway,
+          # so the whole directory is cheaper to defend than an enumeration.
+          # `.git` is also a plain FILE in a worktree or submodule (it reads
+          # `gitdir: <path>`), and repointing it hands the next git command a
+          # foreign config and hooks; `*.git/*` covers the bare repo, whose
+          # hooks/ sits at the top level with no `.git` component at all.
+          */.git|*/.git/*|*.git/*) EDIT_SAFE=0 ;;
+          # Any .claude, not just $HOME's: Claude Code reads a PROJECT's
+          # .claude/settings.json too, and settings can register hooks — so an
+          # auto-approved write there installs code that runs on the next tool
+          # call, using this grant to manufacture a wider one. Same reason the
+          # buddy's own config is on the list. ~/.claude.json is the same
+          # configuration wearing a different name: it holds the mcpServers
+          # entries, each a command Claude Code spawns on the next session.
+          */.claude/*|"$HOME_CANON"/.claude.json) EDIT_SAFE=0 ;;
+          */.mcp.json|"$HOME_CANON"/.config/claude-menubar-buddy/*) EDIT_SAFE=0 ;;
+          "$HOME_CANON/Library/Application Support/Claude/"*) EDIT_SAFE=0 ;;
+          # Sourced on the next shell…
+          */.zshrc|*/.zshenv|*/.zprofile|*/.zlogin) EDIT_SAFE=0 ;;
+          */.bashrc|*/.bash_profile|*/.bash_login|*/.profile) EDIT_SAFE=0 ;;
+          # …or on the way out of one, which is no less a shell for it.
+          */.zlogout|*/.bash_logout) EDIT_SAFE=0 ;;
+          */.oh-my-zsh/*|*/.config/fish/*) EDIT_SAFE=0 ;;
+          # …on the next `cd` into the directory (direnv)…
+          */.envrc) EDIT_SAFE=0 ;;
+          # …on the next git command, or when the editor opens the folder
+          # (.vscode/tasks.json runs a command on folderOpen). git reads the
+          # XDG config just as willingly as ~/.gitconfig, and the editor reads
+          # a user-level tasks.json the same way it reads the project's.
+          "$HOME_CANON"/.gitconfig|*/.vscode/*) EDIT_SAFE=0 ;;
+          */.config/git/*) EDIT_SAFE=0 ;;
+          "$HOME_CANON/Library/Application Support/Code/User/"*) EDIT_SAFE=0 ;;
+          "$HOME_CANON/Library/Application Support/Cursor/User/"*) EDIT_SAFE=0 ;;
+          # /etc is a symlink to /private/etc; the canonicalisation above
+          # normally settles that, so these stand for the case where it
+          # couldn't (an unreadable parent leaves the path as it arrived).
+          /etc/*|/private/etc/*|/usr/*|/bin/*|/sbin/*|/Library/*) EDIT_SAFE=0 ;;
+        esac
+        shopt -u nocasematch
+      fi
+
+      if [ "$EDIT_SAFE" = 1 ]; then
+        jq -n '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"allow",permissionDecisionReason:"Auto-approved edit via Claude Menu Bar Buddy"}}'
+        exit 0
+      fi
       ;;
   esac
 fi
@@ -97,10 +204,23 @@ if [ "$TOOL" = "Bash" ] && [ -f "$ALLOW_FILE" ]; then
   esac
 
   if [ "$FAST_PATH_SHAPE" = "single" ]; then
-    # First token that isn't an env assignment (FOO=bar) — the same base the
-    # app extracts when offering the "Always allow" button.
-    CMD_BASE="$(printf '%s' "$FULL_CMD" \
-      | awk '{for(i=1;i<=NF;i++){if($i !~ /^[A-Za-z_][A-Za-z0-9_]*=/){print $i; exit}}}')"
+    # The first token IS the command — the same base the app extracts when
+    # offering the "Always allow" button. Read inside the shape check so a
+    # command already headed for a card doesn't pay for a subshell first.
+    FIRST_TOKEN="$(printf '%s' "$FULL_CMD" | awk '{print $1; exit}')"
+    # An env assignment in front is not decoration: it decides what the base
+    # name RESOLVES to. `PATH=/tmp/evil ls` is the allowlisted `ls` in spelling
+    # only, and `DYLD_INSERT_LIBRARIES=/tmp/x.dylib ls` loads foreign code into
+    # the real one without altering the word at all. The grant said "ls", so
+    # only a bare `ls` may ride on it — a prefix means a card, like any other
+    # way of making the first word stop describing what runs. The app won't
+    # write such a base (commandBase screens `=` out of the character set),
+    # so this is the belt to that suspenders: a hand-edited always_allow.json
+    # still can't talk its way onto the fast path.
+    case "$FIRST_TOKEN" in
+      [A-Za-z_]*=*) CMD_BASE="" ;;
+      *) CMD_BASE="$FIRST_TOKEN" ;;
+    esac
     # Two scopes: `global` (allowed anywhere) and `projects[<absolute cwd>]`
     # (allowed only where it was granted). Keyed by the full path and matched
     # exactly — two checkouts can share a basename, and a prefix match would
