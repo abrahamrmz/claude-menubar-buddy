@@ -8,9 +8,10 @@ A hardware-free, native macOS companion for [Claude Code](https://claude.com/cla
 
 ## The card
 
-When Claude Code needs a permission decision (Bash, Edit/MultiEdit/Write, NotebookEdit, WebFetch/WebSearch, plans, questions), a styled card appears next to the pet: per-tool accent and icon, project badge, and the **full** command or red/green mini-diff in a scrollable block — anything that didn't fit is called out in red, never silently cut. The panel is non-activating: deciding steals no focus from what you're typing.
+When Claude Code needs a permission decision (Bash, Edit/MultiEdit/Write, NotebookEdit, WebFetch/WebSearch, plans, questions), a speech bubble appears next to the pet with its tail pointing back at it: the tool's icon and name, project badge, and the **full** command or red/green mini-diff in a scrollable block — anything that didn't fit is called out in red, never silently cut. The panel is non-activating: deciding steals no focus from what you're typing.
 
-- **Global shortcuts** — ⌘⏎ allow, ⇧⌘⏎ deny, ⌥⌘⏎ the card's quiet action, ⌘M jump to the asking window. Registered only while a card is up; remappable in Settings. Holding a shortcut's modifiers visibly arms the button it would push.
+- **One accent** — a light card, a single ink at five opacities, and orange reserved for the one thing you're meant to press. The turn-finished toast and the pet's mood bubble wear the same silhouette, because they're the same pet talking.
+- **Global shortcuts** — ⌘⏎ allow, ⇧⌘⏎ deny, ⌥⌘⏎ the card's quiet action, ⌘M jump to the asking window. Registered only while a card is up; remappable in Settings. They live in a hint line under the buttons; hold any modifier and each button grows a capsule with its own shortcut, while the one that would take the ⏎ lights up.
 - **Questions, not just permissions** — `AskUserQuestion` options become buttons (⌘1-4) answered through the tool's own `answers` field; multi-question calls are walked one at a time. Plans get their three real choices: approve each edit, approve + auto-accept, or keep planning (a deny that says *why*).
 - **A queue you can reach into** — the orange `+N` badge lists what's waiting, jumps to any request (⌘1-9), and offers allow/deny-all behind a confirmation, because answering things you haven't read is what this app exists to prevent.
 - **Hand off with ↗** — the native prompt appears immediately with its full options. Cards are answerable for ~60 seconds (the hook's window); after that the native prompt owns the decision and the card retires itself. Long reads belong on ↗ from the start.
@@ -114,7 +115,8 @@ Sources/BuddyCore/            # pure logic under test: burn-rate math, mood poli
 Sources/ClaudeMenuBarBuddy/
   main.swift                  # bootstrap, AppDelegate state, poll loop
   ApprovalCard.swift          # card assembly and lifecycle
-  CardLayout.swift            # card visual vocabulary (pills, accents, diff styling)
+  CardTheme.swift             # design tokens: ink ramp, accent, type scale, bubble shape
+  CardLayout.swift            # card visual vocabulary (pills, bubble background, diff styling)
   CardDecision.swift          # what answering does: respond, verdict, audit log
   Menus.swift                 # the dropdown and its in-place refresh
   Queue.swift                 # the waiting line: pick one, answer all
@@ -124,6 +126,7 @@ Sources/ClaudeMenuBarBuddy/
   Health.swift                # setup check + update-drift detection
   SettingsWindow / Onboarding / StatusIcon / HotKeys / JumpToHost / Prefs / UsageStats / DecisionStats
   Resources/                  # generated GIFs + species.txt (checked in)
+  Resources/Fonts/            # Fredoka + Rubik (variable, OFL), registered at launch
 Tests/ClaudeMenuBarBuddyTests # hook fixtures, burn-rate shapes, art audit
 hook.sh                       # the PreToolUse hook
 notify-done.sh                # UserPromptSubmit/Stop/PreCompact hook
@@ -148,5 +151,7 @@ They're complementary. This one needs no hardware or pairing, covers Claude Code
 ## License
 
 [MIT](./LICENSE) — use it, fork it, modify it freely.
+
+The card is set in [Fredoka](https://fonts.google.com/specimen/Fredoka) and [Rubik](https://fonts.google.com/specimen/Rubik), bundled as variable fonts under the [SIL Open Font License 1.1](https://openfontlicense.org) — each ships with its own `OFL.txt` in `Resources/Fonts/`. Its look owes a debt to [Masko Code](https://masko.ai) (MIT), which this fork replaced.
 
 All four current pets are original art generated for this project via PixelLab (see the manifests). Earlier versions rendered 18 additional pets from ASCII-art poses in Anthropic's [claude-desktop-buddy](https://github.com/anthropics/claude-desktop-buddy) firmware (© 2026 Anthropic, PBC, MIT) — retired in `1d4636f`, still in the git history.

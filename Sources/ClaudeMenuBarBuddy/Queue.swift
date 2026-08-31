@@ -41,17 +41,17 @@ extension AppDelegate {
         let badge = PressablePillButton(title: "", target: self, action: #selector(showQueueMenu(_:)))
         badge.isBordered = false
         badge.wantsLayer = true
-        badge.layer?.backgroundColor = NSColor.systemOrange.cgColor
-        badge.layer?.cornerRadius = 9
+        badge.layer?.backgroundColor = CardTheme.accent.cgColor
+        badge.layer?.cornerRadius = 10
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
         badge.attributedTitle = NSAttributedString(string: "+\(queued) ▾", attributes: [
-            .font: NSFont.systemFont(ofSize: 11, weight: .medium),
-            .foregroundColor: NSColor.black,
+            .font: CardTheme.heading(CardTheme.badgeSize, weight: 600),
+            .foregroundColor: NSColor.white,
             .paragraphStyle: paragraph,
         ])
         let badgeWidth = ceil(badge.attributedTitle.size().width) + 16
-        badge.frame = NSRect(x: 0, y: 0, width: badgeWidth, height: 18)
+        badge.frame = NSRect(x: 0, y: 0, width: badgeWidth, height: 20)
         badge.toolTip = "\(queued) more request\(queued == 1 ? "" : "s") waiting — click to pick one, or answer them all"
         badge.setAccessibilityLabel("\(queued) more requests waiting. Show the queue.")
         return badge

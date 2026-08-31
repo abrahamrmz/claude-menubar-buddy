@@ -4,6 +4,23 @@ import AppKit
 // hotkeys fire, the verdict animation, and everything a decision leaves on
 // disk. Split out of ApprovalCard.swift (Fase 7.2), which keeps the card's
 // assembly and lifecycle; the visual vocabulary lives in CardLayout.swift.
+
+/// The tinted wash the verdict lands on, cut to the same speech-bubble
+/// outline the card paints. A plain rectangle would square off the rounded
+/// corners and drop a block over the tail.
+final class VerdictWashView: NSView {
+    var color: NSColor = .clear
+    var tail: TailSide = .none
+    var tailPercent: CGFloat = 0.5
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+        ctx.addPath(CardTheme.bubblePath(in: bounds, tail: tail, percent: tailPercent))
+        ctx.setFillColor(color.cgColor)
+        ctx.fillPath()
+    }
+}
+
 extension AppDelegate {
     /// First token of the command — must match hook.sh's extraction so the
     /// button's promise ("gh won't ask again") is exactly what the fast path
@@ -172,36 +189,59 @@ extension AppDelegate {
         // Answering a question is an affirmative act, not an approval — but
         // it's certainly not a rejection, so it gets the green ✓.
         let isAllow = decision == "allow" || decision == "answer"
-        let color: NSColor = isAllow ? .systemGreen : .systemRed
+        // The verdict keeps green/red rather than the card's single accent:
+        // this is the one moment that reports what HAPPENED instead of
+        // offering an action, and orange for "approved" and orange for
+        // "denied" would be the same picture twice.
+        let color: NSColor = isAllow ? CardTheme.added : CardTheme.removed
 
-        let overlay = NSView(frame: card.bounds)
-        overlay.wantsLayer = true
-        overlay.layer?.backgroundColor = color.withAlphaComponent(0.20).cgColor
+        // The wash follows the bubble's own outline — a plain rectangle would
+        // square off the rounded corners and paint a block over the tail,
+        // since the card draws its silhouette rather than masking to it.
+        let bubble = card as? DraggableCardView
+        let overlay = VerdictWashView(frame: card.bounds)
+        overlay.color = color.withAlphaComponent(0.14)
+        overlay.tail = bubble?.tail ?? .none
+        overlay.tailPercent = bubble?.tailPercent ?? 0.5
         overlay.alphaValue = 0
 
-        let iconSide: CGFloat = 64
-        let icon = NSImageView(frame: NSRect(x: card.bounds.midX - iconSide / 2,
-                                             y: card.bounds.midY - iconSide / 2,
+        let body = bubble?.bodyRect ?? card.bounds
+        let iconSide: CGFloat = 56
+        let icon = NSImageView(frame: NSRect(x: body.midX - iconSide / 2,
+                                             y: body.midY - iconSide / 2,
                                              width: iconSide, height: iconSide))
         icon.imageScaling = .scaleProportionallyUpOrDown
         if let symbol = NSImage(systemSymbolName: isAllow ? "checkmark.circle.fill" : "xmark.circle.fill",
                                 accessibilityDescription: decision) {
-            icon.image = symbol.withSymbolConfiguration(.init(pointSize: 48, weight: .bold))
+            icon.image = symbol.withSymbolConfiguration(.init(pointSize: 42, weight: .bold))
             icon.contentTintColor = color
         }
-        // Start small; animating the frame outward reads as a little pop.
-        icon.frame = icon.frame.insetBy(dx: 14, dy: 14)
+        icon.wantsLayer = true
         overlay.addSubview(icon)
         card.addSubview(overlay)
+        // The pop is a spring scale with real overshoot — this is the one
+        // moment in the card where a visible bounce reads as intent (the
+        // verdict LANDS) rather than as decoration. The old version grew the
+        // frame with an ease, which arrived and just stopped.
+        if let layer = icon.layer {
+            centerAnchor(of: layer)
+            layer.add(cardSpring("transform.scale", from: 0.55, to: 1,
+                                 damping: 15, stiffness: 320, velocity: 1.5),
+                      forKey: "verdict.pop")
+        }
 
         NSAnimationContext.runAnimationGroup({ ctx in
             ctx.duration = 0.14
             ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
             overlay.animator().alphaValue = 1
-            icon.animator().frame = icon.frame.insetBy(dx: -14, dy: -14)
         }, completionHandler: {
+            // A short beat so the bounce settles before the card leaves —
+            // fading out mid-overshoot cuts the pop's landing in half. Still
+            // under half a second door to door, and the response file is
+            // long written: this only paces the NEXT card.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
             NSAnimationContext.runAnimationGroup({ ctx in
-                ctx.duration = 0.18
+                ctx.duration = 0.2
                 ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
                 window.animator().alphaValue = 0
             }, completionHandler: {
@@ -216,6 +256,7 @@ extension AppDelegate {
                 overlay.removeFromSuperview()
                 completion()
             })
+            }
         })
     }
 

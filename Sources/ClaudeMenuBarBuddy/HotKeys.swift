@@ -60,6 +60,16 @@ final class ApprovalHotKeys {
         .queue1, .queue2, .queue3, .queue4, .queue5, .queue6, .queue7, .queue8, .queue9,
     ]
 
+    /// How a shortcut should be written on the card — read from what the
+    /// user actually has recorded, never from the defaults above. The hint
+    /// bar and the buttons' badges are promises about which keys work, and a
+    /// remapped Allow that still advertises ⌘⏎ is a lie the card tells every
+    /// time it opens. `nil` when the shortcut has been cleared, which is the
+    /// caller's cue to leave that half of the promise out entirely.
+    static func label(for name: KeyboardShortcuts.Name) -> String? {
+        KeyboardShortcuts.getShortcut(for: name)?.description
+    }
+
     init() {
         KeyboardShortcuts.onKeyDown(for: .approvalAllow) { [weak self] in self?.onAllow?() }
         KeyboardShortcuts.onKeyDown(for: .approvalDeny) { [weak self] in self?.onDeny?() }

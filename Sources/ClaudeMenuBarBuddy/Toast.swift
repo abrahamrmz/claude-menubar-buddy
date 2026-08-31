@@ -48,17 +48,18 @@ extension AppDelegate {
         }
         toastDismissWorkItem?.cancel()
 
-        let width: CGFloat = 300
-        let height: CGFloat = 64
-        let pad: CGFloat = 12
-        let stripeWidth: CGFloat = 4
+        let width: CGFloat = 260
+        let height: CGFloat = 58
+        let pad = CardTheme.padding
+        // The tail rides on top of the toast's own height, same as the card's.
+        let windowSize = NSSize(width: width, height: height + CardTheme.tailHeight)
 
         let window: NSPanel
         if let existing = toastWindow {
             window = existing
-            window.setContentSize(NSSize(width: width, height: height))
+            window.setContentSize(windowSize)
         } else {
-            let panel = NSPanel(contentRect: NSRect(origin: .zero, size: NSSize(width: width, height: height)),
+            let panel = NSPanel(contentRect: NSRect(origin: .zero, size: windowSize),
                               styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
             panel.isOpaque = false
             panel.backgroundColor = .clear
@@ -71,46 +72,44 @@ extension AppDelegate {
             window = panel
         }
 
-        let card = NSVisualEffectView(frame: NSRect(origin: .zero, size: NSSize(width: width, height: height)))
-        card.material = .hudWindow
-        card.state = .active
-        card.wantsLayer = true
-        card.layer?.cornerRadius = 12
-        card.layer?.masksToBounds = true
-        card.setAccessibilityLabel("\(project.isEmpty ? "Claude Code" : project): turn finished in \(formatDuration(elapsed))")
-        window.contentView = card
+        let bubble = BubbleBackgroundView(frame: NSRect(origin: .zero, size: windowSize))
+        bubble.setAccessibilityLabel("\(project.isEmpty ? "Claude Code" : project): turn finished in \(formatDuration(elapsed))")
+        window.contentView = bubble
+        let card = bubble.content
 
-        let stripe = NSView(frame: NSRect(x: 0, y: 0, width: stripeWidth, height: height))
-        stripe.wantsLayer = true
-        stripe.layer?.backgroundColor = NSColor.systemGreen.cgColor
-        card.addSubview(stripe)
-
-        let chip = NSImageView(frame: NSRect(x: pad + stripeWidth, y: (height - 28) / 2, width: 28, height: 28))
-        chip.wantsLayer = true
-        chip.layer?.backgroundColor = NSColor.systemGreen.withAlphaComponent(0.22).cgColor
-        chip.layer?.cornerRadius = 7
+        // The green stays. Everything the card paints in the accent is
+        // something to press; this is a report that a turn ENDED WELL, and
+        // painting that the same orange as "Allow" would be the accent saying
+        // two different things. Same reasoning as the verdict's ✓.
+        //
+        // The stripe down the left edge is gone though, for the same reason
+        // the card's went: on a bubble it reads as a panel's tab.
+        let icon = NSImageView(frame: NSRect(x: pad, y: (height - 20) / 2, width: 20, height: 20))
         if let symbol = NSImage(systemSymbolName: "checkmark.seal.fill", accessibilityDescription: "done") {
-            chip.image = symbol.withSymbolConfiguration(.init(pointSize: 14, weight: .semibold))
-            chip.contentTintColor = .systemGreen
+            icon.image = symbol.withSymbolConfiguration(.init(pointSize: 16, weight: .semibold))
+            icon.contentTintColor = CardTheme.added
         }
-        card.addSubview(chip)
+        icon.setAccessibilityElement(false)
+        card.addSubview(icon)
 
-        let textX = pad + stripeWidth + 36
+        let textX = pad + 28
         let titleField = NSTextField(labelWithString: project.isEmpty ? "Claude Code" : project)
-        titleField.font = NSFont.boldSystemFont(ofSize: 13)
-        titleField.textColor = .labelColor
+        titleField.font = CardTheme.heading(CardTheme.titleSize, weight: 700)
+        titleField.textColor = CardTheme.inkPrimary
         titleField.lineBreakMode = .byTruncatingTail
-        titleField.frame = NSRect(x: textX, y: height / 2 + 1, width: width - textX - pad, height: 17)
+        titleField.frame = NSRect(x: textX, y: height / 2, width: width - textX - pad, height: 18)
         card.addSubview(titleField)
 
         let subtitleField = NSTextField(labelWithString: "Turn finished in \(formatDuration(elapsed))")
-        subtitleField.font = NSFont.systemFont(ofSize: 11)
-        subtitleField.textColor = .secondaryLabelColor
-        subtitleField.frame = NSRect(x: textX, y: height / 2 - 16, width: width - textX - pad, height: 15)
+        subtitleField.font = CardTheme.body(CardTheme.metaSize)
+        subtitleField.textColor = CardTheme.inkMuted
+        subtitleField.lineBreakMode = .byTruncatingTail
+        subtitleField.frame = NSRect(x: textX, y: height / 2 - 18, width: width - textX - pad, height: 17)
         card.addSubview(subtitleField)
 
         let wasVisible = window.isVisible
-        window.setFrameOrigin(originNearPet(for: NSSize(width: width, height: height)))
+        window.setFrameOrigin(originNearPet(for: windowSize))
+        if let pet = floatingWindow { aimTail(of: window, at: pet) }
         if wasVisible {
             window.orderFront(nil)
         } else {
