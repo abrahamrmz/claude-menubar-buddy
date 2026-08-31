@@ -33,7 +33,7 @@ extension AppDelegate {
 
         speechBubbleDismissWork?.cancel()
 
-        let font = NSFont.systemFont(ofSize: 11, weight: .medium)
+        let font = CardTheme.body(CardTheme.metaSize, weight: 500)
         // Measured by the field itself, not by NSString.size — the field is
         // what draws, so the field is what gets to say how wide it is. (The
         // gap was first noticed with the since-retired emoji prefixes, but
@@ -44,17 +44,19 @@ extension AppDelegate {
         // +6: sizeToFit is knife-edge and subpixel rounding in the actual
         // draw needs a hair more before the ellipsis backs off.
         let textWidth = ceil(label.frame.width) + 6
-        let height: CGFloat = 26
+        let height: CGFloat = 30
         // The cap only exists so a pathological string can't build a banner
         // across the screen.
-        let width = min(textWidth + 24, 340)
+        let width = min(textWidth + 22, 340)
+        // The tail rides on top, same as the card's and the toast's.
+        let windowSize = NSSize(width: width, height: height + CardTheme.tailHeight)
 
         let window: NSPanel
         if let existing = speechBubbleWindow {
             window = existing
-            window.setContentSize(NSSize(width: width, height: height))
+            window.setContentSize(windowSize)
         } else {
-            let panel = NSPanel(contentRect: NSRect(origin: .zero, size: NSSize(width: width, height: height)),
+            let panel = NSPanel(contentRect: NSRect(origin: .zero, size: windowSize),
                                 styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
             panel.isOpaque = false
             panel.backgroundColor = .clear
@@ -67,24 +69,27 @@ extension AppDelegate {
             window = panel
         }
 
-        let pill = NSVisualEffectView(frame: NSRect(origin: .zero, size: NSSize(width: width, height: height)))
-        pill.material = .hudWindow
-        pill.state = .active
-        pill.wantsLayer = true
-        pill.layer?.cornerRadius = height / 2
-        pill.layer?.masksToBounds = true
-        pill.setAccessibilityLabel(text)
-        window.contentView = pill
+        // A capsule with a tail — which is what a speech bubble is. The
+        // corner radius is half the height rather than the card's 14, so the
+        // ends stay fully round at this size.
+        let bubble = BubbleBackgroundView(frame: NSRect(origin: .zero, size: windowSize))
+        bubble.cornerRadius = height / 2
+        bubble.setAccessibilityLabel(text)
+        window.contentView = bubble
+        let pill = bubble.content
 
-        label.textColor = .labelColor
+        // Full-strength ink: this line IS the content, so there is nothing
+        // for it to be secondary to.
+        label.textColor = CardTheme.inkPrimary
         label.lineBreakMode = .byTruncatingTail
         label.alignment = .center
-        label.frame = NSRect(x: 12, y: (height - label.frame.height) / 2,
-                             width: width - 24, height: label.frame.height)
+        label.frame = NSRect(x: 11, y: (height - label.frame.height) / 2,
+                             width: width - 22, height: label.frame.height)
         pill.addSubview(label)
 
         let wasVisible = window.isVisible
-        window.setFrameOrigin(originNearPet(for: NSSize(width: width, height: height)))
+        window.setFrameOrigin(originNearPet(for: windowSize))
+        if let pet = floatingWindow { aimTail(of: window, at: pet) }
         if wasVisible {
             window.orderFront(nil)
         } else {

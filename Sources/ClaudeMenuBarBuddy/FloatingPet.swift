@@ -232,14 +232,24 @@ extension AppDelegate {
             if statusBubbleWindow?.isVisible == true {
                 positionStatusBubble(above: window)
             }
-            // The speech bubble follows the pet it's speaking from.
+            // The speech bubble follows the pet it's speaking from — and its
+            // tail has to keep pointing at it, not at where it started.
             if let bubble = speechBubbleWindow, bubble.isVisible {
                 bubble.setFrameOrigin(originNearPet(for: bubble.frame.size))
+                aimTail(of: bubble, at: window)
+            }
+            if let toast = toastWindow, toast.isVisible {
+                toast.setFrameOrigin(originNearPet(for: toast.frame.size))
+                aimTail(of: toast, at: window)
             }
         } else if let panel = notification.object as? NSWindow, panel === statusBubbleWindow,
                   let pet = floatingWindow {
             cardOffset = NSPoint(x: panel.frame.origin.x - pet.frame.origin.x,
                                  y: panel.frame.origin.y - pet.frame.origin.y)
+            // The tail has to follow the drag, not wait for the next request:
+            // a card pulled out from over the pet keeps pointing where the pet
+            // used to be otherwise, which is worse than no tail at all.
+            aimTail(of: panel, at: pet)
         }
     }
 

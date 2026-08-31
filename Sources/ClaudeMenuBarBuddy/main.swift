@@ -170,6 +170,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     // decide when the bubble's "(+N queued)" suffix needs a refresh without
     // rebuilding the whole pending menu (unsafe while the menu is open).
     var lastQueuedCount = 0
+    // What the +N badge said the last time the card was rendered — the pop
+    // animation fires only when the number actually changed under an
+    // already-visible card, not on every rebuild.
+    var lastRenderedQueued = 0
     // Active Claude Code sessions (transcript activity in the last ~15s),
     // shown as a number next to the pet in the menu bar while idle.
     var lastActiveCount = 0
@@ -376,6 +380,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Before anything draws: the card's faces have to be in the process's
+        // font table or every label silently falls back to the system's.
+        CardTheme.registerFonts()
+
         // Owner-only. This directory carries the command, diff or file content
         // of every pending request, plus the decision log and its one rotated
         // predecessor. The hook creates it with the shell's umask — 0755 on a
