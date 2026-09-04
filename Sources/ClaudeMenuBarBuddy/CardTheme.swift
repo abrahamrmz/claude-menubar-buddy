@@ -12,26 +12,50 @@ import CoreText
 // is whether the next label added agrees with the ones already there.
 //
 // Colors are literal sRGB, NOT semantic system colors (.labelColor and
-// friends). The card paints its own light surface, so it does not follow
-// the system appearance any more — a `.labelColor` here would turn white on
+// friends). The card paints its own surface, so it does not follow the
+// system appearance any more — a `.labelColor` here would turn white on
 // white the moment the user switches to dark mode.
+//
+// WHICH surface it paints is a setting (Settings ▸ Appearance ▸ Card
+// colors). Every color token below is derived from the four a CardPalette
+// states, which is what keeps a palette from half-applying — and what makes
+// the dark palette cost no new tokens at all: flip the ink and the surface,
+// and the whole ramp flips with them.
 enum CardTheme {
+
+    // MARK: - Palette
+
+    /// The palette every color token below is derived from.
+    ///
+    /// A stored property rather than a live read of the setting: `draw(_:)`
+    /// asks for `surface` on every redraw, and building one card asks for
+    /// some token about thirty times. Set at launch and again when the
+    /// setting changes — which also keeps this file free of any opinion
+    /// about how the app stores things.
+    static private(set) var palette: CardPalette = .masko
+
+    /// Switches palettes by id, falling back when the id names one that no
+    /// longer exists — the same self-healing read as `selectedSpecies`, and
+    /// for the same reason: retiring a palette must never leave a card with
+    /// no colors at all.
+    static func usePalette(_ id: String) { palette = CardPalette.resolve(id) }
 
     // MARK: - Ink
 
-    /// The single ink every non-accent element is drawn from: a deep plum
-    /// that reads as "almost black" without the harshness of true black on
-    /// a warm white.
-    static let ink = NSColor(srgbRed: 35 / 255, green: 17 / 255, blue: 60 / 255, alpha: 1)
+    /// The single ink every non-accent element is drawn from. Dark on a
+    /// light palette, light on a dark one.
+    static var ink: NSColor { palette.ink }
 
     /// The opacity ramp. These five stops are the whole grayscale of the
-    /// card — a sixth value would be a sixth thing to keep consistent.
-    static let inkPrimary = ink                      // titles, body
-    static let inkMuted = ink.withAlphaComponent(0.55)   // secondary text, Deny
-    static let inkHint = ink.withAlphaComponent(0.30)    // header icons, hint bar
-    static let inkBorder = ink.withAlphaComponent(0.12)  // Deny outline, dividers
-    static let inkWellBorder = ink.withAlphaComponent(0.06)
-    static let inkChip = ink.withAlphaComponent(0.05)    // project pill
+    /// card — a sixth value would be a sixth thing to keep consistent. None
+    /// of them assumes which way the ink runs, which is the entire reason a
+    /// dark palette needed no tokens of its own.
+    static var inkPrimary: NSColor { ink }                          // titles, body
+    static var inkMuted: NSColor { ink.withAlphaComponent(0.55) }   // secondary text, Deny
+    static var inkHint: NSColor { ink.withAlphaComponent(0.30) }    // header icons, hint bar
+    static var inkBorder: NSColor { ink.withAlphaComponent(0.12) }  // Deny outline, dividers
+    static var inkWellBorder: NSColor { ink.withAlphaComponent(0.06) }
+    static var inkChip: NSColor { ink.withAlphaComponent(0.05) }    // project pill
 
     // MARK: - Accent
 
@@ -40,28 +64,50 @@ enum CardTheme {
     /// the color was the redundant half of that signal, and spending it on
     /// "this is the thing to press" buys more than spending it on "this is a
     /// Bash".
-    static let accent = NSColor(srgbRed: 249 / 255, green: 93 / 255, blue: 2 / 255, alpha: 1)
+    static var accent: NSColor { palette.accent }
+
     /// The darker shade the primary button's hard shadow is drawn in, so the
     /// press reads as the cap descending onto its own base rather than as a
     /// blur appearing underneath it.
-    static let accentShadow = NSColor(srgbRed: 201 / 255, green: 74 / 255, blue: 1 / 255, alpha: 1)
-    static let accentSubtle = NSColor(srgbRed: 249 / 255, green: 93 / 255, blue: 2 / 255, alpha: 0.08)
-    static let accentBorder = NSColor(srgbRed: 249 / 255, green: 93 / 255, blue: 2 / 255, alpha: 0.25)
+    ///
+    /// Derived rather than stated, so no palette can ship a shadow that
+    /// isn't its own accent. The factor reproduces Masko's hand-picked
+    /// #c94a01 to within a unit per channel — a difference nobody can see,
+    /// and one fewer number for a new palette to get wrong.
+    static var accentShadow: NSColor { accent.darkened(by: 0.81) }
+    static var accentSubtle: NSColor { accent.withAlphaComponent(0.08) }
+    static var accentBorder: NSColor { accent.withAlphaComponent(0.25) }
+
+    /// What text and glyphs sitting ON the accent are drawn in: the
+    /// palette's light neutral, which on every palette shipped so far is the
+    /// white "Allow" already wore.
+    ///
+    /// Deliberately NOT "whichever of the two contrasts more". Against
+    /// Masko's orange that picks the plum ink over white; it measures
+    /// better, and it is not the button this card was built around. So the
+    /// swap only fires for an accent light enough that the light neutral
+    /// would genuinely disappear on it — the case a hand-picked accent could
+    /// actually walk into.
+    static var onAccent: NSColor {
+        accent.relativeLuminance < 0.45 ? palette.lightNeutral : palette.darkNeutral
+    }
 
     // MARK: - Surfaces
 
-    static let surface = NSColor.white
-    /// The code well: warm off-white, a half-step down from the card so the
-    /// command sits IN something without needing a heavy border.
-    static let well = NSColor(srgbRed: 250 / 255, green: 249 / 255, blue: 247 / 255, alpha: 1)
+    static var surface: NSColor { palette.surface }
+    /// The code well: a half-step off the card so the command sits IN
+    /// something without needing a heavy border.
+    static var well: NSColor { palette.well }
 
     // MARK: - Diff colors
 
-    // Tuned for the near-white well, not inherited from the system: on
-    // #faf9f7, `.systemGreen` is a pastel that fails as "this line is being
-    // added" and `.systemRed` glows. These are the darker web-safe pair.
-    static let removed = NSColor(srgbRed: 220 / 255, green: 38 / 255, blue: 38 / 255, alpha: 1)
-    static let added = NSColor(srgbRed: 21 / 255, green: 128 / 255, blue: 61 / 255, alpha: 1)
+    // Tuned for the well, not inherited from the system: on #faf9f7,
+    // `.systemGreen` is a pastel that fails as "this line is being added"
+    // and `.systemRed` glows. The dark pair is the same judgement in the
+    // other direction — those deep shades turn to mud on a dark well, so a
+    // dark palette gets the lighter ones that survive there.
+    static var removed: NSColor { palette.isDark ? hex(0xf871_71) : hex(0xdc26_26) }
+    static var added: NSColor { palette.isDark ? hex(0x4ade_80) : hex(0x1580_3d) }
 
     // MARK: - Metrics
 
@@ -187,6 +233,91 @@ enum CardTheme {
     }
 }
 
+// MARK: - Palettes
+
+/// The four colors a palette states. Everything else on the card is derived
+/// from them.
+///
+/// Four and not thirty because the derivation is what keeps a palette
+/// coherent: the ink ramp, the accent's shadow and washes, the text that
+/// lands on the accent and the diff pair all fall out of these. A palette
+/// can be an ugly choice, but it cannot be internally inconsistent.
+struct CardPalette {
+    let id: String
+    /// Shown in the settings popup, and the key that popup maps back to `id`.
+    let name: String
+    /// The single ink. Dark on a light palette, light on a dark one.
+    let ink: NSColor
+    /// The one color that means "this is the thing to press". Keep it below
+    /// ~0.45 relative luminance: `CardTheme.onAccent` puts the palette's
+    /// light neutral on top of it, and a pale accent would swallow that.
+    let accent: NSColor
+    let surface: NSColor
+    /// The code well. A half-step DOWN from the surface on a light palette
+    /// and UP on a dark one — which is why it is stated rather than derived.
+    /// "Slightly different from the surface" has a sign, and the sign flips.
+    let well: NSColor
+
+    /// Asked of the ink and the surface rather than of an absolute
+    /// threshold. What the diff pair and `onAccent` actually need to know is
+    /// which of the two neutrals is the lighter one, and that stays
+    /// answerable for a palette that is neither clearly light nor clearly
+    /// dark.
+    var isDark: Bool { surface.relativeLuminance < ink.relativeLuminance }
+    var lightNeutral: NSColor { isDark ? ink : surface }
+    var darkNeutral: NSColor { isDark ? surface : ink }
+}
+
+extension CardPalette {
+    /// Masko Code's own, read out of its source: plum ink, that orange, a
+    /// warm off-white well.
+    static let masko = CardPalette(
+        id: "masko", name: "Masko",
+        ink: hex(0x2311_3c), accent: hex(0xf95d_02),
+        surface: hex(0xffff_ff), well: hex(0xfaf9_f7))
+
+    /// Claude Code's clay over a warm near-black and an ivory well.
+    static let claude = CardPalette(
+        id: "claude", name: "Claude",
+        ink: hex(0x1f1d_1a), accent: hex(0xd977_57),
+        surface: hex(0xffff_ff), well: hex(0xf5f2_ea))
+
+    /// The cold one: teal on deep navy, over a well tinted the same way.
+    static let ocean = CardPalette(
+        id: "ocean", name: "Ocean",
+        ink: hex(0x0f2a_3d), accent: hex(0x0d94_88),
+        surface: hex(0xffff_ff), well: hex(0xf1f7_f8))
+
+    /// The same orange over a plum night. The accent is deliberately
+    /// unchanged from Masko: `onAccent` picks the light neutral for any
+    /// accent this dark, so the button behaves identically on both, and the
+    /// palette's whole difference is the surface rather than a second
+    /// opinion about what "press me" looks like.
+    static let midnight = CardPalette(
+        id: "midnight", name: "Midnight",
+        ink: hex(0xf4f0_fb), accent: hex(0xf95d_02),
+        surface: hex(0x1c1a_24), well: hex(0x2622_32))
+
+    /// Popup order. Masko leads because it is the default.
+    static let all: [CardPalette] = [.masko, .claude, .ocean, .midnight]
+
+    static func resolve(_ id: String) -> CardPalette {
+        all.first { $0.id == id } ?? .masko
+    }
+
+    static func named(_ displayName: String) -> CardPalette? {
+        all.first { $0.name == displayName }
+    }
+}
+
+/// sRGB from the hex everyone actually reads a palette in.
+private func hex(_ value: UInt32) -> NSColor {
+    NSColor(srgbRed: CGFloat((value >> 16) & 0xff) / 255,
+            green: CGFloat((value >> 8) & 0xff) / 255,
+            blue: CGFloat(value & 0xff) / 255,
+            alpha: 1)
+}
+
 // MARK: - Speech bubble shape
 
 /// Which edge the tail sticks out of. The card sits above the pet by
@@ -260,5 +391,40 @@ extension CardTheme {
                     tangent2End: CGPoint(x: body.minX, y: body.maxY - radius), radius: radius)
         path.closeSubpath()
         return path
+    }
+}
+
+// MARK: - Color math
+
+private extension NSColor {
+    /// The same color with sRGB components you can actually ask for.
+    /// `NSColor.white` and friends live in a gray space where
+    /// `.redComponent` raises instead of answering.
+    var srgb: NSColor { usingColorSpace(.sRGB) ?? self }
+
+    /// WCAG relative luminance — "is this light or dark", asked the way that
+    /// accounts for green carrying most of the perceived brightness. A plain
+    /// average of the channels calls #0d9488 and a mid gray equally dark,
+    /// and they are not.
+    var relativeLuminance: CGFloat {
+        let color = srgb
+        func linear(_ value: CGFloat) -> CGFloat {
+            value <= 0.03928 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * linear(color.redComponent)
+            + 0.7152 * linear(color.greenComponent)
+            + 0.0722 * linear(color.blueComponent)
+    }
+
+    /// Toward black by a flat factor per channel. Algebraically identical to
+    /// scaling HSB brightness with the saturation held, but it stays in sRGB
+    /// instead of round-tripping through the calibrated space NSColor's hue
+    /// initializer builds in.
+    func darkened(by factor: CGFloat) -> NSColor {
+        let color = srgb
+        return NSColor(srgbRed: color.redComponent * factor,
+                       green: color.greenComponent * factor,
+                       blue: color.blueComponent * factor,
+                       alpha: color.alphaComponent)
     }
 }

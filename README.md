@@ -10,7 +10,7 @@ A hardware-free, native macOS companion for [Claude Code](https://claude.com/cla
 
 When Claude Code needs a permission decision (Bash, Edit/MultiEdit/Write, NotebookEdit, WebFetch/WebSearch, plans, questions), a speech bubble appears next to the pet with its tail pointing back at it: the tool's icon and name, project badge, and the **full** command or red/green mini-diff in a scrollable block — anything that didn't fit is called out in red, never silently cut. The panel is non-activating: deciding steals no focus from what you're typing.
 
-- **One accent** — a light card, a single ink at five opacities, and orange reserved for the one thing you're meant to press. The turn-finished toast and the pet's mood bubble wear the same silhouette, because they're the same pet talking.
+- **One accent** — a single ink at five opacities, and the accent reserved for the one thing you're meant to press. Four palettes ship (`Settings ▸ Appearance ▸ Card colors`), Midnight among them; each states four colors and every other one is derived from those, so a palette can't half-apply. The turn-finished toast and the pet's mood bubble wear the same silhouette, because they're the same pet talking.
 - **Global shortcuts** — ⌘⏎ allow, ⇧⌘⏎ deny, ⌥⌘⏎ the card's quiet action, ⌘M jump to the asking window. Registered only while a card is up; remappable in Settings. They live in a hint line under the buttons; hold any modifier and each button grows a capsule with its own shortcut, while the one that would take the ⏎ lights up.
 - **Questions, not just permissions** — `AskUserQuestion` options become buttons (⌘1-4) answered through the tool's own `answers` field; multi-question calls are walked one at a time. Plans get their three real choices: approve each edit, approve + auto-accept, or keep planning (a deny that says *why*).
 - **A queue you can reach into** — the orange `+N` badge lists what's waiting, jumps to any request (⌘1-9), and offers allow/deny-all behind a confirmation, because answering things you haven't read is what this app exists to prevent.
@@ -115,7 +115,7 @@ Sources/BuddyCore/            # pure logic under test: burn-rate math, mood poli
 Sources/ClaudeMenuBarBuddy/
   main.swift                  # bootstrap, AppDelegate state, poll loop
   ApprovalCard.swift          # card assembly and lifecycle
-  CardTheme.swift             # design tokens: ink ramp, accent, type scale, bubble shape
+  CardTheme.swift             # design tokens: palettes, ink ramp, type scale, bubble shape
   CardLayout.swift            # card visual vocabulary (pills, bubble background, diff styling)
   CardDecision.swift          # what answering does: respond, verdict, audit log
   Menus.swift                 # the dropdown and its in-place refresh

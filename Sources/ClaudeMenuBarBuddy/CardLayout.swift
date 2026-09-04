@@ -139,7 +139,10 @@ final class PressablePillButton: NSButton {
     func attachBadge(_ text: String) {
         let badge = NSTextField(labelWithString: text)
         badge.font = CardTheme.heading(CardTheme.badgeSize, weight: 700)
-        badge.textColor = .white
+        // The surface, not white: the chip behind it is the ink at
+        // 45–55%, so its text has to be whatever the card itself is painted
+        // on — on a dark palette that chip is the pale one.
+        badge.textColor = CardTheme.surface
         badge.alignment = .center
         badge.wantsLayer = true
         badge.layer?.backgroundColor = (style == .primary ? CardTheme.ink.withAlphaComponent(0.45)
@@ -402,7 +405,7 @@ extension AppDelegate {
         switch style {
         case .primary:
             layer.backgroundColor = CardTheme.accent.cgColor
-            textColor = .white
+            textColor = CardTheme.onAccent
             font = CardTheme.heading(CardTheme.buttonSize, weight: 600)
             // Hard, unblurred, in a darker shade of the fill: a base for the
             // cap to land on rather than a glow under a floating thing.
@@ -552,16 +555,17 @@ extension AppDelegate {
     /// in red, lines under "+++ pone" / "+++ contenido" in green, the marker
     /// lines themselves dimmed, everything else (commands, paths) plain.
     ///
-    /// `onLight` picks the palette. The card draws its own near-white well,
-    /// where the system greens and reds are a pastel and a glow; the menu bar
-    /// dropdown draws on whatever the system appearance says, where only the
-    /// semantic colors survive a switch to dark mode. Same text, two
+    /// `onCard` picks the palette. The card draws its own well, where the
+    /// system greens and reds are a pastel and a glow — so its diff pair
+    /// comes from CardTheme and follows whichever palette is set. The menu
+    /// bar dropdown draws on whatever the system appearance says, where only
+    /// the semantic colors survive a switch to dark mode. Same text, two
     /// surfaces, and the caller is the only one who knows which.
-    func attributedHint(_ text: String, font: NSFont, onLight: Bool = false) -> NSAttributedString {
-        let plain = onLight ? CardTheme.inkPrimary : NSColor.labelColor
-        let dim = onLight ? CardTheme.inkMuted : NSColor.secondaryLabelColor
-        let minus = onLight ? CardTheme.removed : NSColor.systemRed
-        let plus = onLight ? CardTheme.added : NSColor.systemGreen
+    func attributedHint(_ text: String, font: NSFont, onCard: Bool = false) -> NSAttributedString {
+        let plain = onCard ? CardTheme.inkPrimary : NSColor.labelColor
+        let dim = onCard ? CardTheme.inkMuted : NSColor.secondaryLabelColor
+        let minus = onCard ? CardTheme.removed : NSColor.systemRed
+        let plus = onCard ? CardTheme.added : NSColor.systemGreen
 
         let result = NSMutableAttributedString()
         var section = 0 // 0 = plain, 1 = removing, 2 = adding
