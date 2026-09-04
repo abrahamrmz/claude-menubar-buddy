@@ -238,6 +238,14 @@ extension AppDelegate {
             species.action = #selector(self.speciesPopupChanged(_:))
             form.row("Buddy", species)
 
+            let palette = NSPopUpButton()
+            for option in CardPalette.all { palette.addItem(withTitle: option.name) }
+            palette.selectItem(withTitle: CardTheme.palette.name)
+            palette.target = self
+            palette.action = #selector(self.cardPaletteChanged(_:))
+            form.row("Card colors", palette)
+            form.note("The ink, the accent and the surface the approval card, the finish toast and the speech bubble are painted from — everything else is derived from those three, so a palette can't half-apply. Midnight is the dark one.")
+
             let floating = NSButton(checkboxWithTitle: "Show the floating desktop pet",
                                     target: self, action: #selector(self.floatingPetCheckboxChanged(_:)))
             floating.state = self.floatingPetVisible ? .on : .off
@@ -273,6 +281,21 @@ extension AppDelegate {
         } else if let floatingImageView = floatingImageView {
             setGif(on: floatingImageView, named: gifName(for: selectedSpecies, mood: "pending"))
             applyAnimationPolicy()
+        }
+    }
+
+    @objc func cardPaletteChanged(_ sender: NSPopUpButton) {
+        guard let title = sender.titleOfSelectedItem,
+              let picked = CardPalette.named(title) else { return }
+        cardPalette = picked.id
+        CardTheme.usePalette(picked.id)
+        // Cards, toasts and bubbles are all built fresh from these tokens, so
+        // the next one is already right. The one that might be on screen
+        // right now is not — and a settings change that visibly does nothing
+        // reads as a settings change that didn't work — so rebuild it in
+        // place, the same way a change in the queue behind it does.
+        if let showing = orderedRequests().first, showing.id == currentRequestId {
+            showStatusBubble(for: showing, queued: lastQueuedCount)
         }
     }
 

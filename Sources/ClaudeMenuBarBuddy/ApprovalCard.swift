@@ -278,7 +278,7 @@ extension AppDelegate {
         scroll.drawsBackground = false
         scroll.borderType = .noBorder
         let textView = NSTextView(frame: NSRect(origin: .zero, size: scroll.contentSize))
-        textView.textStorage?.setAttributedString(attributedHint(body, font: bodyFont, onLight: true))
+        textView.textStorage?.setAttributedString(attributedHint(body, font: bodyFont, onCard: true))
         textView.drawsBackground = false
         textView.isEditable = false
         textView.isSelectable = true

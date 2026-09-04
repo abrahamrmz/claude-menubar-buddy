@@ -47,7 +47,7 @@ extension AppDelegate {
         paragraph.alignment = .center
         badge.attributedTitle = NSAttributedString(string: "+\(queued) ▾", attributes: [
             .font: CardTheme.heading(CardTheme.badgeSize, weight: 600),
-            .foregroundColor: NSColor.white,
+            .foregroundColor: CardTheme.onAccent,
             .paragraphStyle: paragraph,
         ])
         let badgeWidth = ceil(badge.attributedTitle.size().width) + 16

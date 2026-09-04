@@ -36,6 +36,11 @@ extension Defaults.Keys {
     static let calmPet = Key<Bool>("calmPet", default: false)
     // The pet's occasional one-line speech bubble (SpeechBubble.swift).
     static let speechBubbles = Key<Bool>("speechBubbles", default: true)
+    // Which CardPalette the card, the finish toast and the speech bubble are
+    // painted from. Stored by id and resolved on read (CardPalette.resolve),
+    // so an id left behind by a retired palette falls back instead of
+    // leaving a card with no colors.
+    static let cardPalette = Key<String>("cardPalette", default: CardPalette.masko.id)
 }
 
 extension AppDelegate {
@@ -89,6 +94,11 @@ extension AppDelegate {
     var speechBubbles: Bool {
         get { Defaults[.speechBubbles] }
         set { Defaults[.speechBubbles] = newValue }
+    }
+
+    var cardPalette: String {
+        get { Defaults[.cardPalette] }
+        set { Defaults[.cardPalette] = newValue }
     }
 
     // MARK: - Start at login

@@ -381,8 +381,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Before anything draws: the card's faces have to be in the process's
-        // font table or every label silently falls back to the system's.
+        // font table or every label silently falls back to the system's, and
+        // its palette has to be the stored one or the session's first card
+        // comes up in the default colors and then changes under you.
         CardTheme.registerFonts()
+        CardTheme.usePalette(cardPalette)
 
         // Owner-only. This directory carries the command, diff or file content
         // of every pending request, plus the decision log and its one rotated
