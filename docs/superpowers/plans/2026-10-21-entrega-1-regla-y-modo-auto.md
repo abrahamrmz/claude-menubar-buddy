@@ -1435,7 +1435,7 @@ public enum HookRuleCLI {
 ```
 - **Salida de `run`:** un objeto JSON con `sortedKeys` y exactamente las claves `verdict` (`"pass"|"card"|"defer"`), `category`, `critical` (Bool), `reason` (String) y `grant` (`"auto"|"always"|null`).
 
-- [ ] **Paso 1: escribir los tests**
+- [x] **Paso 1: escribir los tests**
 
 ```swift
 import Foundation
@@ -1581,12 +1581,12 @@ import BuddyCore
 }
 ```
 
-- [ ] **Paso 2: verificar que falla**
+- [x] **Paso 2: verificar que falla**
 
 Corre: `swift build && swift test --filter HookRuleCLITests`
 Esperado: no compila.
 
-- [ ] **Paso 3: implementar**
+- [x] **Paso 3: implementar**
 
 - **`AutoLog.append`:**
   1. si el archivo mide `>= maxBytes`, lo mueve sobre `rotatedName` (reemplazándolo);
@@ -1617,17 +1617,17 @@ Esperado: no compila.
   .executableTarget(name: "buddy-rule", dependencies: ["BuddyCore"], path: "Sources/BuddyRule"),
   ```
 
-- [ ] **Paso 4: verificar que pasa**
+- [x] **Paso 4: verificar que pasa**
 
 Corre: `swift build && swift test --filter HookRuleCLITests && ls -la .build/debug/buddy-rule`
 Esperado: PASA, y el binario existe.
 
-- [ ] **Paso 5: probar el binario a mano**
+- [x] **Paso 5: probar el binario a mano**
 
 Corre: `echo '{"tool_name":"Bash","tool_input":{"command":"python3 x.py"},"cwd":"/tmp"}' | HOME=/tmp/no-existe .build/debug/buddy-rule`
 Esperado: `{"category":"ejecuta","critical":true,"grant":null,"reason":"ejecuta código: python3","verdict":"card"}`
 
-- [ ] **Paso 6: commit**
+- [x] **Paso 6: commit**
 
 ```bash
 git add Package.swift Sources/BuddyCore/AutoLog.swift Sources/BuddyCore/HookRuleCLI.swift Sources/BuddyRule/main.swift Tests/ClaudeMenuBarBuddyTests/HookRuleCLITests.swift
