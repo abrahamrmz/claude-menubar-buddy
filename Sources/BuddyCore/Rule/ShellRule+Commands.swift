@@ -211,6 +211,11 @@ extension ShellRule {
             return Assessment(.desconocido, "la regla no reconoce: git")
         }
 
+        // A transport can name a program of the caller's choosing.
+        if subArguments.contains(where: { $0.text.hasPrefix("ext::") || $0.text.hasPrefix("fd::") }) {
+            return Assessment(.ejecuta, "ejecuta código a través de un transporte de git")
+        }
+
         // Transport options can name the program git will run on either end.
         for word in subArguments {
             for option in ["--upload-pack", "--receive-pack", "--exec"]
@@ -295,6 +300,17 @@ extension ShellRule {
                 return Assessment(.irreversible, "no se puede deshacer: git reset --hard")
             }
             return Assessment(.cambioLocal, "cambio local")
+        case "bisect":
+            if arguments.first?.text == "run" {
+                return Assessment(.ejecuta, "ejecuta código: git bisect run")
+            }
+            return Assessment(.cambioLocal, "cambio local")
+        case "rebase":
+            // `-x` is `--exec` in short form: a shell line per commit.
+            if arguments.contains(where: { $0.text == "-x" || ($0.text.hasPrefix("-x") && $0.text.count > 2) }) {
+                return Assessment(.ejecuta, "ejecuta código a través de una opción: -x")
+            }
+            return Assessment(.cambioLocal, "cambio local")
         case "stash":
             switch nonFlags.first?.text {
             case "list", "show":
@@ -374,7 +390,23 @@ extension ShellRule {
             if let second, ["view", "list"].contains(second) {
                 return Assessment(.lectura, "solo lee")
             }
-            if second == "clone" { return Assessment(.cambioLocal, "cambio local") }
+            if second == "clone" {
+                // Everything after `--` is handed to `git clone`, including the
+                // options that name a program to run.
+                if let separator = arguments.firstIndex(where: { $0.text == "--" }) {
+                    for word in arguments[arguments.index(after: separator)...] {
+                        for option in ["--upload-pack", "--receive-pack", "--exec"]
+                        where word.text == option || word.text.hasPrefix(option + "=") {
+                            return Assessment(.ejecuta, "ejecuta código a través de una opción: \(option)")
+                        }
+                        if word.text == "-u"
+                            || (word.text.hasPrefix("-u") && !word.text.hasPrefix("--") && word.text.count > 2) {
+                            return Assessment(.ejecuta, "ejecuta código a través de una opción: -u")
+                        }
+                    }
+                }
+                return Assessment(.cambioLocal, "cambio local")
+            }
             return sale
         case "run":
             if let second, ["view", "list", "watch"].contains(second) {

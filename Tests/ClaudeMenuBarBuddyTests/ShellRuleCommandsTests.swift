@@ -118,4 +118,15 @@ import BuddyCore
     func reviewOfBlockTwoStillPasses(command: String) {
         #expect(ShellRule.assess(command, context: ruleContext).category.passesInAutoMode, "should pass: \(command)")
     }
+
+    @Test(arguments: [
+        ("git bisect run ./x.sh", RuleCategory.ejecuta), ("git bisect start", .cambioLocal),
+        ("git rebase -x 'sh -c y' HEAD~2", .ejecuta), ("git rebase -xmake HEAD~2", .ejecuta), ("git rebase main", .cambioLocal),
+        ("git fetch 'ext::sh -c x'", .ejecuta), ("git clone fd::3 x", .ejecuta),
+        ("gh repo clone x -- --upload-pack='sh -c x'", .ejecuta), ("gh repo clone x -- -u 'sh -c y'", .ejecuta),
+        ("gh repo clone owner/x", .cambioLocal),
+    ])
+    func reviewOfBlockThree(command: String, expected: RuleCategory) {
+        #expect(category(command) == expected, "\(command)")
+    }
 }

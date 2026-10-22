@@ -1832,7 +1832,7 @@ De paso se cierran los transportes `ext::` y `fd::` de git. Vienen apagados por 
 - Modificar: `Sources/BuddyCore/Rule/ShellRule+Commands.swift`
 - Test: `Tests/ClaudeMenuBarBuddyTests/ShellRuleCommandsTests.swift` (agregar al final de la suite)
 
-- [ ] **Paso 1: agregar los tests**
+- [x] **Paso 1: agregar los tests**
 
 ```swift
     @Test(arguments: [
@@ -1847,24 +1847,24 @@ De paso se cierran los transportes `ext::` y `fd::` de git. Vienen apagados por 
     }
 ```
 
-- [ ] **Paso 2: verificar que fallan**
+- [x] **Paso 2: verificar que fallan**
 
 Corre: `swift build && swift test --filter ShellRuleCommandsTests`
 Esperado: FALLAN los casos de `ejecuta`.
 
-- [ ] **Paso 3: corregir en `ShellRule+Commands.swift`**
+- [x] **Paso 3: corregir en `ShellRule+Commands.swift`**
 
 - **`git bisect`:** con `run` como siguiente palabra da ejecuta `ejecuta código: git bisect run`; si no, cambioLocal.
 - **`git rebase`:** con `-x` (separado o pegado, `-x…`) da ejecuta, con el mismo motivo de las opciones que ejecutan (`ejecuta código a través de una opción: -x`).
 - **`git` con transporte:** si cualquier palabra después del subcomando empieza con `ext::` o `fd::`, da ejecuta `ejecuta código a través de un transporte de git`.
 - **`gh repo clone`:** las palabras después de `--` se revisan con las mismas opciones que ejecutan de `git` (`--upload-pack`, `--receive-pack`, `--exec`, `-u`).
 
-- [ ] **Paso 4: verificar que pasa todo**
+- [x] **Paso 4: verificar que pasa todo**
 
 Corre: `swift build && swift test`
 Esperado: todo en verde.
 
-- [ ] **Paso 5: commit**
+- [x] **Paso 5: commit**
 
 ```bash
 git add Sources/BuddyCore/Rule/ShellRule+Commands.swift Tests/ClaudeMenuBarBuddyTests/ShellRuleCommandsTests.swift
