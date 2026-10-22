@@ -1649,7 +1649,7 @@ git commit -m "buddy-rule le da al hook el veredicto de la regla y anota lo que 
   - la variable de entorno `BUDDY_RULE` (ruta del binario, para tests);
   - la variable de entorno `BUDDY_HOOK_WAIT_TICKS` (número de ciclos de 0.5 s; por defecto 110).
 
-- [ ] **Paso 1: actualizar el arnés y los tests existentes en `HookTests.swift`**
+- [x] **Paso 1: actualizar el arnés y los tests existentes en `HookTests.swift`**
 
 - **`Harness.init`:** el parámetro `autoEdits: Bool` pasa a `autoMode: Bool` y escribe el archivo `auto_mode`, no `auto_approve_edits`.
 - **`run`:** acepta `extraEnv: [String: String] = [:]` y `letItTimeOut: Bool = false`.
@@ -1667,7 +1667,7 @@ git commit -m "buddy-rule le da al hook el veredicto de la regla y anota lo que 
   | `autoEditsStillAllowsOrdinaryPaths` | Pasa a `autoModeStillAllowsOrdinaryPaths`, con `autoMode: true` y `reasonContains: "Modo auto"` |
   | `autoEditsDoesNotCoverBash` | Pasa a `autoModeStillCardsDestructiveBash`, con `autoMode: true` y `rm -rf /tmp/x`; espera `cardShown` |
 
-- [ ] **Paso 2: agregar los tests nuevos**
+- [x] **Paso 2: agregar los tests nuevos**
 
 ```swift
     // MARK: - Modo auto y la regla
@@ -1740,12 +1740,12 @@ git commit -m "buddy-rule le da al hook el veredicto de la regla y anota lo que 
     }
 ```
 
-- [ ] **Paso 3: verificar que fallan**
+- [x] **Paso 3: verificar que fallan**
 
 Corre: `swift build && swift test --filter HookTests`
 Esperado: FALLAN los tests nuevos y los de modo auto, porque `hook.sh` todavía no consulta la regla.
 
-- [ ] **Paso 4: modificar `hook.sh`**
+- [x] **Paso 4: modificar `hook.sh`**
 
 1. **Borrar dos bloques completos:**
    - el de `# Fast path: auto-approve-edits mode`, desde ese comentario hasta el `fi` que cierra `if [ -f "$DIR/auto_approve_edits" ]`;
@@ -1805,12 +1805,12 @@ exit 0
 
 6. **Comentario de cabecera:** que diga que el hook consulta `buddy-rule` y que lo crítico sin respuesta se niega.
 
-- [ ] **Paso 5: verificar**
+- [x] **Paso 5: verificar**
 
 Corre: `swift build && swift test && shellcheck hook.sh notify-done.sh`
 Esperado: todo en verde y `shellcheck` sin salida.
 
-- [ ] **Paso 6: commit**
+- [x] **Paso 6: commit**
 
 ```bash
 git add hook.sh Tests/ClaudeMenuBarBuddyTests/HookTests.swift

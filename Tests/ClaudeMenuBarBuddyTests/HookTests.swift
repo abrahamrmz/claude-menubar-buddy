@@ -5,7 +5,7 @@ import Testing
 // without a card, exercised end-to-end: request JSON in on stdin, decision
 // JSON out on stdout, with the response files written the way the app writes
 // them. Each run gets its own $HOME (so the config dir, the allowlist and
-// the auto-edits flag are fixtures, not the user's), and a pgrep shim on
+// the auto-mode flag are fixtures, not the user's), and a pgrep shim on
 // $PATH plays the part of the app being (or not being) up.
 //
 // The metacharacter cases are the ones a refactor would break silently:
@@ -17,6 +17,13 @@ struct HookTests {
         .deletingLastPathComponent()
         .deletingLastPathComponent()
         .appendingPathComponent("hook.sh")
+
+    /// The rule hook.sh asks, built by `swift build` next to the package.
+    private static let ruleBinary = URL(fileURLWithPath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .appendingPathComponent(".build/debug/buddy-rule")
 
     // MARK: - Harness
 
@@ -39,7 +46,7 @@ struct HookTests {
         let home: URL
         var configDir: URL { home.appendingPathComponent(".config/claude-menubar-buddy") }
 
-        init(allowlist: String? = nil, autoEdits: Bool = false) throws {
+        init(allowlist: String? = nil, autoMode: Bool = false) throws {
             home = FileManager.default.temporaryDirectory
                 .appendingPathComponent("buddy-hook-tests-\(UUID().uuidString)")
             try FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true)
@@ -47,8 +54,8 @@ struct HookTests {
                 try allowlist.write(to: configDir.appendingPathComponent("always_allow.json"),
                                     atomically: true, encoding: .utf8)
             }
-            if autoEdits {
-                try Data().write(to: configDir.appendingPathComponent("auto_approve_edits"))
+            if autoMode {
+                try Data().write(to: configDir.appendingPathComponent("auto_mode"))
             }
         }
 
@@ -63,9 +70,18 @@ struct HookTests {
         /// card path), `respond` is written as the app would write its
         /// response file; with no `respond`, the hook gets SIGTERM — the same
         /// signal Claude Code sends when the user answers in the terminal.
+        /// `letItTimeOut` leaves the request unanswered instead, so the hook
+        /// reaches its own timeout; `extraEnv` overrides the rule path or
+        /// shortens the wait for that.
         func run(_ input: [String: Any],
                  appRunning: Bool = true,
-                 respond: [String: Any]? = nil) throws -> HookRun {
+                 respond: [String: Any]? = nil,
+                 extraEnv: [String: String] = [:],
+                 letItTimeOut: Bool = false) throws -> HookRun {
+            if !FileManager.default.isExecutableFile(atPath: HookTests.ruleBinary.path) {
+                Issue.record("buddy-rule no está compilado: corre swift build antes de swift test")
+            }
+
             // The pgrep shim: "is the app up" is a fixture, not a fact
             // about this machine.
             let shimDir = home.appendingPathComponent("bin")
@@ -79,10 +95,13 @@ struct HookTests {
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/bash")
             process.arguments = [HookTests.hookScript.path]
-            process.environment = [
+            var environment = [
                 "HOME": home.path,
                 "PATH": "\(shimDir.path):/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin",
+                "BUDDY_RULE": HookTests.ruleBinary.path,
             ]
+            environment.merge(extraEnv) { _, new in new }
+            process.environment = environment
             let stdinPipe = Pipe(), stdoutPipe = Pipe()
             process.standardInput = stdinPipe
             process.standardOutput = stdoutPipe
@@ -108,7 +127,9 @@ struct HookTests {
                     let id = file.lastPathComponent
                         .replacingOccurrences(of: "request_", with: "")
                         .replacingOccurrences(of: ".json", with: "")
-                    if let respond = respond {
+                    if letItTimeOut {
+                        // Leave it unanswered: the hook's own timeout decides.
+                    } else if let respond = respond {
                         let data = try JSONSerialization.data(withJSONObject: respond)
                         try data.write(to: configDir.appendingPathComponent("response_\(id).json"))
                     } else {
@@ -153,7 +174,7 @@ struct HookTests {
     /// With the app not running there is no icon announcing any grant, so no
     /// grant may be applied: straight to the native prompt, no request file.
     @Test func noAppMeansNativePromptEvenWithGrants() throws {
-        let h = try Harness(allowlist: #"{"global":["git"],"projects":{}}"#, autoEdits: true)
+        let h = try Harness(allowlist: #"{"global":["git"],"projects":{}}"#, autoMode: true)
         defer { h.cleanup() }
         let run = try h.run(bash("git status"), appRunning: false)
         #expect(run.stdout == "{}")
@@ -203,23 +224,23 @@ struct HookTests {
     /// fast path it sits in front of — global and per-project grants still
     /// have to fire instantly for a plain, unprefixed command.
     @Test func legitimateFastPathSurvivesTheEnvGuard() throws {
-        let h = try Harness(allowlist: #"{"global":["git"],"projects":{"/tmp/proyX":["npm"]}}"#)
+        let h = try Harness(allowlist: #"{"global":["git"],"projects":{"/tmp/proyX":["mytool"]}}"#)
         defer { h.cleanup() }
         assertAllowed(try h.run(bash("git status")), reasonContains: "everywhere")
-        assertAllowed(try h.run(bash("npm test", cwd: "/tmp/proyX")), reasonContains: "in this project")
+        assertAllowed(try h.run(bash("mytool --run", cwd: "/tmp/proyX")), reasonContains: "in this project")
     }
 
     @Test func projectGrantOnlySpeaksForItsProject() throws {
-        let h = try Harness(allowlist: #"{"global":[],"projects":{"/tmp/proyX":["npm"]}}"#)
+        let h = try Harness(allowlist: #"{"global":[],"projects":{"/tmp/proyX":["mytool"]}}"#)
         defer { h.cleanup() }
-        assertAllowed(try h.run(bash("npm test", cwd: "/tmp/proyX")),
+        assertAllowed(try h.run(bash("mytool --run", cwd: "/tmp/proyX")),
                       reasonContains: "in this project")
     }
 
     @Test func projectGrantIsSilentElsewhere() throws {
-        let h = try Harness(allowlist: #"{"global":[],"projects":{"/tmp/proyX":["npm"]}}"#)
+        let h = try Harness(allowlist: #"{"global":[],"projects":{"/tmp/proyX":["mytool"]}}"#)
         defer { h.cleanup() }
-        let elsewhere = try h.run(bash("npm test", cwd: "/tmp/otro"))
+        let elsewhere = try h.run(bash("mytool --run", cwd: "/tmp/otro"))
         #expect(elsewhere.cardShown)
         #expect(elsewhere.stdout.isEmpty)
     }
@@ -227,9 +248,9 @@ struct HookTests {
     /// An exact-path match, not a prefix: a grant on /repo must not cover
     /// /repo-secrets.
     @Test func projectGrantDoesNotPrefixMatch() throws {
-        let h = try Harness(allowlist: #"{"global":[],"projects":{"/tmp/repo":["npm"]}}"#)
+        let h = try Harness(allowlist: #"{"global":[],"projects":{"/tmp/repo":["mytool"]}}"#)
         defer { h.cleanup() }
-        #expect(try h.run(bash("npm test", cwd: "/tmp/repo-secrets")).cardShown)
+        #expect(try h.run(bash("mytool --run", cwd: "/tmp/repo-secrets")).cardShown)
     }
 
     /// THE security property: any shell metacharacter means the first word
@@ -263,13 +284,13 @@ struct HookTests {
         #expect(try h.run(bash("curl https://example.com")).cardShown)
     }
 
-    // MARK: - Auto-approve edits
+    // MARK: - Modo auto y la regla
 
-    @Test func autoEditsAllowsAPlainFile() throws {
-        let h = try Harness(autoEdits: true)
+    @Test func autoModeAllowsAPlainEdit() throws {
+        let h = try Harness(autoMode: true)
         defer { h.cleanup() }
         let run = try h.run(edit("/tmp/proyX/notes.txt"))
-        assertAllowed(run, reasonContains: "Auto-approved edit")
+        assertAllowed(run, reasonContains: "Modo auto")
         #expect(!run.cardShown)
     }
 
@@ -333,9 +354,13 @@ struct HookTests {
         "~HOME~/.bash_logout",
         // VS Code's global (not per-project) task runner config.
         "~HOME~/Library/Application Support/Code/User/tasks.json",
+        // OpenCode's own config, project and global: same class as .claude.
+        "/tmp/proyX/opencode.jsonc",
+        "/tmp/proyX/.husky/pre-commit",
+        "~HOME~/.config/opencode/opencode.json",
     ])
-    func autoEditsStopsAtProtectedPaths(path: String) throws {
-        let h = try Harness(autoEdits: true)
+    func autoModeStopsAtProtectedPaths(path: String) throws {
+        let h = try Harness(autoMode: true)
         defer { h.cleanup() }
         // The fixture $HOME lives under /var/folders/..., itself a symlink
         // to /private/var/folders/...; the hook canonicalizes paths, so an
@@ -361,22 +386,89 @@ struct HookTests {
         "/tmp/digit/file.txt",                  // "digit" contains "git", not the dotfile
         "/tmp/proyecto/docs/vscode-setup.md",
     ])
-    func autoEditsStillAllowsOrdinaryPaths(path: String) throws {
-        let h = try Harness(autoEdits: true)
+    func autoModeStillAllowsOrdinaryPaths(path: String) throws {
+        let h = try Harness(autoMode: true)
         defer { h.cleanup() }
         let resolvedHome = URL(fileURLWithPath: h.home.path).resolvingSymlinksInPath().path
         let resolved = path.replacingOccurrences(of: "~HOME~", with: resolvedHome)
         let run = try h.run(edit(resolved))
-        assertAllowed(run, reasonContains: "Auto-approved edit")
+        assertAllowed(run, reasonContains: "Modo auto")
         #expect(!run.cardShown, "protected an ordinary path: \(resolved)")
     }
 
-    /// The flag only covers file-editing tools — Bash with the flag up still
-    /// gets its card.
-    @Test func autoEditsDoesNotCoverBash() throws {
-        let h = try Harness(autoEdits: true)
+    /// Auto mode is for routine work, not for destructive shell: Bash with
+    /// the flag up still gets its card.
+    @Test func autoModeStillCardsDestructiveBash() throws {
+        let h = try Harness(autoMode: true)
         defer { h.cleanup() }
         #expect(try h.run(bash("rm -rf /tmp/x")).cardShown)
+    }
+
+    @Test func autoModePassesARead() throws {
+        let h = try Harness(autoMode: true)
+        defer { h.cleanup() }
+        let run = try h.run(bash("grep -rn foo src | head -5"))
+        assertAllowed(run, reasonContains: "Modo auto (lectura)")
+        #expect(!run.cardShown)
+        let log = h.configDir.appendingPathComponent("auto_decisions.jsonl")
+        #expect(((try? String(contentsOf: log, encoding: .utf8)) ?? "").split(separator: "\n").count == 1)
+    }
+
+    @Test func autoModeOffStillCardsReads() throws {
+        let h = try Harness()
+        defer { h.cleanup() }
+        #expect(try h.run(bash("grep foo f")).cardShown)
+    }
+
+    @Test func requestCarriesTheRuleFields() throws {
+        let h = try Harness()
+        defer { h.cleanup() }
+        let run = try h.run(bash("python3 x.py"), respond: ["decision": "allow"])
+        #expect(run.request?["agent"] as? String == "claude")
+        #expect(run.request?["category"] as? String == "ejecuta")
+        #expect(run.request?["critical"] as? Bool == true)
+        #expect(run.request?["reason"] as? String == "ejecuta código: python3")
+    }
+
+    @Test func unansweredCriticalIsDenied() throws {
+        let h = try Harness(autoMode: true)
+        defer { h.cleanup() }
+        let run = try h.run(bash("python3 x.py"), extraEnv: ["BUDDY_HOOK_WAIT_TICKS": "2"], letItTimeOut: true)
+        #expect(run.cardShown)
+        #expect(run.decision?["permissionDecision"] as? String == "deny")
+        #expect((run.decision?["permissionDecisionReason"] as? String ?? "").contains("nadie respondió a tiempo"))
+    }
+
+    @Test func unansweredNonCriticalFallsBack() throws {
+        let h = try Harness()
+        defer { h.cleanup() }
+        let run = try h.run(bash("grep foo f"), extraEnv: ["BUDDY_HOOK_WAIT_TICKS": "2"], letItTimeOut: true)
+        #expect(run.stdout == "{}")
+    }
+
+    @Test func missingRuleBinaryMeansACriticalCard() throws {
+        let h = try Harness(autoMode: true)
+        defer { h.cleanup() }
+        let run = try h.run(bash("ls"), extraEnv: ["BUDDY_RULE": "/nonexistent/buddy-rule", "BUDDY_HOOK_WAIT_TICKS": "2"],
+                            letItTimeOut: true)
+        #expect(run.request?["critical"] as? Bool == true)
+        #expect(run.decision?["permissionDecision"] as? String == "deny")
+    }
+
+    @Test func planModeDefersToClaude() throws {
+        let h = try Harness(autoMode: true)
+        defer { h.cleanup() }
+        var input = bash("ls")
+        input["permission_mode"] = "plan"
+        let run = try h.run(input)
+        #expect(run.stdout == "{}")
+        #expect(!run.cardShown)
+    }
+
+    @Test func alwaysAllowCannotGrantACriticalCommand() throws {
+        let h = try Harness(allowlist: #"{"global":["npm"],"projects":{}}"#)
+        defer { h.cleanup() }
+        #expect(try h.run(bash("npm test")).cardShown)
     }
 
     // MARK: - AskUserQuestion
