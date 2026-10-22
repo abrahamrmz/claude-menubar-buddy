@@ -617,6 +617,63 @@ git commit -m "Las rutas protegidas y sensibles se deciden en BuddyCore con la m
 
 ---
 
+### Tarea 3b: correcciones al analizador (de la revisión del bloque 1)
+
+Salieron al revisar las tareas 1–3 y van antes de la tarea 4. Los dos son entradas que los tests de la tarea 2 no cubrían:
+- `echo hi > ; ls` tumba `ShellScript.parse` (índice fuera de rango). El destino pendiente de la redirección sobrevive al `;` y se intenta asignar en el comando siguiente, cuyo arreglo de redirecciones ya está vacío. Es el punto de revisión 1: la entrada mal formada nunca puede tumbar nada.
+- `echo x >& ~/.zshrc` queda como `.duplicate`. En bash, `>&` seguido de algo que no es un número ni `-` escribe en ese archivo, así que tiene que ser `.write` (y `<&` con un archivo, `.read`). Si no, la regla nunca revisaría esa ruta.
+
+**Archivos:**
+- Modificar: `Sources/BuddyCore/Rule/ShellScript.swift`
+- Test: `Tests/ClaudeMenuBarBuddyTests/ShellScriptTests.swift` (agregar al final de la suite)
+
+**Interfaces:** sin cambios públicos.
+
+- [ ] **Paso 1: agregar los tests**
+
+```swift
+    @Test(arguments: ["echo hi > ; ls", "cat < | grep x", "echo hi >", "ls 2>", "cat << ; ls", "echo a >\nls"])
+    func redirectWithoutTargetIsUnparseableNotACrash(source: String) {
+        #expect(ShellScript.parse(source).unparseable)
+    }
+
+    @Test func ampersandRedirectToAFileIsAWriteOrRead() {
+        let r = ShellScript.parse("echo x >& ~/.zshrc").commands[0].redirects
+        #expect(r.map(\.kind) == [.write])
+        #expect(r[0].target?.text == "~/.zshrc")
+        #expect(ShellScript.parse("echo x 2>&1").commands[0].redirects.map(\.kind) == [.duplicate])
+        #expect(ShellScript.parse("echo x >&-").commands[0].redirects.map(\.kind) == [.duplicate])
+        #expect(ShellScript.parse("cat <& 3").commands[0].redirects.map(\.kind) == [.duplicate])
+        #expect(ShellScript.parse("cat <&in.txt").commands[0].redirects.map(\.kind) == [.read])
+    }
+```
+
+- [ ] **Paso 2: verificar que fallan**
+
+Corre: `swift build && swift test --filter ShellScriptTests`
+Esperado: falla `ampersandRedirectToAFileIsAWriteOrRead`. Puede que el runner de tests se caiga entero con `redirectWithoutTargetIsUnparseableNotACrash`; también cuenta como "falla".
+
+- [ ] **Paso 3: corregir `ShellScript.swift`**
+
+- **Destino faltante.** En `closeCommand()`, justo después de su `flushWord()` y antes de limpiar `words`/`redirects`: si `pendingTarget != nil` o `pendingHeredoc != nil`, pon `unparseable = true` y deja los dos en `nil`. Haz lo mismo al final de `run()`, después del último `closeCommand()`. Así un destino nunca cruza a otro comando.
+- **`>&` y `<&` con un archivo.** Recuerda si la redirección pendiente vino de `>&` o de `<&`. Cuando `flushWord()` le asigna el destino a una redirección `.duplicate`:
+  - si el texto del destino es solo dígitos o es `-`, se queda `.duplicate`;
+  - si no, pasa a `.write` (vino de `>&`) o a `.read` (vino de `<&`).
+
+- [ ] **Paso 4: verificar que pasa todo**
+
+Corre: `swift build && swift test`
+Esperado: todo en verde.
+
+- [ ] **Paso 5: commit**
+
+```bash
+git add Sources/BuddyCore/Rule/ShellScript.swift Tests/ClaudeMenuBarBuddyTests/ShellScriptTests.swift
+git commit -m "El analizador marca como ilegible una redirección sin destino y trata >& archivo como escritura"
+```
+
+---
+
 ### Tarea 4: la regla de shell (categorías, comandos generales, rutas, redirecciones)
 
 **Archivos:**
@@ -726,7 +783,7 @@ func category(_ command: String) -> RuleCategory {
     @Test(arguments: [
         "echo x >> ~/.zshrc", "cp evil.plist ~/Library/LaunchAgents/x.plist", "cd ~/.ssh && echo k > authorized_keys",
         "tee .git/config < x", "cp x /opt/homebrew/bin/ls", "touch .husky/pre-commit", "chmod +x .git/hooks/pre-commit",
-        "mv ~/.zshrc /tmp/zshrc.bak",
+        "mv ~/.zshrc /tmp/zshrc.bak", "echo x >& ~/.zshrc",
     ])
     func protectedWrites(command: String) { #expect(category(command) == .rutaProtegida, "\(command)") }
 
