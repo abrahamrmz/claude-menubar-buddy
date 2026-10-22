@@ -629,7 +629,7 @@ Salieron al revisar las tareas 1–3 y van antes de la tarea 4. Los dos son entr
 
 **Interfaces:** sin cambios públicos.
 
-- [ ] **Paso 1: agregar los tests**
+- [x] **Paso 1: agregar los tests**
 
 ```swift
     @Test(arguments: ["echo hi > ; ls", "cat < | grep x", "echo hi >", "ls 2>", "cat << ; ls", "echo a >\nls"])
@@ -648,24 +648,24 @@ Salieron al revisar las tareas 1–3 y van antes de la tarea 4. Los dos son entr
     }
 ```
 
-- [ ] **Paso 2: verificar que fallan**
+- [x] **Paso 2: verificar que fallan**
 
 Corre: `swift build && swift test --filter ShellScriptTests`
 Esperado: falla `ampersandRedirectToAFileIsAWriteOrRead`. Puede que el runner de tests se caiga entero con `redirectWithoutTargetIsUnparseableNotACrash`; también cuenta como "falla".
 
-- [ ] **Paso 3: corregir `ShellScript.swift`**
+- [x] **Paso 3: corregir `ShellScript.swift`**
 
 - **Destino faltante.** En `closeCommand()`, justo después de su `flushWord()` y antes de limpiar `words`/`redirects`: si `pendingTarget != nil` o `pendingHeredoc != nil`, pon `unparseable = true` y deja los dos en `nil`. Haz lo mismo al final de `run()`, después del último `closeCommand()`. Así un destino nunca cruza a otro comando.
 - **`>&` y `<&` con un archivo.** Recuerda si la redirección pendiente vino de `>&` o de `<&`. Cuando `flushWord()` le asigna el destino a una redirección `.duplicate`:
   - si el texto del destino es solo dígitos o es `-`, se queda `.duplicate`;
   - si no, pasa a `.write` (vino de `>&`) o a `.read` (vino de `<&`).
 
-- [ ] **Paso 4: verificar que pasa todo**
+- [x] **Paso 4: verificar que pasa todo**
 
 Corre: `swift build && swift test`
 Esperado: todo en verde.
 
-- [ ] **Paso 5: commit**
+- [x] **Paso 5: commit**
 
 ```bash
 git add Sources/BuddyCore/Rule/ShellScript.swift Tests/ClaudeMenuBarBuddyTests/ShellScriptTests.swift

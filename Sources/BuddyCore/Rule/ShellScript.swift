@@ -78,6 +78,9 @@ private struct Parser {
     private var heredocs: [(delimiter: String, stripTabs: Bool)] = []
     private var pendingHeredoc: Bool?
     private var pendingTarget: Int?
+    /// Which `>&` / `<&` opened the pending redirect, when one did. Bash
+    /// treats `>&file` as a write to file, not a descriptor duplication.
+    private var pendingDuplicateFrom: Character?
 
     private var unparseable = false
     private var definesFunction = false
@@ -200,9 +203,20 @@ private struct Parser {
                           quoted: word.quoted)
         if let stripTabs = pendingHeredoc {
             pendingHeredoc = nil
+            pendingDuplicateFrom = nil
             heredocs.append((w.text, stripTabs))
         } else if let index = pendingTarget {
             pendingTarget = nil
+            // `>&word` and `<&word` duplicate a descriptor only when the word
+            // is a descriptor: digits or `-`. Anything else is a file, so the
+            // rule has to see it as a write (or read) and look at the path.
+            if redirects[index].kind == .duplicate, let origin = pendingDuplicateFrom {
+                let isDescriptor = !w.text.isEmpty && (w.text.allSatisfy(\.isNumber) || w.text == "-")
+                if !isDescriptor {
+                    redirects[index].kind = origin == ">" ? .write : .read
+                }
+            }
+            pendingDuplicateFrom = nil
             redirects[index].target = w
         } else {
             words.append(w)
@@ -534,8 +548,10 @@ private struct Parser {
         i = k
         if kind == .heredoc {
             pendingHeredoc = stripTabs
+            pendingDuplicateFrom = nil
         } else {
             pendingTarget = redirects.count - 1
+            pendingDuplicateFrom = kind == .duplicate ? c : nil
         }
     }
 
@@ -545,6 +561,7 @@ private struct Parser {
             let kind: RedirectKind = peek(2) == ">" ? .append : .write
             redirects.append(ShellRedirect(kind: kind, target: nil))
             pendingTarget = redirects.count - 1
+            pendingDuplicateFrom = nil
             i += peek(2) == ">" ? 3 : 2
             return
         }
@@ -615,6 +632,16 @@ private struct Parser {
 
     private mutating func closeCommand() -> Int? {
         flushWord()
+        // A redirect that never got its target (`> ;`, `cat << |`) is not a
+        // command the rule can reason about. Clear the pending slot here, so
+        // it can never be handed the next command's word and index into a
+        // redirects array that no longer exists.
+        if pendingTarget != nil || pendingHeredoc != nil {
+            unparseable = true
+            pendingTarget = nil
+            pendingHeredoc = nil
+            pendingDuplicateFrom = nil
+        }
         var command = SimpleCommand(words: words, redirects: redirects,
                                     subshellDepth: subshellDepth, heredocBody: nil)
         words = []

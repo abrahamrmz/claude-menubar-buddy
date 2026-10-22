@@ -110,4 +110,19 @@ import BuddyCore
         #expect(w.map(\.text) == ["find", ".", "-exec", "rm", "{}", ";"])
         #expect(w.last!.quoted)
     }
+
+    @Test(arguments: ["echo hi > ; ls", "cat < | grep x", "echo hi >", "ls 2>", "cat << ; ls", "echo a >\nls"])
+    func redirectWithoutTargetIsUnparseableNotACrash(source: String) {
+        #expect(ShellScript.parse(source).unparseable)
+    }
+
+    @Test func ampersandRedirectToAFileIsAWriteOrRead() {
+        let r = ShellScript.parse("echo x >& ~/.zshrc").commands[0].redirects
+        #expect(r.map(\.kind) == [.write])
+        #expect(r[0].target?.text == "~/.zshrc")
+        #expect(ShellScript.parse("echo x 2>&1").commands[0].redirects.map(\.kind) == [.duplicate])
+        #expect(ShellScript.parse("echo x >&-").commands[0].redirects.map(\.kind) == [.duplicate])
+        #expect(ShellScript.parse("cat <& 3").commands[0].redirects.map(\.kind) == [.duplicate])
+        #expect(ShellScript.parse("cat <&in.txt").commands[0].redirects.map(\.kind) == [.read])
+    }
 }
