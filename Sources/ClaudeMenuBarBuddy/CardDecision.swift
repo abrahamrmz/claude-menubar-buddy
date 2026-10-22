@@ -1,4 +1,5 @@
 import AppKit
+import BuddyCore
 
 // What happens when the card is answered: the actions its buttons and
 // hotkeys fire, the verdict animation, and everything a decision leaves on
@@ -40,13 +41,7 @@ extension AppDelegate {
     /// that word finds and `DYLD_INSERT_LIBRARIES=` loads foreign code into
     /// the right one. hook.sh sends those to a card, so no button here.
     func commandBase(from hint: String) -> String? {
-        let shellMetacharacters = CharacterSet(charactersIn: ";&|<>()`$\\\n")
-        guard hint.rangeOfCharacter(from: shellMetacharacters) == nil else { return nil }
-        guard let token = hint.split(whereSeparator: { $0 == " " || $0 == "\t" }).first else { return nil }
-        guard token.range(of: "^[A-Za-z_][A-Za-z0-9_]*=", options: .regularExpression) == nil else { return nil }
-        let base = String(token)
-        guard base.range(of: "^[A-Za-z0-9_./-]+$", options: .regularExpression) != nil else { return nil }
-        return base
+        AlwaysAllow.commandBase(from: hint)
     }
 
     /// Hotkey path: flash the matching button's pressed state first, so
