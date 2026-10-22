@@ -2043,7 +2043,7 @@ public enum DecisionHistory {
 }
 ```
 
-- [ ] **Paso 1: escribir los tests**
+- [x] **Paso 1: escribir los tests**
 
 ```swift
 import Testing
@@ -2070,14 +2070,14 @@ import BuddyCore
 }
 ```
 
-- [ ] **Paso 2: verificar que falla y luego implementar `DecisionHistory`**
+- [x] **Paso 2: verificar que falla y luego implementar `DecisionHistory`**
 
 `parse` exige `ts` (número) y `tool`; `project` es `""` si falta; `decision` es el campo `decision` para las líneas humanas y `"allow"` para las automáticas.
 
 Corre: `swift build && swift test --filter DecisionHistoryTests`
 Esperado: PASA.
 
-- [ ] **Paso 3: implementar en la app**
+- [x] **Paso 3: implementar en la app**
 
 - **`updateHistorySubmenu`:**
   - lee la cola (los últimos 32 768 bytes) de `decisions.jsonl` y de `auto_decisions.jsonl`, y usa `DecisionHistory.latest(…, limit: 10)`;
@@ -2100,12 +2100,12 @@ Esperado: PASA.
   - el párrafo **Auto-approve Edits** (línea ~80) pasa a ser **Auto mode**: qué pasa sin tarjeta, qué siempre pregunta (la tabla de la spec 5.1 resumida en una oración), que lo crítico sin respuesta se niega, y que la lista de rutas protegidas sigue (conserva la enumeración que ya está);
   - en el bloque de instalación (línea ~104) agrega la copia de `buddy-rule`.
 
-- [ ] **Paso 4: verificar**
+- [x] **Paso 4: verificar**
 
 Corre: `swift build && swift test`
 Esperado: todo en verde.
 
-- [ ] **Paso 5: commit**
+- [x] **Paso 5: commit**
 
 ```bash
 git add Sources/BuddyCore/DecisionHistory.swift Tests/ClaudeMenuBarBuddyTests/DecisionHistoryTests.swift Sources/ClaudeMenuBarBuddy/Menus.swift Sources/ClaudeMenuBarBuddy/Health.swift README.md SKILL.md

@@ -1,4 +1,5 @@
 import AppKit
+import BuddyCore
 
 // The menu bar dropdown and its upkeep: the idle menu, the in-place refresh
 // that runs when it opens, the usage/limit/burn lines, the Sessions and
@@ -175,35 +176,39 @@ extension AppDelegate {
             submenu.addItem(item)
         }
         if !summaryLines.isEmpty { submenu.addItem(NSMenuItem.separator()) }
-        let logURL = dirURL.appendingPathComponent("decisions.jsonl")
         let timeFormatter = DateFormatter()
         timeFormatter.dateFormat = "HH:mm"
-        var added = 0
-        if let data = try? Data(contentsOf: logURL), !data.isEmpty {
-            let tail = data.count > 32_768 ? Data(data.suffix(32_768)) : data
-            let lines = String(decoding: tail, as: UTF8.self)
-                .split(separator: "\n").suffix(10).reversed()
-            for line in lines {
-                guard let obj = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
-                      let decision = obj["decision"] as? String,
-                      let tool = obj["tool"] as? String else { continue }
-                let icon = decision == "allow" ? "✓" : decision == "pass" ? "→" : "✕"
-                var title = "\(icon) \(tool)"
-                if let project = obj["project"] as? String, !project.isEmpty { title += " — \(project)" }
-                if let ts = obj["ts"] as? Double {
-                    title += "   \(timeFormatter.string(from: Date(timeIntervalSince1970: ts)))"
-                }
-                submenu.addItem(withTitle: title, action: nil, keyEquivalent: "")
-                added += 1
-            }
+        // Both logs, newest first: half the story is what you answered and
+        // the other half is what the rule let through without asking.
+        let lines = DecisionHistory.latest(
+            historyLines(from: "decisions.jsonl", isAuto: false),
+            historyLines(from: "auto_decisions.jsonl", isAuto: true),
+            limit: 10)
+        for line in lines {
+            let icon = line.isAuto ? "⚡︎"
+                : line.decision == "allow" ? "✓" : line.decision == "pass" ? "→" : "✕"
+            var title = "\(icon) \(line.tool)"
+            if !line.project.isEmpty { title += " — \(line.project)" }
+            title += "   \(timeFormatter.string(from: Date(timeIntervalSince1970: line.ts)))"
+            submenu.addItem(withTitle: title, action: nil, keyEquivalent: "")
         }
-        if added == 0 {
+        if lines.isEmpty {
             submenu.addItem(withTitle: "No decisions yet", action: nil, keyEquivalent: "")
         }
         submenu.addItem(NSMenuItem.separator())
         let openItem = NSMenuItem(title: "Open Full Log…", action: #selector(openDecisionLog), keyEquivalent: "")
         openItem.target = self
         submenu.addItem(openItem)
+    }
+
+    /// The tail of one decision log, parsed. The tail rather than the whole
+    /// file: these logs grow for months, and the menu only shows ten.
+    func historyLines(from fileName: String, isAuto: Bool) -> [HistoryLine] {
+        let url = dirURL.appendingPathComponent(fileName)
+        guard let data = try? Data(contentsOf: url), !data.isEmpty else { return [] }
+        let tail = data.count > 32_768 ? Data(data.suffix(32_768)) : data
+        // The cut can land mid-line; a broken first line is skipped by parse.
+        return DecisionHistory.parse(jsonLines: String(decoding: tail, as: UTF8.self), isAuto: isAuto)
     }
 
     @objc func openDecisionLog() {

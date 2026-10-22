@@ -15,7 +15,7 @@ When Claude Code needs a permission decision (Bash, Edit/MultiEdit/Write, Notebo
 - **Questions, not just permissions** — `AskUserQuestion` options become buttons (⌘1-4) answered through the tool's own `answers` field; multi-question calls are walked one at a time. Plans get their three real choices: approve each edit, approve + auto-accept, or keep planning (a deny that says *why*).
 - **A queue you can reach into** — the orange `+N` badge lists what's waiting, jumps to any request (⌘1-9), and offers allow/deny-all behind a confirmation, because answering things you haven't read is what this app exists to prevent.
 - **Hand off with ↗** — the native prompt appears immediately with its full options. Cards are answerable for ~60 seconds (the hook's window); after that the native prompt owns the decision and the card retires itself. Long reads belong on ↗ from the start.
-- **Standing grants** — the lightning row on a Bash card remembers the base command *for that project*; on an edit card it turns on auto-approve-edits. Both are covered in detail under [the two standing grants](#the-two-standing-grants).
+- **Standing grants** — the lightning row on a Bash card remembers the base command *for that project*; on an edit or plan card it turns on auto mode. Both are covered in detail under [the two standing grants](#the-two-standing-grants).
 
 ## The pet
 
@@ -77,7 +77,7 @@ Keep the list to things that read and navigate. What the screen can't catch is a
 
 The card only writes into `projects`, keyed on the session's absolute path and matched exactly — a grant on `/repos/api` reaches neither `/repos/api-x` nor another checkout. Widening to `global` is a confirmed action in `Settings ▸ Safety`, where the list is also readable and removable.
 
-**Auto-approve Edits** lets edit tools through without a card, with a pencil glyph on the menu bar icon while it's on. It stops at the files that decide what runs on this machine tomorrow: `~/.ssh`, `~/.gnupg`, LaunchAgents/Daemons, all of `.git/` (`config` names a program in `core.fsmonitor` just as `hooks/` holds one — and in a worktree or submodule `.git` is a plain file saying where the real one lives), any `.claude/` — a *project's* settings can register hooks, not just `~`'s — along with `~/.claude.json`, where each `mcpServers` entry is a command Claude Code spawns on the next session; shell startup files *and* the logout ones, `.envrc`, `.vscode/` at either scope, both spellings of git's global config (`~/.gitconfig` and `~/.config/git/config`), system directories — and the buddy's own config, so an auto-approved write can't widen the very grant that let it through. Relative paths and `..` get a card too: "can't tell where it lands" means "ask".
+**Auto mode** lets the routine work through without a card — reads, local changes that can be undone, and the agent's own edits — with a bolt glyph on the menu bar icon while it's on. Everything that runs code, anything irreversible, anything that leaves the machine, anything that reads or writes a sensitive file, and every question and plan still asks; and a critical request that never gets an answer is denied rather than run, so an unattended session can't execute what nobody read. It stops at the files that decide what runs on this machine tomorrow: `~/.ssh`, `~/.gnupg`, LaunchAgents/Daemons, all of `.git/` (`config` names a program in `core.fsmonitor` just as `hooks/` holds one — and in a worktree or submodule `.git` is a plain file saying where the real one lives), any `.claude/` — a *project's* settings can register hooks, not just `~`'s — along with `~/.claude.json`, where each `mcpServers` entry is a command Claude Code spawns on the next session; shell startup files *and* the logout ones, `.envrc`, `.vscode/` at either scope, both spellings of git's global config (`~/.gitconfig` and `~/.config/git/config`), system directories — and the buddy's own config, so an auto-approved write can't widen the very grant that let it through. Relative paths and `..` get a card too: "can't tell where it lands" means "ask".
 
 A path is settled before it is matched, because one file answers to many spellings. Repeated slashes are squeezed, `/./` and symlinks resolved (`/etc` is really `/private/etc`, and a home directory can sit behind a link of its own), and the comparison is case-insensitive: on the case-insensitive volume macOS formats by default, a write to `.GIT/config` lands in `.git/config`, and a list that only knew the lowercase spelling would be a list you could walk around.
 
@@ -102,6 +102,7 @@ git checkout "$(git describe --tags --abbrev=0)"   # latest known-good state (CI
 swift build
 mkdir -p ~/.config/claude-menubar-buddy
 cp hook.sh ~/.config/claude-menubar-buddy/ && chmod +x ~/.config/claude-menubar-buddy/hook.sh
+cp .build/debug/buddy-rule ~/.config/claude-menubar-buddy/ && chmod +x ~/.config/claude-menubar-buddy/buddy-rule
 ```
 
 Then merge the `hooks.PreToolUse` block from `SKILL.md` into `~/.claude/settings.json` (real home directory in the path, not `~`), and optionally the LaunchAgent plist for start-at-login.

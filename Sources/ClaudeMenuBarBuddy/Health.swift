@@ -39,6 +39,14 @@ struct BuddyHealth {
 
     static var hookURL: URL { dirURL.appendingPathComponent("hook.sh") }
     static var notifyURL: URL { dirURL.appendingPathComponent("notify-done.sh") }
+    static var buddyRuleURL: URL { dirURL.appendingPathComponent("buddy-rule") }
+    /// The rule that shipped with this build, sitting beside the app's own
+    /// executable. That is the copy an install has just built.
+    static var shippedBuddyRuleURL: URL? {
+        guard let executable = Bundle.main.executablePath else { return nil }
+        return URL(fileURLWithPath: executable).deletingLastPathComponent()
+            .appendingPathComponent("buddy-rule")
+    }
     static var claudeSettingsURL: URL {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".claude/settings.json")
@@ -50,6 +58,8 @@ struct BuddyHealth {
     static func inspect(claudeSettings: URL? = nil) -> BuddyHealth {
         BuddyHealth(checks: [
             hookScriptCheck(),
+            buddyRuleCheck(),
+            buddyRuleFreshnessCheck(),
             hookWiringCheck(settingsURL: claudeSettings ?? claudeSettingsURL),
             jqCheck(),
             hookFreshnessCheck(),
@@ -81,6 +91,96 @@ struct BuddyHealth {
         }
         return Check(title: "Hook script installed", ok: true,
                      detail: path, remedy: nil)
+    }
+
+    /// The hook asks `buddy-rule` on every event, so without it every card is
+    /// the native prompt again — and the reason is invisible, exactly like a
+    /// missing hook. Installed is not enough: the binary has to answer, which
+    /// is why the check runs it once.
+    private static func buddyRuleCheck() -> Check {
+        let title = "Rule binary installed"
+        let fm = FileManager.default
+        let path = buddyRuleURL.path
+        let source = shippedBuddyRuleURL?.path ?? "<repo>/.build/debug/buddy-rule"
+        let remedy = "cp \(source) \(path) && chmod +x \(path)"
+        guard fm.fileExists(atPath: path) else {
+            return Check(title: title, ok: false, detail: "Nothing at \(path)", remedy: remedy)
+        }
+        guard fm.isExecutableFile(atPath: path) else {
+            return Check(title: title, ok: false,
+                         detail: "Present but not executable — the hook can't ask it anything",
+                         remedy: "chmod +x \(path)")
+        }
+        guard let data = runBuddyRule(at: path),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              object["verdict"] is String else {
+            return Check(title: title, ok: false,
+                         detail: "Ran but didn't answer with a verdict — the hook will fall back to the native prompt",
+                         remedy: remedy)
+        }
+        return Check(title: title, ok: true, detail: path, remedy: nil)
+    }
+
+    /// Sends the installed rule one payload and returns what it printed.
+    ///
+    /// Bounded by hand: `readDataToEndOfFile` has no timeout, and a rule that
+    /// hangs would freeze the menu it was opened from. The throwaway HOME
+    /// keeps the probe honest — it answers whether the binary works, without
+    /// leaning on the user's own auto mode and without appending a fake entry
+    /// to the decision history.
+    private static func runBuddyRule(at path: String) -> Data? {
+        let sandbox = FileManager.default.temporaryDirectory
+            .appendingPathComponent("buddy-rule-check-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: sandbox, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: sandbox) }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: path)
+        var environment = ProcessInfo.processInfo.environment
+        environment["HOME"] = sandbox.path
+        process.environment = environment
+        let stdin = Pipe()
+        let stdout = Pipe()
+        process.standardInput = stdin
+        process.standardOutput = stdout
+        process.standardError = FileHandle.nullDevice
+        guard (try? process.run()) != nil else { return nil }
+        stdin.fileHandleForWriting.write(
+            Data(#"{"tool_name":"Bash","tool_input":{"command":"ls"},"cwd":"/tmp"}"#.utf8))
+        try? stdin.fileHandleForWriting.close()
+
+        let deadline = Date().addingTimeInterval(2)
+        while process.isRunning && Date() < deadline { usleep(20_000) }
+        if process.isRunning {
+            process.terminate()
+            let grace = Date().addingTimeInterval(0.2)
+            while process.isRunning && Date() < grace { usleep(10_000) }
+            if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+        }
+        return stdout.fileHandleForReading.readDataToEndOfFile()
+    }
+
+    /// Same staleness mistake as hook.sh: the installed rule is a snapshot,
+    /// and `swift build` only changes the copy beside the app.
+    private static func buddyRuleFreshnessCheck() -> Check {
+        let title = "Installed rule is current"
+        guard let shipped = shippedBuddyRuleURL,
+              let installed = try? Data(contentsOf: buddyRuleURL) else {
+            return Check(title: title, ok: true,
+                         detail: "Skipped — no shipped copy to compare against",
+                         remedy: nil, optional: true)
+        }
+        guard let source = try? Data(contentsOf: shipped) else {
+            return Check(title: title, ok: true, detail: "Skipped", remedy: nil, optional: true)
+        }
+        guard source != installed else {
+            return Check(title: title, ok: true,
+                         detail: "Matches \(shipped.path)", remedy: nil)
+        }
+        return Check(title: title, ok: false,
+                     detail: "Differs from \(shipped.path) — the installed copy is stale",
+                     remedy: "cp \(shipped.path) \(buddyRuleURL.path)",
+                     optional: true)
     }
 
     /// Reads ~/.claude/settings.json and reports which tools actually route
