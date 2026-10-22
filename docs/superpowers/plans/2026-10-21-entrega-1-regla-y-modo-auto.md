@@ -110,7 +110,7 @@ public struct AlwaysAllow: Equatable {
 }
 ```
 
-- [ ] **Paso 1: escribir los tests**
+- [x] **Paso 1: escribir los tests**
 
 ```swift
 import Foundation
@@ -174,12 +174,12 @@ import BuddyCore
 }
 ```
 
-- [ ] **Paso 2: verificar que falla**
+- [x] **Paso 2: verificar que falla**
 
 Corre: `swift build && swift test --filter AlwaysAllowTests`
 Esperado: no compila, porque `AlwaysAllow` no existe en `BuddyCore`.
 
-- [ ] **Paso 3: implementar**
+- [x] **Paso 3: implementar**
 
 Mueve a `Sources/BuddyCore/AlwaysAllow.swift`, sin cambiar la lógica:
 - el `struct AlwaysAllow` de `Prefs.swift`, con sus comentarios;
@@ -192,12 +192,12 @@ En la app:
 - `writeAlwaysAllow` se queda en la app sin cambios;
 - agrega `import BuddyCore` donde haga falta.
 
-- [ ] **Paso 4: verificar que pasa todo**
+- [x] **Paso 4: verificar que pasa todo**
 
 Corre: `swift build && swift test`
 Esperado: todo en verde (los 79 de antes más los nuevos).
 
-- [ ] **Paso 5: commit**
+- [x] **Paso 5: commit**
 
 ```bash
 git add Sources/BuddyCore/AlwaysAllow.swift Sources/ClaudeMenuBarBuddy/Prefs.swift Sources/ClaudeMenuBarBuddy/CardDecision.swift Tests/ClaudeMenuBarBuddyTests/AlwaysAllowTests.swift
@@ -243,7 +243,7 @@ public struct ShellScript: Equatable {
 }
 ```
 
-- [ ] **Paso 1: escribir los tests**
+- [x] **Paso 1: escribir los tests**
 
 ```swift
 import Testing
@@ -361,12 +361,12 @@ import BuddyCore
 }
 ```
 
-- [ ] **Paso 2: verificar que falla**
+- [x] **Paso 2: verificar que falla**
 
 Corre: `swift build && swift test --filter ShellScriptTests`
 Esperado: no compila, porque `ShellScript` no existe.
 
-- [ ] **Paso 3: implementar `ShellScript.parse(_:) -> ShellScript` en `Sources/BuddyCore/Rule/ShellScript.swift`**
+- [x] **Paso 3: implementar `ShellScript.parse(_:) -> ShellScript` en `Sources/BuddyCore/Rule/ShellScript.swift`**
 
 Es un escáner de caracteres a mano, sin expresiones regulares para la estructura. Recorre la cadena con un índice, arma la palabra actual y acumula comandos simples. Las reglas, en orden de prioridad:
 
@@ -406,12 +406,12 @@ Es un escáner de caracteres a mano, sin expresiones regulares para la estructur
   - `function` pone `definesFunction`.
   - Un comando que queda sin palabras se conserva solo si tiene redirecciones.
 
-- [ ] **Paso 4: verificar que pasa**
+- [x] **Paso 4: verificar que pasa**
 
 Corre: `swift build && swift test --filter ShellScriptTests`
 Esperado: PASA.
 
-- [ ] **Paso 5: commit**
+- [x] **Paso 5: commit**
 
 ```bash
 git add Sources/BuddyCore/Rule/ShellScript.swift Tests/ClaudeMenuBarBuddyTests/ShellScriptTests.swift
@@ -463,7 +463,7 @@ struct StubProbe: FileProbe {
 }
 ```
 
-- [ ] **Paso 1: escribir los tests**
+- [x] **Paso 1: escribir los tests**
 
 ```swift
 import Foundation
@@ -555,12 +555,12 @@ import BuddyCore
 }
 ```
 
-- [ ] **Paso 2: verificar que falla**
+- [x] **Paso 2: verificar que falla**
 
 Corre: `swift build && swift test --filter PathPolicyTests`
 Esperado: no compila.
 
-- [ ] **Paso 3: implementar en `Sources/BuddyCore/Rule/PathPolicy.swift`**
+- [x] **Paso 3: implementar en `Sources/BuddyCore/Rule/PathPolicy.swift`**
 
 - **`LiveFileProbe`:**
   - `resolvedDirectory` usa `FileManager.fileExists(atPath:isDirectory:)` y luego `realpath(path, nil)` (libera el puntero con `free`). **No** uses `URL.resolvingSymlinksInPath()`: le quita `/private` a las rutas y rompe la comparación.
@@ -603,12 +603,12 @@ Esperado: no compila.
 ```
 - **`overwriteIsUnrecoverable`:** con `c = canonicalize(path)`, devuelve `probe.exists(c) && !probe.isDirectory(c) && !probe.isInsideGitWorkTree(c)` y que `c` no sea ni empiece por `t + "/"` para ningún `t` de `tempDirs`.
 
-- [ ] **Paso 4: verificar que pasa**
+- [x] **Paso 4: verificar que pasa**
 
 Corre: `swift build && swift test --filter PathPolicyTests`
 Esperado: PASA.
 
-- [ ] **Paso 5: commit**
+- [x] **Paso 5: commit**
 
 ```bash
 git add Sources/BuddyCore/Rule/PathPolicy.swift Tests/ClaudeMenuBarBuddyTests/Support/StubProbe.swift Tests/ClaudeMenuBarBuddyTests/PathPolicyTests.swift
