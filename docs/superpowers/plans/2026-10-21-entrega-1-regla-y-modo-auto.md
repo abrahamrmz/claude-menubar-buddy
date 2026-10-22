@@ -1136,7 +1136,7 @@ Salieron al pasar a la regla comandos tramposos que no estaban en el plan. Todos
 
 **Interfaces:** sin cambios públicos.
 
-- [ ] **Paso 1: agregar los tests**
+- [x] **Paso 1: agregar los tests**
 
 En `PathPolicyTests`:
 
@@ -1187,12 +1187,12 @@ En `ShellRuleCommandsTests`:
     }
 ```
 
-- [ ] **Paso 2: verificar que fallan**
+- [x] **Paso 2: verificar que fallan**
 
 Corre: `swift build && swift test --filter "PathPolicyTests|ShellRuleCommandsTests"`
 Esperado: FALLAN los casos nuevos.
 
-- [ ] **Paso 3: corregir**
+- [x] **Paso 3: corregir**
 
 - **`PathPolicy.swift`:** a los patrones protegidos agrega la carpeta misma de cada patrón de carpeta:
   ```
@@ -1221,12 +1221,12 @@ Esperado: FALLAN los casos nuevos.
 
   En la tabla de subcomandos de `git`, quita `apply` y `am` de cambioLocal: caen en desconocido.
 
-- [ ] **Paso 4: verificar que pasa todo**
+- [x] **Paso 4: verificar que pasa todo**
 
 Corre: `swift build && swift test`
 Esperado: todo en verde, incluidas las pruebas de las tareas 4 y 5 que ya pasaban.
 
-- [ ] **Paso 5: commit**
+- [x] **Paso 5: commit**
 
 ```bash
 git add Sources/BuddyCore/Rule/ Tests/ClaudeMenuBarBuddyTests/PathPolicyTests.swift Tests/ClaudeMenuBarBuddyTests/ShellRuleCommandsTests.swift

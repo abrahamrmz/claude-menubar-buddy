@@ -84,4 +84,19 @@ import BuddyCore
         #expect(!p.overwriteIsUnrecoverable("/Users/u/Documents/nuevo.txt")) // does not exist
         #expect(!p.overwriteIsUnrecoverable("/Users/u/Documents"))          // a directory
     }
+
+    @Test(arguments: [
+        "/Users/u/.ssh", "/Users/u/.gnupg", "/Users/u/Library/LaunchAgents", "/Library/LaunchDaemons",
+        "/tmp/p/.claude", "/Users/u/.config/claude-menubar-buddy", "/Users/u/.oh-my-zsh", "/Users/u/.config/fish",
+        "/tmp/p/.vscode", "/Users/u/.config/git", "/Users/u/.config/opencode", "/tmp/p/.opencode",
+        "/tmp/p/.husky", "/tmp/p/.githooks", "/tmp/p/.HUSKY",
+    ])
+    func protectedDirectoriesThemselves(path: String) {
+        #expect(policy.isProtected(path), "the directory itself must be protected: \(path)")
+    }
+
+    @Test(arguments: ["/tmp/p/sshkeys-docs", "/tmp/p/husky-notes.md", "/tmp/p/src/opencode-client.ts", "/tmp/p/claude.md"])
+    func lookAlikesAreNotProtected(path: String) {
+        #expect(!policy.isProtected(path))
+    }
 }

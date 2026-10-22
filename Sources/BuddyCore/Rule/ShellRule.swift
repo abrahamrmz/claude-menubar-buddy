@@ -82,6 +82,9 @@ public enum ShellRule {
             targets.append(WriteTarget(word: target, overwrites: redirect.kind == .write))
         }
 
+        if let network = reviewNetworkRedirects(input.redirects) {
+            result = worse(result, network)!
+        }
         if let origins = reviewProtectedOrigins(protectedOnly, state: state) {
             result = worse(result, origins)!
         }
@@ -124,6 +127,11 @@ public enum ShellRule {
         }
         if [".sh", ".py", ".rb", ".js", ".ts", ".pl", "manage.py"].contains(where: { name.hasSuffix($0) }) {
             return Assessment(.ejecuta, "ejecuta código: \(short(original))")
+        }
+
+        // A reader with an option that names a program is already execution.
+        if let option = assessExecutionOptions(name, arguments: arguments) {
+            return option
         }
 
         switch name {
@@ -290,6 +298,19 @@ public enum ShellRule {
         return worst
     }
 
+    /// Bash's `/dev/tcp` and `/dev/udp` are sockets, not files: a redirect
+    /// there takes data off the machine while looking like a write.
+    static func reviewNetworkRedirects(_ redirects: [ShellRedirect]) -> Assessment? {
+        for redirect in redirects
+        where redirect.kind == .write || redirect.kind == .append || redirect.kind == .read {
+            guard let target = redirect.target else { continue }
+            if target.text.hasPrefix("/dev/tcp/") || target.text.hasPrefix("/dev/udp/") {
+                return Assessment(.sale, "abre una conexión de red: \(target.text)")
+            }
+        }
+        return nil
+    }
+
     static func reviewProtectedOrigins(_ words: [ShellWord], state: RuleState) -> Assessment? {
         var worst: Assessment?
         for word in words {
@@ -389,7 +410,18 @@ public enum ShellRule {
                 }
             case "timeout":
                 words.removeFirst()
-                while let flag = words.first?.text, flag.hasPrefix("-") { words.removeFirst() }
+                while let flag = words.first?.text, flag.hasPrefix("-") {
+                    if ["-s", "-k", "--signal", "--kill-after"].contains(flag) {
+                        words.removeFirst()
+                        if !words.isEmpty { words.removeFirst() }
+                    } else if flag.hasPrefix("--signal=") || flag.hasPrefix("--kill-after=")
+                                || (flag.hasPrefix("-s") && flag.count > 2)
+                                || (flag.hasPrefix("-k") && flag.count > 2) {
+                        words.removeFirst()
+                    } else {
+                        words.removeFirst()
+                    }
+                }
                 if !words.isEmpty { words.removeFirst() }
             case "command":
                 words.removeFirst()
@@ -435,8 +467,15 @@ public enum ShellRule {
     }
 
     static func changesCommandResolution(_ name: String) -> Bool {
-        name == "PATH" || name.hasPrefix("DYLD_") || name.hasPrefix("LD_") || name.hasPrefix("GIT_")
+        dangerousAssignmentNames.contains(name)
+            || name.hasPrefix("DYLD_") || name.hasPrefix("LD_") || name.hasPrefix("GIT_")
     }
+
+    /// Variables that change what the next command *is*, not just how it
+    /// looks: a PATH-like name in front of a command is already execution.
+    static let dangerousAssignmentNames: Set<String> = [
+        "PATH", "BASH_ENV", "ENV", "ZDOTDIR", "PROMPT_COMMAND",
+    ]
 
     // MARK: - Helpers
 

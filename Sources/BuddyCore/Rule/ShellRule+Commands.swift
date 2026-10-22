@@ -5,6 +5,33 @@ import Foundation
 // generic write and sensitive-path reviews still run on top of its verdict.
 
 extension ShellRule {
+    // MARK: - Options that execute
+
+    /// Some readers accept an option naming a program to run. The command
+    /// still looks like `rg` or `sort`, so the name is not enough.
+    static func assessExecutionOptions(_ name: String, arguments: [ShellWord]) -> Assessment? {
+        let options: [String]
+        switch name {
+        case "rg":
+            options = ["--pre"]
+        case "sort":
+            options = ["--compress-program"]
+        case "bat":
+            options = ["--pager"]
+        case "zip":
+            options = ["-TT", "--unzip-command"]
+        default:
+            return nil
+        }
+        for argument in arguments {
+            for option in options
+            where argument.text == option || argument.text.hasPrefix(option + "=") {
+                return Assessment(.ejecuta, "ejecuta código a través de una opción: \(option)")
+            }
+        }
+        return nil
+    }
+
     // MARK: - sed
 
     static func assessSed(_ arguments: [ShellWord], state: RuleState,
@@ -184,6 +211,20 @@ extension ShellRule {
             return Assessment(.desconocido, "la regla no reconoce: git")
         }
 
+        // Transport options can name the program git will run on either end.
+        for word in subArguments {
+            for option in ["--upload-pack", "--receive-pack", "--exec"]
+            where word.text == option || word.text.hasPrefix(option + "=") {
+                return Assessment(.ejecuta, "ejecuta código a través de una opción: \(option)")
+            }
+        }
+        if ["clone", "fetch", "pull", "ls-remote", "archive"].contains(subcommand),
+           subArguments.contains(where: {
+               $0.text == "-u" || ($0.text.hasPrefix("-u") && !$0.text.hasPrefix("--") && $0.text.count > 2)
+           }) {
+            return Assessment(.ejecuta, "ejecuta código a través de una opción: -u")
+        }
+
         var cursor = 0
         while cursor < subArguments.count {
             let word = subArguments[cursor]
@@ -214,7 +255,7 @@ extension ShellRule {
 
     private static let gitLocalChangeSubcommands: Set<String> = [
         "add", "commit", "switch", "merge", "pull", "rebase", "cherry-pick", "revert", "tag", "mv", "rm",
-        "am", "apply", "init", "clone", "notes", "bisect", "sparse-checkout",
+        "init", "clone", "notes", "bisect", "sparse-checkout",
     ]
 
     private static func assessGitSubcommand(_ subcommand: String, arguments: [ShellWord],
@@ -368,6 +409,22 @@ extension ShellRule {
     ]
 
     static func assessSSH(_ arguments: [ShellWord], state: RuleState) -> Assessment {
+        // `-F` picks another config, and `-o` can name a local program.
+        for index in arguments.indices {
+            let text = arguments[index].text
+            if text == "-F" || (text.hasPrefix("-F") && text.count > 2) {
+                return Assessment(.ejecuta, "ejecuta código a través de una opción: -F")
+            }
+            if text == "-o" {
+                if index + 1 < arguments.count, dangerousSSHOption(arguments[index + 1].text) {
+                    return Assessment(.ejecuta, "ejecuta código a través de una opción: -o")
+                }
+            } else if text.hasPrefix("-o"), text.count > 2,
+                      dangerousSSHOption(String(text.dropFirst(2))) {
+                return Assessment(.ejecuta, "ejecuta código a través de una opción: -o")
+            }
+        }
+
         var index = 0
         var host: String?
         var remoteWords: [String] = []
@@ -421,6 +478,13 @@ extension ShellRule {
             return Assessment(.sale, "ssh que no solo lee")
         }
         return Assessment(.lectura, "ssh que solo lee")
+    }
+
+    private static func dangerousSSHOption(_ value: String) -> Bool {
+        let lowered = value.lowercased()
+        return ["proxycommand", "localcommand", "permitlocalcommand", "knownhostscommand"].contains {
+            lowered.contains($0)
+        }
     }
 
     private static func remoteSimpleIsRead(_ simple: SimpleCommand, state: RuleState) -> Bool {

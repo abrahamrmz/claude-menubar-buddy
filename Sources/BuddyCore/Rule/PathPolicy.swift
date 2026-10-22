@@ -152,6 +152,13 @@ public struct PathPolicy {
             "~/.config/opencode/*", "*/opencode.json", "*/opencode.jsonc", "*/.opencode/*",
             "*/.husky/*", "*/.githooks/*", "*/.pre-commit-config.yaml", "*/lefthook.yml",
             "*/claude-menubar-buddy*/.build/*",
+        ]) + expandPatterns([
+            // The folders themselves, not only what lives inside them: a
+            // `cp -t ~/Library/LaunchAgents` or `mv x .husky` names the
+            // directory, and that already writes there.
+            "*/.ssh", "*/.gnupg", "*/Library/LaunchAgents", "*/Library/LaunchDaemons", "*/.claude",
+            "~/.config/claude-menubar-buddy", "*/.oh-my-zsh", "*/.config/fish", "*/.vscode",
+            "*/.config/git", "~/.config/opencode", "*/.opencode", "*/.husky", "*/.githooks",
         ]) + pathDirs.map { "\($0)/*" }
     }
 
