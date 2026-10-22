@@ -61,8 +61,8 @@ extension AppDelegate {
         // because the buttons no longer print their own: see shortcutHintBar.
         let hintBarHeight: CGFloat = 15
         // Third, quieter action row, tool-dependent: Bash remembers the
-        // base command; edit tools offer auto-approve mode; plans hand off
-        // to VS Code where the full options (auto-accept / manual / tell
+        // base command; edit cards offer auto mode; plans hand off to
+        // VS Code where the full options (auto-accept / manual / tell
         // Claude) live.
         // Nothing to promise about text that arrived cut — the hidden tail is
         // exactly where a second command would be sitting.
@@ -79,7 +79,11 @@ extension AppDelegate {
         }()
         let isEditTool = ["Edit", "MultiEdit", "Write", "NotebookEdit"].contains(req.tool)
         let isPlan = req.tool == "ExitPlanMode"
-        let hasQuietRow = question == nil && (base != nil || isEditTool || isPlan)
+        // An edit or plan card offers auto mode only while it is off; with it
+        // already on there is nothing left to turn on, and the row would just
+        // take space.
+        let hasQuietRow = question == nil
+            && (base != nil || ((isEditTool || isPlan) && !autoModeEnabled))
         let quietRowHeight: CGFloat = 28
         let alwaysRowHeight: CGFloat = hasQuietRow ? quietRowHeight + gap : 0
 
@@ -361,17 +365,17 @@ extension AppDelegate {
                                          symbol: "bolt.fill")
                 currentQuietAction = { [weak self] in self?.alwaysAllow() }
             } else if isEditTool {
-                quietButton = pillButton(title: "Auto-approve edits from now on", shortcut: quietShortcut,
-                                         style: .quiet, action: #selector(autoApproveEditsFromCard),
-                                         accessibility: "Allow, and auto-approve edits from now on",
+                quietButton = pillButton(title: "Permitir y prender el modo auto", shortcut: quietShortcut,
+                                         style: .quiet, action: #selector(allowAndEnableAutoMode),
+                                         accessibility: "Permitir, y prender el modo auto desde ahora",
                                          symbol: "bolt.fill")
-                currentQuietAction = { [weak self] in self?.autoApproveEditsFromCard() }
+                currentQuietAction = { [weak self] in self?.allowAndEnableAutoMode() }
             } else {
-                quietButton = pillButton(title: "Yes — and auto-accept edits from here", shortcut: quietShortcut,
-                                         style: .quiet, action: #selector(autoApproveEditsFromCard),
-                                         accessibility: "Approve the plan and auto-approve its edits from now on",
+                quietButton = pillButton(title: "Sí — y prender el modo auto", shortcut: quietShortcut,
+                                         style: .quiet, action: #selector(allowAndEnableAutoMode),
+                                         accessibility: "Aprobar el plan y prender el modo auto desde ahora",
                                          symbol: "bolt.fill")
-                currentQuietAction = { [weak self] in self?.autoApproveEditsFromCard() }
+                currentQuietAction = { [weak self] in self?.allowAndEnableAutoMode() }
             }
             quietButton.frame = NSRect(x: contentX, y: buttonsY + buttonRowHeight + gap,
                                        width: cardWidth - contentX - pad, height: quietRowHeight)

@@ -196,7 +196,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     /// Whether a debug capture flag is present, going by the tick's listing
-    /// instead of its own stat. Deliberately NOT how autoEditsEnabled is
+    /// instead of its own stat. Deliberately NOT how autoModeEnabled is
     /// read: that one gets checked immediately after the flag file is
     /// written, where a listing up to a second old would report the state the
     /// user just changed away from.
@@ -401,6 +401,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             attributes: [.posixPermissions: 0o700])
         try? FileManager.default.setAttributes(
             [.posixPermissions: 0o700], ofItemAtPath: dirURL.path)
+        // The old edit-only flag retires here; auto mode is NOT turned on by it.
+        try? FileManager.default.removeItem(at: dirURL.appendingPathComponent("auto_approve_edits"))
         sweepStaleArtifacts()
         loadDecisionWindow()
 
@@ -412,7 +414,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         approvalHotKeys.onQueuePick = { [weak self] index in self?.selectQueued(index) }
 
         // variableLength, not squareLength: the icon grows a count and (in
-        // auto-edits mode) a pencil beside the panda.
+        // auto mode) a bolt beside the panda.
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         buildIdleMenu()
         setIdle()

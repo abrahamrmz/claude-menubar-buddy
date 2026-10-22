@@ -12,12 +12,12 @@ extension AppDelegate {
     /// Panda as a silhouette: filled ears + head with the eye patches punched
     /// OUT of the mask. That inversion is what keeps it recognizable in
     /// monochrome — a solid blob would just read as a circle.
-    func pandaIcon(pending: Bool, autoEdits: Bool) -> NSImage {
+    func pandaIcon(pending: Bool, autoMode: Bool) -> NSImage {
         let side: CGFloat = 18
-        // Auto-approve-edits is a standing grant to watch for, so it earns
+        // Auto mode is a standing grant to watch for, so it earns
         // its own glyph beside the panda rather than a subtlety inside it.
-        let pencilWidth: CGFloat = autoEdits ? 11 : 0
-        let image = NSImage(size: NSSize(width: side + pencilWidth, height: side))
+        let boltWidth: CGFloat = autoMode ? 11 : 0
+        let image = NSImage(size: NSSize(width: side + boltWidth, height: side))
         image.lockFocus()
 
         let body = NSBezierPath()
@@ -39,10 +39,10 @@ extension AppDelegate {
         eyes.fill()
         NSGraphicsContext.current?.compositingOperation = .sourceOver
 
-        if autoEdits,
-           let pencil = NSImage(systemSymbolName: "pencil", accessibilityDescription: nil)?
+        if autoMode,
+           let bolt = NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: nil)?
                .withSymbolConfiguration(.init(pointSize: 11, weight: .bold)) {
-            pencil.draw(in: NSRect(x: side + 0.5, y: 3.5, width: 10, height: 11))
+            bolt.draw(in: NSRect(x: side + 0.5, y: 3.5, width: 10, height: 11))
         }
 
         image.unlockFocus()
@@ -55,12 +55,12 @@ extension AppDelegate {
     /// The single entry point for the menu bar's state.
     /// - count: sessions when idle, queued requests when pending — either way
     ///   a number worth showing next to the icon.
-    func applyStatusIcon(pending: Bool, count: Int, autoEdits: Bool, accessibility: String) {
+    func applyStatusIcon(pending: Bool, count: Int, autoMode: Bool, accessibility: String) {
         guard let button = statusItem.button else { return }
         button.setAccessibilityLabel(accessibility)
         button.toolTip = accessibility
 
-        button.image = pandaIcon(pending: pending, autoEdits: autoEdits)
+        button.image = pandaIcon(pending: pending, autoMode: autoMode)
         button.title = count > 0 ? " \(count)" : ""
         button.imagePosition = count > 0 ? .imageLeading : .imageOnly
         // Color carries urgency, the wide eyes carry it again for anyone who
@@ -73,7 +73,7 @@ extension AppDelegate {
     func applyPendingStatusIcon(for req: PendingRequest, queued: Int) {
         let project = (req.project?.isEmpty == false) ? " in \(req.project!)" : ""
         let waiting = queued > 0 ? ", \(queued) more waiting" : ""
-        applyStatusIcon(pending: true, count: queued > 0 ? queued + 1 : 0, autoEdits: false,
+        applyStatusIcon(pending: true, count: queued > 0 ? queued + 1 : 0, autoMode: false,
                         accessibility: "Claude Menu Bar Buddy — \(req.tool) permission request\(project)\(waiting)")
     }
 
@@ -87,9 +87,9 @@ extension AppDelegate {
         try? FileManager.default.removeItem(at: flagURL)
 
         let variants: [(String, NSImage)] = [
-            ("idle", pandaIcon(pending: false, autoEdits: false)),
-            ("pending", pandaIcon(pending: true, autoEdits: false)),
-            ("auto-edits", pandaIcon(pending: false, autoEdits: true)),
+            ("idle", pandaIcon(pending: false, autoMode: false)),
+            ("pending", pandaIcon(pending: true, autoMode: false)),
+            ("auto-mode", pandaIcon(pending: false, autoMode: true)),
         ]
         let scale: CGFloat = 6
         let gap: CGFloat = 12

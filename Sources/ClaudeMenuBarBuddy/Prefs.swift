@@ -148,11 +148,11 @@ extension AppDelegate {
     // edits Claude Code's own config.
     var alwaysAllowURL: URL { dirURL.appendingPathComponent("always_allow.json") }
 
-    // Flag file for auto-approve-edits mode; hook.sh fast-paths Edit/Write/
-    // NotebookEdit while it exists. A file (not UserDefaults) so the hook
-    // can read it without talking to the app.
-    var autoEditsFlagURL: URL { dirURL.appendingPathComponent("auto_approve_edits") }
-    var autoEditsEnabled: Bool { FileManager.default.fileExists(atPath: autoEditsFlagURL.path) }
+    // Flag file for auto mode; buddy-rule reads it and lets routine work pass
+    // without a card. A file (not UserDefaults) so the rule can read it
+    // without talking to the app.
+    var autoModeFlagURL: URL { dirURL.appendingPathComponent("auto_mode") }
+    var autoModeEnabled: Bool { FileManager.default.fileExists(atPath: autoModeFlagURL.path) }
 
     func readAlwaysAllow() -> AlwaysAllow {
         AlwaysAllow.read(from: alwaysAllowURL)

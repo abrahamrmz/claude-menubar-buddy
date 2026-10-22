@@ -105,10 +105,10 @@ extension AppDelegate {
         respond("allow")
     }
 
-    /// Approve this edit AND flip on auto-approve-edits mode (hook.sh
-    /// fast-paths edit tools from now on; the menu item unchecks it).
-    @objc func autoApproveEditsFromCard() {
-        try? Data().write(to: autoEditsFlagURL)
+    /// Approve this edit AND turn on auto mode (buddy-rule passes routine
+    /// work from now on; the menu item unchecks it).
+    @objc func allowAndEnableAutoMode() {
+        try? Data().write(to: autoModeFlagURL)
         buildIdleMenu()
         respond("allow")
     }

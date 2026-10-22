@@ -1893,7 +1893,7 @@ git commit -m "La regla detiene git bisect run, git rebase -x, los transportes e
 
 La app no tiene tests de UI. La verificación es que compile, que los tests sigan en verde y que el `grep` del paso 2 salga vacío.
 
-- [ ] **Paso 1: implementar**
+- [x] **Paso 1: implementar**
 
 Textos exactos:
 
@@ -1913,12 +1913,12 @@ Textos exactos:
   - Plan: título `Sí — y prender el modo auto`, la misma acción.
   - Esas dos filas solo aparecen si `!autoModeEnabled`. El cálculo de `hasQuietRow` se ajusta para que una tarjeta de edición o de plan con el modo auto prendido no reserve el espacio.
 
-- [ ] **Paso 2: verificar**
+- [x] **Paso 2: verificar**
 
 Corre: `swift build && swift test && grep -rn "autoEdits\|AutoEdits\|auto_approve_edits\|autoApproveEditsFromCard" Sources/`
 Esperado: compila, todo en verde, y el `grep` solo encuentra la línea de la migración en `main.swift`.
 
-- [ ] **Paso 3: commit**
+- [x] **Paso 3: commit**
 
 ```bash
 git add Sources/ClaudeMenuBarBuddy/
