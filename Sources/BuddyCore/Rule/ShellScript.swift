@@ -169,7 +169,10 @@ private struct Parser {
                     i = redirectIndex
                     parseRedirect(at: redirectIndex)
                 } else {
-                    if c == "*" || c == "?" || c == "[" { word.expands = true }
+                    // `[[` is bash's keyword, not a glob: marking it as an
+                    // expansion would turn every `[[ -f x ]]` into a card.
+                    if c == "*" || c == "?" { word.expands = true }
+                    if c == "[", peek(1) != "[", word.text.last != "[" { word.expands = true }
                     append(c)
                     i += 1
                 }

@@ -729,7 +729,7 @@ public enum ShellRule {
 - `localChange`: `mkdir touch cp mv ln install tee chmod chown chgrp patch tar unzip gunzip gzip zip bunzip2 xz`
 - `systemBinDirs`: `/bin /usr/bin /usr/local/bin /opt/homebrew/bin /sbin /usr/sbin`
 
-- [ ] **Paso 1: escribir los tests**
+- [x] **Paso 1: escribir los tests**
 
 ```swift
 import Testing
@@ -828,16 +828,16 @@ func category(_ command: String) -> RuleCategory {
 }
 ```
 
-- [ ] **Paso 2: verificar que falla**
+- [x] **Paso 2: verificar que falla**
 
 Corre: `swift build && swift test --filter ShellRuleTests`
 Esperado: no compila.
 
-- [ ] **Paso 3: implementar `RuleTypes.swift` y `CommandCatalog.swift`**
+- [x] **Paso 3: implementar `RuleTypes.swift` y `CommandCatalog.swift`**
 
 Los conjuntos y los motivos son los de arriba.
 
-- [ ] **Paso 4: implementar `ShellRule.assess` en `ShellRule.swift`**
+- [x] **Paso 4: implementar `ShellRule.assess` en `ShellRule.swift`**
 
 **Comando completo:**
 1. Un comando vacío da `desconocido`, porque no hay nada que aprobar a ciegas.
@@ -896,12 +896,12 @@ Los conjuntos y los motivos son los de arriba.
 8. **Asignación delante:** si hubo asignaciones al inicio **y después vino una palabra de comando**, y el resultado no es crítico, da desconocido `asignación de entorno antes del comando`. Así se mantiene la protección de hoy contra `FOO=1 ls`. Una asignación sola (`D=/tmp/x`) sigue siendo lectura.
 9. **Resultado:** el peor entre el paso 4 y los pasos 6–8.
 
-- [ ] **Paso 5: verificar que pasa**
+- [x] **Paso 5: verificar que pasa**
 
 Corre: `swift build && swift test --filter ShellRuleTests`
 Esperado: PASA.
 
-- [ ] **Paso 6: commit**
+- [x] **Paso 6: commit**
 
 ```bash
 git add Sources/BuddyCore/Rule/RuleTypes.swift Sources/BuddyCore/Rule/CommandCatalog.swift Sources/BuddyCore/Rule/ShellRule.swift Tests/ClaudeMenuBarBuddyTests/ShellRuleTests.swift
