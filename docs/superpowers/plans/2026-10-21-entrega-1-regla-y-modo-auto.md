@@ -1819,6 +1819,60 @@ git commit -m "El hook pregunta a la regla: lo rutinario pasa en modo auto y lo 
 
 ---
 
+### Tarea 8b: tres vías más de git que ejecutan (de la revisión del bloque 3)
+
+Al revisar el bloque 3 se colaron como "pasa":
+- `git bisect run ./x.sh`, que corre un script en cada paso;
+- `git rebase -x '…'`, la forma corta de `--exec`, que la tarea 5b no cubría;
+- `gh repo clone x -- --upload-pack=…`, donde `gh` le pasa a `git clone` lo que va después de `--`.
+
+De paso se cierran los transportes `ext::` y `fd::` de git. Vienen apagados por defecto, pero cerrarlos cuesta una línea.
+
+**Archivos:**
+- Modificar: `Sources/BuddyCore/Rule/ShellRule+Commands.swift`
+- Test: `Tests/ClaudeMenuBarBuddyTests/ShellRuleCommandsTests.swift` (agregar al final de la suite)
+
+- [ ] **Paso 1: agregar los tests**
+
+```swift
+    @Test(arguments: [
+        ("git bisect run ./x.sh", RuleCategory.ejecuta), ("git bisect start", .cambioLocal),
+        ("git rebase -x 'sh -c y' HEAD~2", .ejecuta), ("git rebase -xmake HEAD~2", .ejecuta), ("git rebase main", .cambioLocal),
+        ("git fetch 'ext::sh -c x'", .ejecuta), ("git clone fd::3 x", .ejecuta),
+        ("gh repo clone x -- --upload-pack='sh -c x'", .ejecuta), ("gh repo clone x -- -u 'sh -c y'", .ejecuta),
+        ("gh repo clone owner/x", .cambioLocal),
+    ])
+    func reviewOfBlockThree(command: String, expected: RuleCategory) {
+        #expect(category(command) == expected, "\(command)")
+    }
+```
+
+- [ ] **Paso 2: verificar que fallan**
+
+Corre: `swift build && swift test --filter ShellRuleCommandsTests`
+Esperado: FALLAN los casos de `ejecuta`.
+
+- [ ] **Paso 3: corregir en `ShellRule+Commands.swift`**
+
+- **`git bisect`:** con `run` como siguiente palabra da ejecuta `ejecuta código: git bisect run`; si no, cambioLocal.
+- **`git rebase`:** con `-x` (separado o pegado, `-x…`) da ejecuta, con el mismo motivo de las opciones que ejecutan (`ejecuta código a través de una opción: -x`).
+- **`git` con transporte:** si cualquier palabra después del subcomando empieza con `ext::` o `fd::`, da ejecuta `ejecuta código a través de un transporte de git`.
+- **`gh repo clone`:** las palabras después de `--` se revisan con las mismas opciones que ejecutan de `git` (`--upload-pack`, `--receive-pack`, `--exec`, `-u`).
+
+- [ ] **Paso 4: verificar que pasa todo**
+
+Corre: `swift build && swift test`
+Esperado: todo en verde.
+
+- [ ] **Paso 5: commit**
+
+```bash
+git add Sources/BuddyCore/Rule/ShellRule+Commands.swift Tests/ClaudeMenuBarBuddyTests/ShellRuleCommandsTests.swift
+git commit -m "La regla detiene git bisect run, git rebase -x, los transportes ext y fd, y gh repo clone con opciones que ejecutan"
+```
+
+---
+
 ### Tarea 9: el interruptor del modo auto en la app
 
 **Archivos** (todos en `Sources/ClaudeMenuBarBuddy/`):
