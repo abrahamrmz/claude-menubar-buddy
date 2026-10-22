@@ -79,13 +79,25 @@ extension AppDelegate {
         }()
         let isEditTool = ["Edit", "MultiEdit", "Write", "NotebookEdit"].contains(req.tool)
         let isPlan = req.tool == "ExitPlanMode"
+        // A critical request never offers "always allow": the rule refuses to
+        // grant it anyway, and a button that quietly doesn't do what it says
+        // is worse than no button.
+        let canAlwaysAllow = base != nil && !req.isCritical
         // An edit or plan card offers auto mode only while it is off; with it
         // already on there is nothing left to turn on, and the row would just
         // take space.
         let hasQuietRow = question == nil
-            && (base != nil || ((isEditTool || isPlan) && !autoModeEnabled))
+            && (canAlwaysAllow || ((isEditTool || isPlan) && !autoModeEnabled))
         let quietRowHeight: CGFloat = 28
         let alwaysRowHeight: CGFloat = hasQuietRow ? quietRowHeight + gap : 0
+
+        // Why the card is here. The routine categories say it themselves
+        // ("edición de archivo", "solo lee"), so only the ones that made the
+        // rule stop print a line.
+        let quietCategories: Set<String> = ["lectura", "cambio_local", "edicion", "pregunta"]
+        let reasonText = (req.reason ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let showsReason = !reasonText.isEmpty && !quietCategories.contains(req.category ?? "")
+        let reasonRowHeight: CGFloat = showsReason ? 18 + gap : 0
 
         // Option buttons stack vertically and size to their own text: the
         // description is what you actually choose on, so it gets up to two
@@ -117,7 +129,7 @@ extension AppDelegate {
         // padding. The tail is NOT in here — it is the window's business, and
         // the card's own content lives entirely inside the rounded body.
         let cardHeight = pad + hintBarHeight + gap + actionsHeight + gap
-            + blockHeight + gap + headerHeight + pad
+            + blockHeight + gap + reasonRowHeight + headerHeight + pad
         let actionsTop = pad + hintBarHeight + gap + actionsHeight
 
         let window: NSWindow
@@ -295,6 +307,20 @@ extension AppDelegate {
         scroll.documentView = textView
         block.addSubview(scroll)
 
+        // Why the card is here, in one line: the rule's own reason, shortened
+        // by the field rather than at the source.
+        if showsReason {
+            let reasonField = NSTextField(labelWithString: "Te detuve: \(reasonText)")
+            reasonField.font = CardTheme.body(CardTheme.metaSize, weight: 600)
+            reasonField.textColor = req.isCritical ? CardTheme.removed : CardTheme.inkMuted
+            reasonField.lineBreakMode = .byTruncatingTail
+            reasonField.frame = NSRect(x: contentX,
+                                       y: actionsTop + gap + blockHeight + gap,
+                                       width: cardWidth - contentX - pad, height: 18)
+            reasonField.setAccessibilityLabel("Te detuve: \(reasonText)")
+            card.addSubview(reasonField)
+        }
+
         // Multiple choice: the options replace Allow/Deny entirely. Answering
         // isn't approving — there's no "no" to give here, so offering one
         // would only be a way to get the question asked again. The ↗ in the
@@ -352,7 +378,7 @@ extension AppDelegate {
         if hasQuietRow {
             let quietShortcut = ApprovalHotKeys.label(for: .approvalQuiet) ?? ""
             let quietButton: PressablePillButton
-            if let base = base {
+            if let base = base, !req.isCritical {
                 // Scoped to the asking project by default. A standing grant
                 // is worth as much as it is narrow, and the project you are
                 // in is the one you just decided about — "everywhere" is a
@@ -580,6 +606,7 @@ extension AppDelegate {
 
     func setPending(_ req: PendingRequest, queued: Int) {
         applyPendingStatusIcon(for: req, queued: queued)
+        if currentRequestId != req.id { currentCardShownAt = Date() }
         currentRequestId = req.id
         currentRequest = req
         lastQueuedCount = queued

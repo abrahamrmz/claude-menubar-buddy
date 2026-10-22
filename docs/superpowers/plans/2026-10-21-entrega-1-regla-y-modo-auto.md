@@ -1947,7 +1947,7 @@ public enum CardSafety {
 
 En esta entrega todas las solicitudes vienen de Claude, así que la etiqueta de agente en la tarjeta todavía no se dibuja. Llega con la entrega 2; aquí solo se decodifica el campo.
 
-- [ ] **Paso 1: escribir los tests**
+- [x] **Paso 1: escribir los tests**
 
 ```swift
 import Foundation
@@ -1976,17 +1976,17 @@ import BuddyCore
 }
 ```
 
-- [ ] **Paso 2: verificar que falla**
+- [x] **Paso 2: verificar que falla**
 
 Corre: `swift build && swift test --filter CardSafetyTests`
 Esperado: no compila.
 
-- [ ] **Paso 3: implementar `CardSafety` y verificar que pasa**
+- [x] **Paso 3: implementar `CardSafety` y verificar que pasa**
 
 Corre: `swift build && swift test --filter CardSafetyTests`
 Esperado: PASA.
 
-- [ ] **Paso 4: implementar en la app**
+- [x] **Paso 4: implementar en la app**
 
 - **`PendingRequest`:** los cuatro campos opcionales y su `CodingKeys` (`agent`, `category`, `critical`, `reason`). Una solicitud vieja sin esos campos sigue decodificando.
 - **`ApprovalCard.swift`:**
@@ -2005,12 +2005,12 @@ Esperado: PASA.
   - En `buildQueueMenu`, el título "Allow all (N)…" cuenta solo los permitidos y se oculta si N es 0. El `hint` pasa a `Approves every non-critical request above. Critical ones stay for you to read one by one.`
   - "Deny all" no cambia.
 
-- [ ] **Paso 5: verificar**
+- [x] **Paso 5: verificar**
 
 Corre: `swift build && swift test`
 Esperado: todo en verde.
 
-- [ ] **Paso 6: commit**
+- [x] **Paso 6: commit**
 
 ```bash
 git add Sources/BuddyCore/CardSafety.swift Tests/ClaudeMenuBarBuddyTests/CardSafetyTests.swift Sources/ClaudeMenuBarBuddy/

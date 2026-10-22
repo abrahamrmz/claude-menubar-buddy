@@ -50,6 +50,15 @@ extension AppDelegate {
     /// decision is "allow", "deny", or "always" (allow + remember command).
     func decideViaHotKey(_ decision: String) {
         guard currentRequestId != nil, !isDismissing else { return }
+        // Approval by reflex is the failure a critical card exists to stop:
+        // the key only works once the card has been readable for a moment.
+        if decision == "allow" || decision == "always" {
+            guard CardSafety.hotKeyMayApprove(critical: currentRequest?.isCritical ?? false,
+                                              shownAt: currentCardShownAt, now: Date()) else {
+                NSSound.beep()
+                return
+            }
+        }
         let button: PressablePillButton?
         switch decision {
         case "allow": button = allowButtonRef

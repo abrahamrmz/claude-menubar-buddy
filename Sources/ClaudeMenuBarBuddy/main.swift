@@ -101,8 +101,19 @@ struct PendingRequest: Decodable {
     // hook.sh doesn't write the field, and absent means "nothing was cut".
     let hidden: Int?
 
+    // What the rule decided, written by buddy-rule. Optional so request files
+    // from an older hook still decode; `agent` is decoded now and drawn in the
+    // next entrega, when sessions from other agents exist.
+    let agent: String?
+    let category: String?
+    let critical: Bool?
+    let reason: String?
+
+    var isCritical: Bool { critical == true }
+
     enum CodingKeys: String, CodingKey {
         case id, tool, hint, project, ts, cwd, choices, hidden
+        case agent, category, critical, reason
         case hostBundle = "host_bundle"
         case termProgram = "term_program"
     }
@@ -182,6 +193,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     // (e.g. the hook writes it again, or a filesystem event fires twice)
     // right after we've already answered it.
     var respondedIds = Set<String>()
+    /// When the card currently on screen first appeared. The critical hotkey
+    /// guard measures its delay from here, not from the keypress, so a card
+    /// that just popped up cannot be approved by reflex.
+    var currentCardShownAt: Date?
 
     // One listing of the config directory per poll tick, shared by everyone
     // who reads it: pending requests, done markers, turn_start markers and the
