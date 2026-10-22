@@ -1271,7 +1271,7 @@ public enum AutoModePolicy {
 }
 ```
 
-- [ ] **Paso 1: escribir los tests**
+- [x] **Paso 1: escribir los tests**
 
 ```swift
 import Testing
@@ -1361,12 +1361,12 @@ import BuddyCore
 }
 ```
 
-- [ ] **Paso 2: verificar que falla**
+- [x] **Paso 2: verificar que falla**
 
 Corre: `swift build && swift test --filter CommandRuleTests`
 Esperado: no compila.
 
-- [ ] **Paso 3: implementar**
+- [x] **Paso 3: implementar**
 
 - **`fromClaudeHook`:**
   - `Bash` → `command`;
@@ -1388,12 +1388,12 @@ Esperado: no compila.
   3. `autoMode && passesInAutoMode` → `planMode ? .deferToAgent (sin concesión) : pasa, .auto`;
   4. cualquier otro caso → tarjeta.
 
-- [ ] **Paso 4: verificar que pasa**
+- [x] **Paso 4: verificar que pasa**
 
 Corre: `swift build && swift test --filter CommandRuleTests`
 Esperado: PASA.
 
-- [ ] **Paso 5: commit**
+- [x] **Paso 5: commit**
 
 ```bash
 git add Sources/BuddyCore/Rule/CommandRule.swift Sources/BuddyCore/Rule/AutoModePolicy.swift Tests/ClaudeMenuBarBuddyTests/CommandRuleTests.swift
