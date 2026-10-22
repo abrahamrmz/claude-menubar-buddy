@@ -146,6 +146,16 @@ public enum ShellRule {
             return assessSed(arguments, state: state, targets: &targets, protectedOnly: &protectedOnly)
         case "find":
             return assessFind(arguments, state: state)
+        case "git":
+            return assessGit(arguments, state: state, targets: &targets)
+        case "gh":
+            return assessGh(arguments)
+        case "ssh":
+            return assessSSH(arguments, state: state)
+        case "awk", "gawk", "nawk":
+            return assessAwk(arguments)
+        case "xargs":
+            return assessXargs(arguments, state: state)
         default:
             break
         }
@@ -358,7 +368,7 @@ public enum ShellRule {
 
     /// Strips the prefixes that only forward to another command. `sudo` does
     /// not forward innocently, so it stops here.
-    private static func unwrap(_ words: inout [ShellWord]) -> Assessment? {
+    static func unwrap(_ words: inout [ShellWord]) -> Assessment? {
         wrapperLoop: while let head = words.first?.text {
             switch head {
             case "sudo", "doas":

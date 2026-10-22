@@ -921,7 +921,7 @@ git commit -m "La regla clasifica un comando de shell por lo que hace cada pieza
 - Consume: `ShellRule`, `RuleContext`, `ruleContext` y `category(_:)` de `ShellRuleTests.swift` (son de nivel de archivo, así que se ven en todo el target de tests).
 - Produce: nada público nuevo.
 
-- [ ] **Paso 1: escribir los tests**
+- [x] **Paso 1: escribir los tests**
 
 ```swift
 import Foundation
@@ -1021,12 +1021,12 @@ import BuddyCore
 }
 ```
 
-- [ ] **Paso 2: verificar que falla**
+- [x] **Paso 2: verificar que falla**
 
 Corre: `swift build && swift test --filter ShellRuleCommandsTests`
 Esperado: FALLAN los casos de los manejadores.
 
-- [ ] **Paso 3: implementar los manejadores en `ShellRule+Commands.swift`**
+- [x] **Paso 3: implementar los manejadores en `ShellRule+Commands.swift`**
 
 Cada manejador recibe las palabras (sin envolturas) y el estado (`dir`, `dirKnown`, contexto), y devuelve un `Assessment`. Las revisiones genéricas de los pasos 6–8 de la tarea 4 se siguen aplicando encima.
 
@@ -1106,12 +1106,12 @@ Cada manejador recibe las palabras (sin envolturas) y el estado (`dir`, `dirKnow
   - **Flags con valor:** `-n -I -P -L -s -d -E -a` (y `--x=`). Si el flag viene pegado a su valor (`-n1`, `-I{}`), ya trae el valor y no consume la palabra siguiente. El resto de `-…` son booleanos.
   - **Comando:** lo que sigue a los flags se evalúa como comando anidado. Si no hay comando, lectura.
 
-- [ ] **Paso 4: verificar que pasa**
+- [x] **Paso 4: verificar que pasa**
 
 Corre: `swift build && swift test --filter ShellRule`
 Esperado: PASAN `ShellRuleTests` y `ShellRuleCommandsTests`.
 
-- [ ] **Paso 5: commit**
+- [x] **Paso 5: commit**
 
 ```bash
 git add Sources/BuddyCore/Rule/ShellRule+Commands.swift Sources/BuddyCore/Rule/ShellRule.swift Tests/ClaudeMenuBarBuddyTests/ShellRuleCommandsTests.swift
