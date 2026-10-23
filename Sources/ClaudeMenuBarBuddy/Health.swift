@@ -406,7 +406,7 @@ struct BuddyHealth {
         }
         return Check(
             title: title, ok: false,
-            detail: "Ran without a card: \(unwatched.joined(separator: ", "))",
+            detail: "Ran without a card: \(HealthPolicy.summarizeUnwatched(unwatched))",
             remedy: "If any of those should ask first, add it as a PreToolUse matcher "
                   + "alongside the others in ~/.claude/settings.json.",
             optional: true)

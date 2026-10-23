@@ -481,7 +481,14 @@ extension AppDelegate {
         let heading = NSTextField(labelWithString: check.title)
         heading.font = .systemFont(ofSize: 13, weight: .medium)
 
-        let text = NSStackView(views: [heading, footnote(check.detail)])
+        // Capped at four lines, full text on hover: a check whose detail
+        // grows (a long tool list, a long path) must never push the window's
+        // own Next button out of reach.
+        let detail = footnote(check.detail)
+        detail.maximumNumberOfLines = 4
+        detail.cell?.truncatesLastVisibleLine = true
+        detail.toolTip = check.detail
+        let text = NSStackView(views: [heading, detail])
         text.orientation = .vertical
         text.alignment = .leading
         text.spacing = 1
