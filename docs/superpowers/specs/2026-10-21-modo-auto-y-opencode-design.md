@@ -206,9 +206,9 @@ Es un nuevo `executableTarget` que depende solo de `BuddyCore`.
    - responde `allow` con el motivo `"Modo auto (<categoría>) vía Claude Menu Bar Buddy"` o el de "siempre permitir";
    - si es modo auto, agrega la línea a `auto_decisions.jsonl`.
 4. Si no, crea la tarjeta como hoy. El archivo `request_<id>.json` suma `agent: "claude"`, `category`, `critical` y `reason`.
-5. La espera y las respuestas siguen igual (`allow`/`deny`/`answer`/`pass`).
+5. La espera y las respuestas siguen igual (`allow`/`deny`/`answer`), salvo `pass` (el botón ↗ "responder en la terminal"), que ahora responde `ask` y no `{}`. Con `{}`, el modo auto de Claude dejaría decidir a su clasificador; `pass` significa que el usuario contesta allá (revisión en vivo del 2026-10-22).
 6. **Si se acaba el tiempo:**
-   - si es crítico, responde `deny` con el motivo *"Este comando necesita aprobación en el buddy y nadie respondió a tiempo; no se ejecutó. Espera o pide al usuario que lo apruebe antes de reintentar."*;
+   - si es crítico, responde `ask` con el motivo *"Claude Menu Bar Buddy no recibió respuesta a tiempo (MOTIVO). Confirma aquí si quieres que se ejecute."*. Claude Code muestra entonces su propio prompt, que espera sin límite de tiempo, y ningún modo, ni el auto, puede aprobarlo en silencio (documentación de hooks de Claude Code). Así no se ejecuta y la sesión tampoco se corta. Decisión del usuario en la prueba en vivo del 2026-10-22; antes era `deny`.
    - si no es crítico, responde `{}`, como hoy.
 7. Se elimina el camino rápido de `auto_approve_edits`. Las ediciones pasan por la regla.
 8. El camino rápido de "siempre permitir" en bash se reemplaza por la respuesta de `buddy-rule`, para que la regla tenga una sola implementación.
@@ -216,7 +216,7 @@ Es un nuevo `executableTarget` que depende solo de `BuddyCore`.
 
 `notify-done.sh` no cambia.
 
-**Consecuencia que hay que conocer.** Con la app corriendo, una tarjeta crítica sin respuesta da `deny` aunque `~/.claude/settings.json` tenga una regla `allow` para ese comando. Hoy hay reglas así para `venv/bin/python …`, `manage.py test`, `scp`, `curl` y `ssh`. Hoy esas reglas lo ejecutarían al agotarse el tiempo; con este diseño gana la decisión del usuario: lo crítico espera. Aplica también a sesiones que corren sin nadie mirando.
+**Consecuencia que hay que conocer.** Con la app corriendo, una tarjeta crítica sin respuesta regresa al prompt de Claude (`ask`) aunque `~/.claude/settings.json` tenga una regla `allow` para ese comando. Hoy hay reglas así para `venv/bin/python …`, `manage.py test`, `scp`, `curl` y `ssh`. Hoy esas reglas lo ejecutarían al agotarse el tiempo; con este diseño gana la decisión del usuario: lo crítico espera. Aplica también a sesiones que corren sin nadie mirando.
 
 ### 7.3 La app
 - **La tarjeta:**

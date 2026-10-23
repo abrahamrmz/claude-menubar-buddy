@@ -56,6 +56,7 @@ extension AppDelegate {
             guard CardSafety.hotKeyMayApprove(critical: currentRequest?.isCritical ?? false,
                                               shownAt: currentCardShownAt, now: Date()) else {
                 NSSound.beep()
+                shakeCard()
                 return
             }
         }
@@ -112,6 +113,32 @@ extension AppDelegate {
         }
         writeAlwaysAllow(list)
         respond("allow")
+    }
+
+    /// The "not yet" for a refused hotkey, made visible. The beep alone was
+    /// easy to miss — with alert sounds off, a refused ⌘⏎ looked exactly like
+    /// a keypress that never registered. The classic macOS head-shake, on the
+    /// window itself so nothing inside the card gets clipped; skipped under
+    /// Reduce Motion, where the beep has to carry it.
+    func shakeCard() {
+        guard let window = statusBubbleWindow, window.isVisible,
+              !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
+        let origin = window.frame.origin
+        let path = CGMutablePath()
+        path.move(to: origin)
+        for dx: CGFloat in [-8, 8, -6, 6, -3, 3, 0] {
+            path.addLine(to: CGPoint(x: origin.x + dx, y: origin.y))
+        }
+        let shake = CAKeyframeAnimation()
+        shake.path = path
+        shake.duration = 0.35
+        window.animations = ["frameOrigin": shake]
+        window.animator().setFrameOrigin(origin)
+        // The custom animation must not outlive the shake: the card's own
+        // move and resize transitions expect the default ones.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [weak window] in
+            window?.animations = [:]
+        }
     }
 
     /// Approve this edit AND turn on auto mode (buddy-rule passes routine

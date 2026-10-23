@@ -430,13 +430,16 @@ struct HookTests {
         #expect(run.request?["reason"] as? String == "ejecuta código: python3")
     }
 
-    @Test func unansweredCriticalIsDenied() throws {
+    /// Unanswered and critical: it neither runs nor gets denied — the
+    /// decision goes back to Claude Code's own prompt, which waits for the
+    /// user without a time limit (and which auto mode can't approve silently).
+    @Test func unansweredCriticalGoesBackToTheNativePrompt() throws {
         let h = try Harness(autoMode: true)
         defer { h.cleanup() }
         let run = try h.run(bash("python3 x.py"), extraEnv: ["BUDDY_HOOK_WAIT_TICKS": "2"], letItTimeOut: true)
         #expect(run.cardShown)
-        #expect(run.decision?["permissionDecision"] as? String == "deny")
-        #expect((run.decision?["permissionDecisionReason"] as? String ?? "").contains("nadie respondió a tiempo"))
+        #expect(run.decision?["permissionDecision"] as? String == "ask")
+        #expect((run.decision?["permissionDecisionReason"] as? String ?? "").contains("no recibió respuesta"))
     }
 
     @Test func unansweredNonCriticalFallsBack() throws {
@@ -452,7 +455,7 @@ struct HookTests {
         let run = try h.run(bash("ls"), extraEnv: ["BUDDY_RULE": "/nonexistent/buddy-rule", "BUDDY_HOOK_WAIT_TICKS": "2"],
                             letItTimeOut: true)
         #expect(run.request?["critical"] as? Bool == true)
-        #expect(run.decision?["permissionDecision"] as? String == "deny")
+        #expect(run.decision?["permissionDecision"] as? String == "ask")
     }
 
     @Test func planModeDefersToClaude() throws {
@@ -544,7 +547,9 @@ struct HookTests {
         let h = try Harness()
         defer { h.cleanup() }
         let run = try h.run(bash("rm -rf /tmp/x"), respond: ["decision": "pass"])
-        #expect(run.stdout == "{}")
+        // "ask", not silence: with no decision, Claude's auto mode would let
+        // its own classifier decide — the opposite of "I'll answer it there".
+        #expect(run.decision?["permissionDecision"] as? String == "ask")
     }
 
     /// SIGTERM (the user answered in the terminal) must clean up the request

@@ -5,8 +5,9 @@
 # the response written by the menu bar app, and emits the hookSpecificOutput
 # decision.
 # On timeout with no one at the menu bar app, a non-critical call falls back to
-# Claude Code's normal interactive prompt; a critical one is denied, because
-# handing it back would let the agent's own permission mode decide.
+# Claude Code's normal permission flow; a critical one goes back to Claude
+# Code's own prompt with "ask", which waits for the user and which no
+# permission mode (auto included) can approve silently.
 
 set -euo pipefail
 
@@ -39,7 +40,7 @@ TOOL="$(echo "$INPUT" | jq -r '.tool_name // "unknown"')"
 # The rule — what passes on its own, what needs a card, what is critical —
 # lives in buddy-rule (BuddyCore), the same code the app and the tests use.
 # This script only carries the answer. No binary, or no answer, is treated
-# as the worst case: a card that is denied if nobody answers it.
+# as the worst case: a critical card.
 RULE_BIN="${BUDDY_RULE:-$DIR/buddy-rule}"
 RULE_OUT=""
 if [ -x "$RULE_BIN" ]; then
@@ -182,10 +183,12 @@ for _ in $(seq 1 "${BUDDY_HOOK_WAIT_TICKS:-110}"); do
         '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
       exit 0
     elif [ "$DECISION" = "pass" ]; then
-      # Hand off to the normal interactive prompt RIGHT NOW (no decision =
-      # default "ask" flow) — used for e.g. reading a long plan in VS Code
-      # with its full options instead of on the card.
-      echo '{}'
+      # Hand off to the normal interactive prompt RIGHT NOW — used for e.g.
+      # reading a long plan in VS Code with its full options instead of on
+      # the card. "ask", not silence: with no decision Claude's auto mode
+      # would let its classifier answer, and "pass" means the user will.
+      jq -n --arg r "${REASON:-Pasado desde Claude Menu Bar Buddy para responder aquí}" \
+        '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}'
       exit 0
     fi
   fi
@@ -195,12 +198,13 @@ done
 # Timeout: no decision made at the menu bar in time. Clean up and fall back to
 # the normal interactive prompt for routine work.
 rm -f "$REQUEST_FILE"
-# Critical and unanswered: it does not run. Handing it back would let the
-# agent's own permission mode (Claude's auto mode, an allow rule) decide —
-# exactly the unattended critical command this card exists to stop.
+# Critical and unanswered: it must not run, and the session must not be cut
+# either. "ask" puts the decision back in Claude Code's own prompt, which waits
+# for the user with no time limit; plain silence would let the agent's own
+# permission mode (Claude's auto mode, an allow rule) decide it unattended.
 if [ "$RULE_CRITICAL" = "true" ]; then
-  jq -n --arg r "Este comando necesita aprobación en el buddy y nadie respondió a tiempo; no se ejecutó. Espera o pide al usuario que lo apruebe antes de reintentar." \
-    '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
+  jq -n --arg r "Claude Menu Bar Buddy no recibió respuesta a tiempo (${RULE_REASON:-crítico}). Confirma aquí si quieres que se ejecute." \
+    '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}'
   exit 0
 fi
 echo '{}'
