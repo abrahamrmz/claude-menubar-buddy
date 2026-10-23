@@ -85,9 +85,10 @@ extension AppDelegate {
         let canAlwaysAllow = base != nil && !req.isCritical
         // An edit or plan card offers auto mode only while it is off; with it
         // already on there is nothing left to turn on, and the row would just
-        // take space.
+        // take space. Never on a critical card: approving a write to ~/.zshrc
+        // and switching the whole mode on are two decisions, not one click.
         let hasQuietRow = question == nil
-            && (canAlwaysAllow || ((isEditTool || isPlan) && !autoModeEnabled))
+            && (canAlwaysAllow || ((isEditTool || isPlan) && !autoModeEnabled && !req.isCritical))
         let quietRowHeight: CGFloat = 28
         let alwaysRowHeight: CGFloat = hasQuietRow ? quietRowHeight + gap : 0
 

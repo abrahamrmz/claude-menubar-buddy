@@ -25,7 +25,7 @@ INPUT="$(cat)"
 # falling back. Hand off to the native prompt immediately instead.
 #
 # This deliberately comes BEFORE buddy-rule. Auto mode and the always-allow
-# list are signalled by the menu bar icon (the pencil, the panda) — with no app
+# list are signalled by the menu bar icon (the bolt, the panda) — with no app
 # there is no signal, and a grant applied where nobody can see it is exactly
 # what that icon exists to prevent.
 if ! pgrep -x ClaudeMenuBarBuddy >/dev/null 2>&1; then
