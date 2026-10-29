@@ -144,4 +144,26 @@ import BuddyCore
         // what the wiring check demands.
         #expect(HealthPolicy.deliberatelyUngated.isDisjoint(with: HealthPolicy.expectedMatchers))
     }
+
+    // MARK: - Summary of the unwatched list
+
+    /// A session with a few MCP servers easily reports seventy tools; listed
+    /// one by one they pushed the setup window's Next button off screen.
+    @Test func summarizesALongUnwatchedList() {
+        let tools = ["Artifact", "CronCreate", "CronDelete", "CronList", "DesignSync", "EnterPlanMode",
+                     "EnterWorktree", "Monitor",
+                     "mcp__whatsapp__send_message", "mcp__whatsapp__list_chats", "mcp__terminal__run_in_terminal",
+                     "mcp__Claude_Browser__navigate", "mcp__Claude_Browser__computer", "mcp__Claude_Browser__find",
+                     "mcp__visualize__show_widget"]
+        #expect(HealthPolicy.summarizeUnwatched(tools)
+                == "Artifact, CronCreate, CronDelete, CronList, DesignSync, EnterPlanMode and 2 more; "
+                 + "7 MCP tools from 4 servers (Claude_Browser, whatsapp, terminal, …)")
+    }
+
+    @Test func shortUnwatchedListsStayWhole() {
+        #expect(HealthPolicy.summarizeUnwatched(["Monitor"]) == "Monitor")
+        #expect(HealthPolicy.summarizeUnwatched(["mcp__a__x"]) == "1 MCP tool from 1 server (a)")
+        #expect(HealthPolicy.summarizeUnwatched(["Monitor", "mcp__a__x", "mcp__b__y"])
+                == "Monitor; 2 MCP tools from 2 servers (a, b)")
+    }
 }

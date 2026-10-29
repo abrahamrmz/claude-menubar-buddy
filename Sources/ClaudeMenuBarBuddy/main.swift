@@ -101,8 +101,19 @@ struct PendingRequest: Decodable {
     // hook.sh doesn't write the field, and absent means "nothing was cut".
     let hidden: Int?
 
+    // What the rule decided, written by buddy-rule. Optional so request files
+    // from an older hook still decode; `agent` is decoded now and drawn in the
+    // next entrega, when sessions from other agents exist.
+    let agent: String?
+    let category: String?
+    let critical: Bool?
+    let reason: String?
+
+    var isCritical: Bool { critical == true }
+
     enum CodingKeys: String, CodingKey {
         case id, tool, hint, project, ts, cwd, choices, hidden
+        case agent, category, critical, reason
         case hostBundle = "host_bundle"
         case termProgram = "term_program"
     }
@@ -182,6 +193,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     // (e.g. the hook writes it again, or a filesystem event fires twice)
     // right after we've already answered it.
     var respondedIds = Set<String>()
+    /// When the card currently on screen first appeared. The critical hotkey
+    /// guard measures its delay from here, not from the keypress, so a card
+    /// that just popped up cannot be approved by reflex.
+    var currentCardShownAt: Date?
 
     // One listing of the config directory per poll tick, shared by everyone
     // who reads it: pending requests, done markers, turn_start markers and the
@@ -196,7 +211,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     }
 
     /// Whether a debug capture flag is present, going by the tick's listing
-    /// instead of its own stat. Deliberately NOT how autoEditsEnabled is
+    /// instead of its own stat. Deliberately NOT how autoModeEnabled is
     /// read: that one gets checked immediately after the flag file is
     /// written, where a listing up to a second old would report the state the
     /// user just changed away from.
@@ -401,6 +416,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             attributes: [.posixPermissions: 0o700])
         try? FileManager.default.setAttributes(
             [.posixPermissions: 0o700], ofItemAtPath: dirURL.path)
+        // The old edit-only flag retires here; auto mode is NOT turned on by it.
+        try? FileManager.default.removeItem(at: dirURL.appendingPathComponent("auto_approve_edits"))
         sweepStaleArtifacts()
         loadDecisionWindow()
 
@@ -412,7 +429,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         approvalHotKeys.onQueuePick = { [weak self] index in self?.selectQueued(index) }
 
         // variableLength, not squareLength: the icon grows a count and (in
-        // auto-edits mode) a pencil beside the panda.
+        // auto mode) a bolt beside the panda.
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         buildIdleMenu()
         setIdle()

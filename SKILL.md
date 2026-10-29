@@ -78,14 +78,19 @@ Confirm `Build complete!` and that
 ### 3. Install the hook scripts
 
 `hook.sh` and `notify-done.sh` in this folder are already portable (they use
-`$HOME`, not a hardcoded path). Copy both to the user's own config location:
+`$HOME`, not a hardcoded path). Copy both to the user's own config location,
+along with the rule binary the hook asks:
 
 ```bash
 mkdir -p ~/.config/claude-menubar-buddy
 cp hook.sh ~/.config/claude-menubar-buddy/hook.sh
 cp notify-done.sh ~/.config/claude-menubar-buddy/notify-done.sh
-chmod +x ~/.config/claude-menubar-buddy/hook.sh ~/.config/claude-menubar-buddy/notify-done.sh
+cp .build/debug/buddy-rule ~/.config/claude-menubar-buddy/buddy-rule
+chmod +x ~/.config/claude-menubar-buddy/hook.sh ~/.config/claude-menubar-buddy/notify-done.sh ~/.config/claude-menubar-buddy/buddy-rule
 ```
+
+`buddy-rule` is the rule the hook consults for every event, and it is copied
+again after every `swift build` — the installed copy is a snapshot, not a link.
 
 `notify-done.sh` is separate from `hook.sh` on purpose: it powers the
 turn-finished notification (see step 4b) and never needs a permission

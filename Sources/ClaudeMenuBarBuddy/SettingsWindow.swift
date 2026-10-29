@@ -1,4 +1,5 @@
 import AppKit
+import BuddyCore
 import KeyboardShortcuts
 import Settings
 
@@ -319,11 +320,11 @@ extension AppDelegate {
 
     private func safetyPane() -> BuddySettingsPane {
         BuddySettingsPane(identifier: "safety", title: "Safety", symbol: "lock.shield") { form in
-            let autoEdits = NSButton(checkboxWithTitle: "Auto-approve edits (Edit, Write, NotebookEdit)",
-                                     target: self, action: #selector(self.autoEditsCheckboxChanged(_:)))
-            autoEdits.state = self.autoEditsEnabled ? .on : .off
-            form.wideRow(autoEdits)
-            form.note("A standing grant: while on, file edits skip the card entirely. The menu bar icon carries a pencil the whole time so it can't be on without you knowing.")
+            let autoMode = NSButton(checkboxWithTitle: "Modo auto",
+                                     target: self, action: #selector(self.autoModeCheckboxChanged(_:)))
+            autoMode.state = self.autoModeEnabled ? .on : .off
+            form.wideRow(autoMode)
+            form.note("Lo que solo lee y los cambios locales que se pueden deshacer pasan sin tarjeta. Python, tests, deploys, push, borrados, rutas protegidas y archivos sensibles siempre te preguntan. El ícono de la barra lleva un rayo mientras está prendido.")
 
             form.header("AUTO-ALLOWED COMMANDS")
             let table = AlwaysAllowTable(delegate: self)
@@ -340,9 +341,9 @@ extension AppDelegate {
         }
     }
 
-    @objc func autoEditsCheckboxChanged(_ sender: NSButton) {
-        guard (sender.state == .on) != autoEditsEnabled else { return }
-        toggleAutoEdits()
+    @objc func autoModeCheckboxChanged(_ sender: NSButton) {
+        guard (sender.state == .on) != autoModeEnabled else { return }
+        toggleAutoMode()
     }
 
     @objc func revealDecisionLog() {

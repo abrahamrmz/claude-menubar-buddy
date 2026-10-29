@@ -27,6 +27,8 @@ let package = Package(
             name: "BuddyCore",
             path: "Sources/BuddyCore"
         ),
+        // The rule, as a tiny binary hook.sh can ask — the same code the app and the tests use.
+        .executableTarget(name: "buddy-rule", dependencies: ["BuddyCore"], path: "Sources/BuddyRule"),
         .executableTarget(
             name: "ClaudeMenuBarBuddy",
             dependencies: [

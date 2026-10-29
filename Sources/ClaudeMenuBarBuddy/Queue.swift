@@ -103,10 +103,17 @@ extension AppDelegate {
         // app and take focus, which this card exists to avoid. A submenu asks
         // the same question without any of that — and "allow all" deserves
         // asking, since it approves things you haven't read.
-        menu.addItem(confirmItem(title: "Allow all (\(requests.count))…",
-                                 confirm: "Yes, allow all \(requests.count)",
-                                 hint: "Approves every request above. Open this to confirm.",
-                                 action: #selector(allowAllQueued)))
+        //
+        // Critical requests are never swept along: they stay for the user to
+        // read one by one, so the count — and the item — cover only what the
+        // batch would actually approve.
+        let allowable = CardSafety.batchAllowable(requests, isCritical: \.isCritical)
+        if !allowable.isEmpty {
+            menu.addItem(confirmItem(title: "Allow all (\(allowable.count))…",
+                                     confirm: "Yes, allow all \(allowable.count)",
+                                     hint: "Approves every non-critical request above. Critical ones stay for you to read one by one.",
+                                     action: #selector(allowAllQueued)))
+        }
         menu.addItem(confirmItem(title: "Deny all (\(requests.count))…",
                                  confirm: "Yes, deny all \(requests.count)",
                                  hint: "Denies every request above. Open this to confirm.",
@@ -129,8 +136,26 @@ extension AppDelegate {
     }
 
     @objc func queueMenuPick(_ sender: NSMenuItem) { selectQueued(sender.tag) }
-    @objc func allowAllQueued() { respondToQueue("allow") }
+    @objc func allowAllQueued() { allowAllNonCriticalQueued() }
     @objc func denyAllQueued() { respondToQueue("deny") }
+
+    /// Approves every waiting request except the critical ones. The card on
+    /// screen only answers if it is non-critical; a critical one stays up for
+    /// the user to read, and the line behind it is re-polled.
+    func allowAllNonCriticalQueued() {
+        guard let currentId = currentRequestId, !isDismissing else { return }
+        let others = orderedRequests().filter { $0.id != currentId }
+        for req in CardSafety.batchAllowable(others, isCritical: \.isCritical) {
+            writeDecision(id: req.id, request: req, decision: "allow")
+        }
+        lastQueuedCount = 0
+        pinnedRequestId = nil
+        if currentRequest?.isCritical == true {
+            poll()
+        } else {
+            respond("allow")
+        }
+    }
 
     /// Answers every waiting request the same way. The ones behind the card
     /// are written straight to disk; the card itself goes through respond()

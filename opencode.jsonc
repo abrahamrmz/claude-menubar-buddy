@@ -1,0 +1,52 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  // Reglas del repo para el agente.
+  "instructions": ["AGENTS.md"],
+  // opencode aplica la ÚLTIMA regla que coincide: primero lo general, luego
+  // las excepciones, y los deny al final para que nada los pise. En un
+  // comando compuesto, basta una pieza en deny para negarlo entero.
+  "permissions": [
+    { "action": "shell", "resource": "*", "effect": "ask" },
+
+    { "action": "shell", "resource": "swift build *", "effect": "allow" },
+    { "action": "shell", "resource": "swift test *", "effect": "allow" },
+    { "action": "shell", "resource": "shellcheck *", "effect": "allow" },
+    { "action": "shell", "resource": "git status *", "effect": "allow" },
+    { "action": "shell", "resource": "git diff *", "effect": "allow" },
+    { "action": "shell", "resource": "git log *", "effect": "allow" },
+    { "action": "shell", "resource": "git show *", "effect": "allow" },
+    { "action": "shell", "resource": "git add *", "effect": "allow" },
+    { "action": "shell", "resource": "git commit *", "effect": "allow" },
+
+    { "action": "edit", "resource": "*", "effect": "allow" },
+    { "action": "edit", "resource": "opencode.jsonc", "effect": "ask" },
+    { "action": "edit", "resource": ".opencode/*", "effect": "ask" },
+    { "action": "edit", "resource": "AGENTS.md", "effect": "ask" },
+    { "action": "edit", "resource": "Package.swift", "effect": "ask" },
+
+    { "action": "webfetch", "resource": "*", "effect": "ask" },
+    { "action": "websearch", "resource": "*", "effect": "ask" },
+
+    // Fuera del worktree no se lee ni se edita nada.
+    { "action": "external_directory", "resource": "*", "effect": "deny" },
+    // La carpeta principal del repo (de ahí corre el buddy en vivo) y la
+    // configuración del buddy, por si opencode no las considerara externas.
+    { "action": "edit", "resource": "*claude-menubar-buddy/*", "effect": "deny" },
+    { "action": "read", "resource": "*claude-menubar-buddy/*", "effect": "deny" },
+    { "action": "shell", "resource": "*claude-menubar-buddy/*", "effect": "deny" },
+    { "action": "shell", "resource": "*claude-menubar-buddy", "effect": "deny" },
+
+    { "action": "shell", "resource": "git push *", "effect": "deny" },
+    { "action": "shell", "resource": "git reset *", "effect": "deny" },
+    { "action": "shell", "resource": "rm *", "effect": "deny" },
+    { "action": "shell", "resource": "sudo *", "effect": "deny" },
+    { "action": "shell", "resource": "ssh *", "effect": "deny" },
+    { "action": "shell", "resource": "scp *", "effect": "deny" },
+    { "action": "shell", "resource": "rsync *", "effect": "deny" },
+    { "action": "shell", "resource": "curl *", "effect": "deny" },
+    { "action": "shell", "resource": "wget *", "effect": "deny" },
+    { "action": "shell", "resource": "launchctl *", "effect": "deny" },
+    { "action": "shell", "resource": "swift run *", "effect": "deny" },
+    { "action": "shell", "resource": "open *", "effect": "deny" }
+  ]
+}

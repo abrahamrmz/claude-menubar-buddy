@@ -148,24 +148,14 @@ extension AppDelegate {
     // edits Claude Code's own config.
     var alwaysAllowURL: URL { dirURL.appendingPathComponent("always_allow.json") }
 
-    // Flag file for auto-approve-edits mode; hook.sh fast-paths Edit/Write/
-    // NotebookEdit while it exists. A file (not UserDefaults) so the hook
-    // can read it without talking to the app.
-    var autoEditsFlagURL: URL { dirURL.appendingPathComponent("auto_approve_edits") }
-    var autoEditsEnabled: Bool { FileManager.default.fileExists(atPath: autoEditsFlagURL.path) }
+    // Flag file for auto mode; buddy-rule reads it and lets routine work pass
+    // without a card. A file (not UserDefaults) so the rule can read it
+    // without talking to the app.
+    var autoModeFlagURL: URL { dirURL.appendingPathComponent("auto_mode") }
+    var autoModeEnabled: Bool { FileManager.default.fileExists(atPath: autoModeFlagURL.path) }
 
     func readAlwaysAllow() -> AlwaysAllow {
-        guard let data = try? Data(contentsOf: alwaysAllowURL),
-              let obj = try? JSONSerialization.jsonObject(with: data) else { return AlwaysAllow() }
-        // The file was a bare array before grants had scopes. Everything in
-        // one was granted everywhere, so that is where it stays: narrowing a
-        // permission the user gave would be a surprise in the safe direction,
-        // but a surprise, and a command that silently stopped being allowed
-        // would just look like the buddy had broken.
-        if let legacy = obj as? [String] { return AlwaysAllow(global: legacy) }
-        guard let dict = obj as? [String: Any] else { return AlwaysAllow() }
-        return AlwaysAllow(global: dict["global"] as? [String] ?? [],
-                           projects: dict["projects"] as? [String: [String]] ?? [:])
+        AlwaysAllow.read(from: alwaysAllowURL)
     }
 
     func writeAlwaysAllow(_ list: AlwaysAllow) {
@@ -184,25 +174,3 @@ extension AppDelegate {
     }
 }
 
-/// The buddy's Bash allowlist, in two scopes: commands allowed everywhere,
-/// and commands allowed only in the session that granted them.
-///
-/// Projects are keyed by the session's **absolute cwd**, not by its name.
-/// Two checkouts can both be called `api`, and a grant leaking between them
-/// is exactly the kind of thing nobody would ever notice. The match is exact
-/// for the same reason a prefix would be wrong: `/repo` as a prefix also
-/// covers `/repo-secrets`, and a grant that widens by accident is the one
-/// failure this file exists to prevent.
-struct AlwaysAllow {
-    var global: [String] = []
-    var projects: [String: [String]] = [:]
-
-    /// Mirrors hook.sh's lookup — kept in Swift so the settings table can say
-    /// what the hook would actually do, but the hook remains the authority
-    /// (it decides with the app not running).
-    func allows(_ base: String, in cwd: String?) -> Bool {
-        if global.contains(base) { return true }
-        guard let cwd = cwd, !cwd.isEmpty else { return false }
-        return projects[cwd]?.contains(base) ?? false
-    }
-}

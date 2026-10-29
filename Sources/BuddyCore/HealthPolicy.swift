@@ -95,6 +95,34 @@ public enum HealthPolicy {
         seen.subtracting(gated).subtracting(reviewed).sorted()
     }
 
+    /// The unwatched list in one readable line: the first few built-in tools
+    /// by name, the rest counted, and MCP tools folded by server — a session
+    /// with a handful of servers reports dozens of them, and a line that long
+    /// pushed the setup window's own buttons off screen.
+    public static func summarizeUnwatched(_ tools: [String], shown: Int = 6) -> String {
+        let builtins = tools.filter { !$0.hasPrefix("mcp__") }
+        let mcp = tools.filter { $0.hasPrefix("mcp__") }
+        var parts: [String] = []
+        if !builtins.isEmpty {
+            let extra = builtins.count - shown
+            parts.append(builtins.prefix(shown).joined(separator: ", ")
+                         + (extra > 0 ? " and \(extra) more" : ""))
+        }
+        if !mcp.isEmpty {
+            var perServer: [String: Int] = [:]
+            for tool in mcp {
+                let server = tool.dropFirst("mcp__".count).components(separatedBy: "__").first ?? ""
+                perServer[server, default: 0] += 1
+            }
+            let servers = perServer.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key < $1.key }
+                .map(\.key)
+            let named = servers.prefix(3).joined(separator: ", ") + (servers.count > 3 ? ", …" : "")
+            parts.append("\(mcp.count) MCP tool\(mcp.count == 1 ? "" : "s") from "
+                         + "\(servers.count) server\(servers.count == 1 ? "" : "s") (\(named))")
+        }
+        return parts.joined(separator: "; ")
+    }
+
     // MARK: - Version anchor
 
     /// Major.minor only. Claude Code ships patch releases constantly, and a

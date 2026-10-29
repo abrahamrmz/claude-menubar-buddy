@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
-# PreToolUse hook — routes permission decisions to the Claude Menu Bar Buddy app.
-# Reads the tool-call JSON on stdin, writes a request file, polls for a response
-# written by the menu bar app, and emits the hookSpecificOutput decision.
-# On timeout (no one at the menu bar app in time), emits nothing so Claude Code
-# falls back to its normal interactive permission prompt.
+# PreToolUse hook — asks buddy-rule what to do and carries the answer.
+# buddy-rule (BuddyCore) is the same rule the app and the tests use: it says
+# pass, card or defer, and this script only writes the request file, polls for
+# the response written by the menu bar app, and emits the hookSpecificOutput
+# decision.
+# On timeout with no one at the menu bar app, a non-critical call falls back to
+# Claude Code's normal permission flow; a critical one goes back to Claude
+# Code's own prompt with "ask", which waits for the user and which no
+# permission mode (auto included) can approve silently.
 
 set -euo pipefail
 
@@ -21,10 +25,10 @@ INPUT="$(cat)"
 # every tool call would sit in the poll loop below for the full 55s before
 # falling back. Hand off to the native prompt immediately instead.
 #
-# This deliberately comes BEFORE the standing-grant fast paths below.
-# Auto-approve-edits and the always-allow list are signalled by the menu bar
-# icon (the pencil, the panda) — with no app there is no signal, and a grant
-# applied where nobody can see it is exactly what that icon exists to prevent.
+# This deliberately comes BEFORE buddy-rule. Auto mode and the always-allow
+# list are signalled by the menu bar icon (the bolt, the panda) — with no app
+# there is no signal, and a grant applied where nobody can see it is exactly
+# what that icon exists to prevent.
 if ! pgrep -x ClaudeMenuBarBuddy >/dev/null 2>&1; then
   echo '{}'
   exit 0
@@ -33,217 +37,40 @@ fi
 ID="$(uuidgen)"
 TOOL="$(echo "$INPUT" | jq -r '.tool_name // "unknown"')"
 
-# Fast path: auto-approve-edits mode. Toggled from the app's menu (or the
-# standing-grant row on an Edit card); while the flag file exists, file-modifying tools
-# skip the card entirely. Delete the flag (or uncheck the menu item) to go
-# back to ask-before-each-edit.
-if [ -f "$DIR/auto_approve_edits" ]; then
-  case "$TOOL" in
-    Edit|MultiEdit|Write|NotebookEdit)
-      EDIT_PATH="$(echo "$INPUT" | jq -r '.tool_input.file_path // .tool_input.notebook_path // ""')"
-      # "Stop asking about edits" means the edits you were watching go by, not
-      # the handful of files that decide what runs on this machine tomorrow.
-      # These always get a card, however tired of clicking you are:
-      #   - credentials, and the launchd/git-hook paths that are code
-      #     execution on the next login or the next commit;
-      #   - Claude Code's own configuration;
-      #   - the buddy's own config, which is the important one — without it an
-      #     auto-approved Write could append to always_allow.json and quietly
-      #     widen the very grant that let it through;
-      #   - anything not absolute or containing "..", because a glob can't
-      #     tell where those land, and "can't tell" has to mean "ask".
-      #
-      # Checked on the path as it arrived: a relative path or one carrying
-      # ".." can't be placed by globs that name absolute locations, and the
-      # canonicalisation below may not be able to place it either.
-      EDIT_SAFE=1
-      case "$EDIT_PATH" in
-        ""|[!/]*|*..*) EDIT_SAFE=0 ;;
-      esac
-
-      # The patterns below name real files, but a glob only ever compares
-      # text — and one file answers to many spellings. `/tmp/p//.git/config`
-      # and `/tmp/p/./.git/config` are the doubled and dotted spellings of a
-      # path that matches; `/etc/x` is a symlink to the `/private/etc/x` the
-      # list already knows about. Each one opens the protected file while
-      # missing the pattern that protects it, so settle the spelling first:
-      # squeeze repeated slashes (`pwd -P` collapses them inside a path but
-      # keeps a leading `//`, and leaves the spelling untouched when the
-      # directory can't be entered at all), then let `pwd -P` resolve
-      # symlinks and `/./` out of the directory part. The basename is
-      # appended rather than resolved because Write's target need not exist
-      # yet. Both loops shorten the string every pass, so neither can spin.
-      #
-      # $HOME goes through the same mill: the patterns anchored on it are
-      # compared against a resolved path, so an unresolved $HOME would sail
-      # past every one of them the moment a home directory sits behind a
-      # symlink. Canonical only matches canonical.
-      if [ "$EDIT_SAFE" = 1 ]; then
-        canonicalise() {
-          local p="$1" d r q tail
-          while [ "${p#//}" != "$p" ]; do p="${p#/}"; done
-          while :; do
-            case "$p" in
-              *//*) q="${p%%//*}/${p#*//}"; [ "$q" = "$p" ] && break; p="$q" ;;
-              *) break ;;
-            esac
-          done
-          d="${p%/*}"; tail="${p##*/}"
-          [ -z "$d" ] && d="/"
-          # Climb to the nearest directory that exists, carrying the part that
-          # doesn't yet. A Write creates what isn't there — the whole
-          # `Application Support/Code/User/` chain can be missing — and
-          # stopping at the first failed `cd` would hand the patterns a path
-          # still spelled the way it arrived, against a $HOME already resolved.
-          while :; do
-            if r="$(cd "$d" 2>/dev/null && pwd -P)"; then
-              [ "$r" = "/" ] && r=""
-              printf '%s/%s' "$r" "$tail"
-              return
-            fi
-            case "$d" in /|"") break ;; esac
-            tail="${d##*/}/$tail"
-            d="${d%/*}"
-            [ -z "$d" ] && d="/"
-          done
-          printf '%s' "$p"
-        }
-        EDIT_CANON="$(canonicalise "$EDIT_PATH")"
-        # The `||` is load-bearing under `set -e`: an unreadable $HOME would
-        # otherwise take the whole hook down with the failed substitution,
-        # turning a path question into no decision at all.
-        HOME_CANON="$(cd "$HOME" 2>/dev/null && pwd -P)" || HOME_CANON="$HOME"
-        [ -z "$HOME_CANON" ] && HOME_CANON="$HOME"
-
-        # …and match it case-insensitively, because the spelling that reaches
-        # the file is not the only one that opens it: APFS is case-insensitive
-        # by default, so a Write to `.GIT/config` lands in `.git/config` while
-        # sailing past `*/.git/*`. That one gap would undo every pattern here.
-        # On a case-sensitive volume this only costs a card nobody needed,
-        # which is the side to be wrong on.
-        shopt -s nocasematch
-        case "$EDIT_CANON" in
-          */.ssh/*|*/.gnupg/*) EDIT_SAFE=0 ;;
-          */Library/LaunchAgents/*|*/Library/LaunchDaemons/*) EDIT_SAFE=0 ;;
-          # All of .git, not only hooks/: `.git/config` is code execution just
-          # the same — core.fsmonitor and core.pager name a program, and an
-          # alias starting with `!` is a shell line — and it fires on the very
-          # next git command. Nothing legitimate auto-edits inside .git anyway,
-          # so the whole directory is cheaper to defend than an enumeration.
-          # `.git` is also a plain FILE in a worktree or submodule (it reads
-          # `gitdir: <path>`), and repointing it hands the next git command a
-          # foreign config and hooks; `*.git/*` covers the bare repo, whose
-          # hooks/ sits at the top level with no `.git` component at all.
-          */.git|*/.git/*|*.git/*) EDIT_SAFE=0 ;;
-          # Any .claude, not just $HOME's: Claude Code reads a PROJECT's
-          # .claude/settings.json too, and settings can register hooks — so an
-          # auto-approved write there installs code that runs on the next tool
-          # call, using this grant to manufacture a wider one. Same reason the
-          # buddy's own config is on the list. ~/.claude.json is the same
-          # configuration wearing a different name: it holds the mcpServers
-          # entries, each a command Claude Code spawns on the next session.
-          */.claude/*|"$HOME_CANON"/.claude.json) EDIT_SAFE=0 ;;
-          */.mcp.json|"$HOME_CANON"/.config/claude-menubar-buddy/*) EDIT_SAFE=0 ;;
-          "$HOME_CANON/Library/Application Support/Claude/"*) EDIT_SAFE=0 ;;
-          # Sourced on the next shell…
-          */.zshrc|*/.zshenv|*/.zprofile|*/.zlogin) EDIT_SAFE=0 ;;
-          */.bashrc|*/.bash_profile|*/.bash_login|*/.profile) EDIT_SAFE=0 ;;
-          # …or on the way out of one, which is no less a shell for it.
-          */.zlogout|*/.bash_logout) EDIT_SAFE=0 ;;
-          */.oh-my-zsh/*|*/.config/fish/*) EDIT_SAFE=0 ;;
-          # …on the next `cd` into the directory (direnv)…
-          */.envrc) EDIT_SAFE=0 ;;
-          # …on the next git command, or when the editor opens the folder
-          # (.vscode/tasks.json runs a command on folderOpen). git reads the
-          # XDG config just as willingly as ~/.gitconfig, and the editor reads
-          # a user-level tasks.json the same way it reads the project's.
-          "$HOME_CANON"/.gitconfig|*/.vscode/*) EDIT_SAFE=0 ;;
-          */.config/git/*) EDIT_SAFE=0 ;;
-          "$HOME_CANON/Library/Application Support/Code/User/"*) EDIT_SAFE=0 ;;
-          "$HOME_CANON/Library/Application Support/Cursor/User/"*) EDIT_SAFE=0 ;;
-          # /etc is a symlink to /private/etc; the canonicalisation above
-          # normally settles that, so these stand for the case where it
-          # couldn't (an unreadable parent leaves the path as it arrived).
-          /etc/*|/private/etc/*|/usr/*|/bin/*|/sbin/*|/Library/*) EDIT_SAFE=0 ;;
-        esac
-        shopt -u nocasematch
-      fi
-
-      if [ "$EDIT_SAFE" = 1 ]; then
-        jq -n '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"allow",permissionDecisionReason:"Auto-approved edit via Claude Menu Bar Buddy"}}'
-        exit 0
-      fi
-      ;;
-  esac
+# The rule — what passes on its own, what needs a card, what is critical —
+# lives in buddy-rule (BuddyCore), the same code the app and the tests use.
+# This script only carries the answer. No binary, or no answer, is treated
+# as the worst case: a critical card.
+RULE_BIN="${BUDDY_RULE:-$DIR/buddy-rule}"
+RULE_OUT=""
+if [ -x "$RULE_BIN" ]; then
+  RULE_OUT="$(printf '%s' "$INPUT" | "$RULE_BIN" 2>/dev/null || true)"
 fi
+VERDICT="$(printf '%s' "$RULE_OUT" | jq -r '.verdict // empty' 2>/dev/null || true)"
+if [ -z "$VERDICT" ]; then
+  RULE_OUT='{"verdict":"card","category":"desconocido","critical":true,"reason":"no se pudo evaluar la regla","grant":null}'
+  VERDICT="card"
+fi
+RULE_REASON="$(printf '%s' "$RULE_OUT" | jq -r '.reason // ""')"
+RULE_CATEGORY="$(printf '%s' "$RULE_OUT" | jq -r '.category // "desconocido"')"
+RULE_CRITICAL="$(printf '%s' "$RULE_OUT" | jq -r 'if .critical == true then "true" else "false" end')"
+case "$VERDICT" in
+  pass)
+    jq -n --arg r "$RULE_REASON" \
+      '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"allow",permissionDecisionReason:$r}}'
+    exit 0
+    ;;
+  defer)
+    echo '{}'
+    exit 0
+    ;;
+esac
 
-# Where this session lives. Needed this early because allowlist grants are
-# scoped by it; the project *name* below is only ever for display.
+# Where this session lives, for the request file the card reads.
 CWD="$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null || echo "")"
 [ -z "$CWD" ] && CWD="$PWD"
 PROJECT_NAME=""
 [ -n "$CWD" ] && PROJECT_NAME="$(basename "$CWD")"
-
-# Fast path: Bash commands whose base command the user marked "Always allow"
-# from the approval card get approved instantly — no card, no waiting. The
-# list is maintained by the menu bar app (always_allow.json); removing an
-# entry from Settings ▸ Safety re-enables the card.
-ALLOW_FILE="$DIR/always_allow.json"
-if [ "$TOOL" = "Bash" ] && [ -f "$ALLOW_FILE" ]; then
-  FULL_CMD="$(echo "$INPUT" | jq -r '.tool_input.command // ""')"
-
-  # An allowlist entry names ONE command, so it may only ever speak for ONE
-  # command. Anything that chains, substitutes, redirects or expands means the
-  # base token has stopped describing what actually runs, and the grant the
-  # user gave ("gh won't ask again") would be covering something they never
-  # agreed to: `echo hi ; rm -rf ~` used to sail through on "echo" alone.
-  # Those always get a card, however boring their first word looks.
-  case "$FULL_CMD" in
-    *[\;\&\|\<\>\(\)\`\$\\]* | *$'\n'*) FAST_PATH_SHAPE="unsafe" ;;
-    *) FAST_PATH_SHAPE="single" ;;
-  esac
-
-  if [ "$FAST_PATH_SHAPE" = "single" ]; then
-    # The first token IS the command — the same base the app extracts when
-    # offering the "Always allow" button. Read inside the shape check so a
-    # command already headed for a card doesn't pay for a subshell first.
-    FIRST_TOKEN="$(printf '%s' "$FULL_CMD" | awk '{print $1; exit}')"
-    # An env assignment in front is not decoration: it decides what the base
-    # name RESOLVES to. `PATH=/tmp/evil ls` is the allowlisted `ls` in spelling
-    # only, and `DYLD_INSERT_LIBRARIES=/tmp/x.dylib ls` loads foreign code into
-    # the real one without altering the word at all. The grant said "ls", so
-    # only a bare `ls` may ride on it — a prefix means a card, like any other
-    # way of making the first word stop describing what runs. The app won't
-    # write such a base (commandBase screens `=` out of the character set),
-    # so this is the belt to that suspenders: a hand-edited always_allow.json
-    # still can't talk its way onto the fast path.
-    case "$FIRST_TOKEN" in
-      [A-Za-z_]*=*) CMD_BASE="" ;;
-      *) CMD_BASE="$FIRST_TOKEN" ;;
-    esac
-    # Two scopes: `global` (allowed anywhere) and `projects[<absolute cwd>]`
-    # (allowed only where it was granted). Keyed by the full path and matched
-    # exactly — two checkouts can share a basename, and a prefix match would
-    # make a grant on /repo also cover /repo-secrets.
-    #
-    # A bare array is the pre-scopes shape of this file. Those entries were
-    # granted with no project in the picture, so they read as global; the app
-    # rewrites the file in the new shape on its next change.
-    SCOPE=""
-    if [ -n "$CMD_BASE" ]; then
-      SCOPE="$(jq -r --arg c "$CMD_BASE" --arg d "$CWD" '
-        (if type == "array" then {global: ., projects: {}} else . end)
-        | if ((.global // []) | index($c)) != null then "everywhere"
-          elif ((.projects[$d] // []) | index($c)) != null then "in this project"
-          else "" end' "$ALLOW_FILE" 2>/dev/null || echo "")"
-    fi
-    if [ -n "$SCOPE" ]; then
-      jq -n --arg r "Always-allowed $SCOPE via Claude Menu Bar Buddy: $CMD_BASE" \
-        '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"allow",permissionDecisionReason:$r}}'
-      exit 0
-    fi
-  fi
-fi
 
 # AskUserQuestion isn't a permission decision — it's Claude asking the user
 # something with named options. The card can present those and answer with
@@ -298,9 +125,6 @@ esac
 # --argjson wants a real number, and this one came out of a subshell.
 case "$HIDDEN" in ''|*[!0-9]*) HIDDEN=0 ;; esac
 
-# CWD / PROJECT_NAME are computed near the top — the allowlist fast path
-# needs them before it can decide, and it runs long before this point.
-
 # Who is hosting this session, so the app's "jump to session" button can raise
 # that exact window. The hook inherits the host app's environment: macOS sets
 # __CFBundleIdentifier for anything launched from an .app (com.microsoft.VSCode,
@@ -316,10 +140,12 @@ REQUEST_FILE="$DIR/request_${ID}.json"
 
 jq -n --arg id "$ID" --arg tool "$TOOL" --arg hint "$HINT" --arg project "$PROJECT_NAME" \
   --arg cwd "$CWD" --arg host_bundle "$HOST_BUNDLE" --arg term_program "$TERM_PROG" \
+  --arg category "$RULE_CATEGORY" --arg reason "$RULE_REASON" --arg critical "$RULE_CRITICAL" \
   --argjson choices "$CHOICES" --argjson hidden "$HIDDEN" \
   '{id: $id, tool: $tool, hint: $hint, project: $project, cwd: $cwd,
     host_bundle: $host_bundle, term_program: $term_program, choices: $choices,
-    hidden: $hidden, ts: now}' > "$REQUEST_FILE"
+    hidden: $hidden, agent: "claude", category: $category, critical: ($critical == "true"),
+    reason: $reason, ts: now}' > "$REQUEST_FILE"
 
 RESPONSE_FILE="$DIR/response_${ID}.json"
 
@@ -329,7 +155,7 @@ RESPONSE_FILE="$DIR/response_${ID}.json"
 trap 'rm -f "$REQUEST_FILE" "$RESPONSE_FILE"; exit 0' TERM HUP INT
 
 # Poll for up to 55s (keep under the hook's own timeout, set to 60s in settings.json)
-for _ in $(seq 1 110); do
+for _ in $(seq 1 "${BUDDY_HOOK_WAIT_TICKS:-110}"); do
   if [ -f "$RESPONSE_FILE" ]; then
     RESPONSE="$(cat "$RESPONSE_FILE" 2>/dev/null || echo '{}')"
     DECISION="$(echo "$RESPONSE" | jq -r '.decision // ""' 2>/dev/null || echo "")"
@@ -357,10 +183,12 @@ for _ in $(seq 1 110); do
         '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$r}}'
       exit 0
     elif [ "$DECISION" = "pass" ]; then
-      # Hand off to the normal interactive prompt RIGHT NOW (no decision =
-      # default "ask" flow) — used for e.g. reading a long plan in VS Code
-      # with its full options instead of on the card.
-      echo '{}'
+      # Hand off to the normal interactive prompt RIGHT NOW — used for e.g.
+      # reading a long plan in VS Code with its full options instead of on
+      # the card. "ask", not silence: with no decision Claude's auto mode
+      # would let its classifier answer, and "pass" means the user will.
+      jq -n --arg r "${REASON:-Pasado desde Claude Menu Bar Buddy para responder aquí}" \
+        '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}'
       exit 0
     fi
   fi
@@ -368,7 +196,16 @@ for _ in $(seq 1 110); do
 done
 
 # Timeout: no decision made at the menu bar in time. Clean up and fall back to
-# the normal interactive prompt (no permissionDecision = default "ask" flow).
+# the normal interactive prompt for routine work.
 rm -f "$REQUEST_FILE"
+# Critical and unanswered: it must not run, and the session must not be cut
+# either. "ask" puts the decision back in Claude Code's own prompt, which waits
+# for the user with no time limit; plain silence would let the agent's own
+# permission mode (Claude's auto mode, an allow rule) decide it unattended.
+if [ "$RULE_CRITICAL" = "true" ]; then
+  jq -n --arg r "Claude Menu Bar Buddy no recibió respuesta a tiempo (${RULE_REASON:-crítico}). Confirma aquí si quieres que se ejecute." \
+    '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}'
+  exit 0
+fi
 echo '{}'
 exit 0
