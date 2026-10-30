@@ -1336,3 +1336,82 @@ Escribe en el chat:
 - lo anotado en `docs/superpowers/plans/NOTAS-EJECUCION.md`, si hay algo.
 
 **No** instales nada, no corras la app y no hagas push. La prueba en vivo contra opencode la hace Claude con el usuario: hace falta cambiar la configuración de opencode y reiniciar el buddy.
+
+---
+
+### Tarea 10b: huecos de la revisión del bloque 3
+
+La revisión de la tarea 8 encontró huecos del plan, no de la ejecución. Ninguno se ve en los tests porque la conexión no tiene tests; por eso solo el núcleo lleva uno nuevo.
+
+1. **Tarjeta pegada.** `confirmPermissionStillPending` escribe `request_<id>.json` aunque, mientras esperaba la respuesta, haya llegado `permission.replied` y el núcleo ya haya retirado la tarjeta. La tarjeta queda en pantalla sin estar en `pending`. Al contestarla, `answer` sale en el `guard` sin borrar el archivo, y como las tarjetas de opencode no tienen ventana de 60 s, nadie la quita.
+2. **Tarjetas viejas después de reconectar.** Si se contesta en la terminal mientras el stream está caído, o si opencode se reinicia (por ejemplo con `/update`), el `permission.replied` nunca llega y la tarjeta se queda.
+3. **Una respuesta del stream que no es 200** se acepta (`.allow`), y su cuerpo de error pasa por el lector de SSE.
+4. **opencode cerrado sin limpiar `service.json`:** el puente se queda en `connecting` y el chequeo de salud dice "opencode está corriendo pero el buddy no logra conectarse", cuando en realidad no está corriendo.
+5. **`DebugLog.note` se llama desde el hilo de `URLSession`**, y el resto de la app lo llama solo desde el principal.
+6. **El README** da a entender que hay que levantar el servicio a mano, y no dice que una sesión `--standalone` no la ve el buddy.
+
+**Archivos:**
+- Modificar: `Sources/BuddyCore/OpenCode/OpenCodeBridgeCore.swift`, `Sources/ClaudeMenuBarBuddy/OpenCodeBridge.swift`, `README.md`
+- Test: `Tests/ClaudeMenuBarBuddyTests/OpenCodeBridgeCoreTests.swift`
+
+**Interfaces:**
+- Produce, en `OpenCodeBridgeCore`:
+```swift
+    /// Every card still waiting for an answer, for the bridge to re-check after a reconnect.
+    public var pendingCards: [OpenCodeCardRequest] { get }
+```
+
+- [ ] **Paso 1: escribir el test**
+
+En `OpenCodeBridgeCoreTests`:
+
+```swift
+    @Test func pendingCardsListsWhatIsStillWaiting() {
+        var core = OpenCodeBridgeCore()
+        _ = run([OpenCodeFixtures.toolCalledShell, OpenCodeFixtures.permissionShell], auto: false, core: &core)
+        #expect(core.pendingCards.map(\.id) == ["per_1"])
+        core.forget(id: "per_1")
+        #expect(core.pendingCards.isEmpty)
+    }
+```
+
+- [ ] **Paso 2: verificar que falla**
+
+Corre: `swift build && swift test --filter OpenCodeBridgeCoreTests`
+Esperado: no compila (`pendingCards` no existe).
+
+- [ ] **Paso 3: implementar `pendingCards`** (los valores de `pending`, en cualquier orden) y verificar que pasa con el mismo comando.
+
+- [ ] **Paso 4: corregir `OpenCodeBridge.swift`**
+
+- **Hueco 1:**
+  - en `confirmPermissionStillPending`, con 200, escribe el archivo **solo si** `core.pending(id: card.id) != nil`;
+  - en `answer`, `removeRequestFile(id)` va **antes** del `guard`, para que el archivo se borre siempre.
+- **Hueco 2:** al empezar `recover()`, revisa cada tarjeta de `core.pendingCards`:
+  - **Permiso:** `GET permissionStillPending`. Con un código distinto de 200 y de -1 (que es error de red), la tarjeta se retira: `removeRequestFile(id)` y `core.forget(id:)`.
+  - **Formulario:** `GET pendingForms(sessionID)`. Con 200, si ningún elemento de la lista tiene ese `id`, se retira igual.
+- **Hueco 3:** en `didReceive response`, con un código distinto de 200, `completionHandler(.cancel)` en vez de `.allow`. El cierre que sigue reconecta con la espera creciente de siempre.
+- **Hueco 4:** en `didCompleteWithError`, si el error es `URLError` con código `.cannotConnectToHost`, `state = .unavailable("opencode no está corriendo")` en vez de `.connecting`. Lo demás sigue igual.
+- **Hueco 5:** en `send`, las dos llamadas a `DebugLog.note` van dentro de `DispatchQueue.main.async`.
+
+- [ ] **Paso 5: corregir el README**
+
+En la sección `## opencode`, cambia el principio del primer párrafo («When opencode runs as a local service (v2, `opencode serve --service`), the buddy connects to it by itself») por:
+
+> opencode v2 keeps a background service on this machine (`opencode serve --service`, started by its terminal), and the buddy connects to it by itself
+
+Al final del último párrafo de la sección, agrega:
+
+> A session started with `opencode --standalone` runs its own private server, which the buddy doesn't see: it keeps asking in its own terminal.
+
+- [ ] **Paso 6: verificar todo**
+
+Corre: `swift build && swift test 2>&1 | tail -5 && shellcheck hook.sh notify-done.sh`
+Esperado: 225 tests en verde y `shellcheck` sin salida.
+
+- [ ] **Paso 7: commit**
+
+```bash
+git add Sources/BuddyCore/OpenCode/OpenCodeBridgeCore.swift Sources/ClaudeMenuBarBuddy/OpenCodeBridge.swift README.md Tests/ClaudeMenuBarBuddyTests/OpenCodeBridgeCoreTests.swift
+git commit -m "Las tarjetas de opencode ya no se quedan pegadas y el puente distingue cuándo opencode no está corriendo"
+```
