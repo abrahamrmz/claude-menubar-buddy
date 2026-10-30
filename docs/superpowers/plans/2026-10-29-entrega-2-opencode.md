@@ -1050,7 +1050,7 @@ public enum OpenCodeConfigCheck {
 }
 ```
 
-- [ ] **Paso 1: escribir los tests**
+- [x] **Paso 1: escribir los tests**
 
 ```swift
 import Testing
@@ -1097,24 +1097,24 @@ import BuddyCore
 }
 ```
 
-- [ ] **Paso 2: verificar que falla**
+- [x] **Paso 2: verificar que falla**
 
 Corre: `swift build && swift test --filter OpenCodeConfigCheckTests`
 Esperado: no compila.
 
-- [ ] **Paso 3: implementar**
+- [x] **Paso 3: implementar**
 
 - Primero convierte JSONC a JSON con un recorrido por caracteres que sepa cuándo está dentro de una cadena (respetando `\"`):
   - quita los comentarios `//…` hasta el fin de línea y `/*…*/`, solo **fuera** de cadenas;
   - quita las comas finales, es decir, una `,` seguida solo de espacios y luego `}` o `]`.
 - Luego `JSONSerialization`, el arreglo `permissions` y el último que coincida.
 
-- [ ] **Paso 4: verificar que pasa**
+- [x] **Paso 4: verificar que pasa**
 
 Corre: `swift build && swift test --filter OpenCodeConfigCheckTests`
 Esperado: PASA.
 
-- [ ] **Paso 5: commit**
+- [x] **Paso 5: commit**
 
 ```bash
 git add Sources/BuddyCore/OpenCode/OpenCodeConfigCheck.swift Tests/ClaudeMenuBarBuddyTests/OpenCodeConfigCheckTests.swift
