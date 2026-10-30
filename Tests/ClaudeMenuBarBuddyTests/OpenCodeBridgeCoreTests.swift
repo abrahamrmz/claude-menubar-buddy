@@ -108,6 +108,19 @@ import BuddyCore
         #expect(core.handle(.executionFinished(sessionID: "ses_1"), settings: settings(auto: false), now: t0).isEmpty)
     }
 
+    @Test func toolInputsAreKeptPerSession() {
+        var core = OpenCodeBridgeCore()
+        let s = settings(auto: true)
+        _ = core.handle(.toolCalled(sessionID: "ses_A", callID: "call_0", input: ["command": "python3 enviar.py"]), settings: s, now: t0)
+        _ = core.handle(.toolCalled(sessionID: "ses_B", callID: "call_0", input: ["command": "ls"]), settings: s, now: t0)
+        let ask = OpenCodePermissionRequest(id: "per_A", sessionID: "ses_A", action: "shell",
+                                            resources: ["python3 enviar.py"], callID: "call_0")
+        let out = core.handle(.permissionAsked(ask, directory: "/tmp/oc-prueba"), settings: s, now: t0)
+        guard case let .showCard(card)? = out.first else { Issue.record("\(out)"); return }
+        #expect(card.hint == "python3 enviar.py")
+        #expect(card.category == "ejecuta")
+    }
+
     @Test func requestFileHasTheHookShape() throws {
         var core = OpenCodeBridgeCore()
         guard case let .showCard(card)? = run([OpenCodeFixtures.formCreated], auto: false, core: &core).first else {

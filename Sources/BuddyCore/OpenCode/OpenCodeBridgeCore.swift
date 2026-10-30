@@ -108,11 +108,18 @@ public struct OpenCodeBridgeCore {
         }
     }
 
+    /// The key of a cached `toolCalled` input: call ids are only unique within a
+    /// session, so two sessions reusing the same id must not overwrite each other.
+    private struct ToolInputKey: Hashable {
+        let sessionID: String
+        let callID: String
+    }
+
     /// `toolCalled` arrives just before the permission it explains; keeping the
     /// string inputs lets the rule see the whole command rather than the split
     /// resources opencode sends with the ask.
-    private var toolInputs: [String: [String: String]] = [:]
-    private var toolInputOrder: [String] = []
+    private var toolInputs: [ToolInputKey: [String: String]] = [:]
+    private var toolInputOrder: [ToolInputKey] = []
     private static let toolInputCap = 200
 
     private var sessionDirectories: [String: String] = [:]
@@ -126,8 +133,8 @@ public struct OpenCodeBridgeCore {
         switch event {
         case .permissionAsked(let request, let directory):
             return handlePermission(request, directory: directory, settings: settings, now: now)
-        case .toolCalled(_, let callID, let input):
-            remember(input, for: callID)
+        case .toolCalled(let sessionID, let callID, let input):
+            remember(input, for: ToolInputKey(sessionID: sessionID, callID: callID))
             return []
         case .formCreated(let form, let directory):
             return handleForm(form, directory: directory)
@@ -165,7 +172,7 @@ public struct OpenCodeBridgeCore {
         guard !handled.contains(request.id) else { return [] }
 
         let dir = directory ?? sessionDirectories[request.sessionID] ?? ""
-        let toolInput = request.callID.flatMap { toolInputs[$0] }
+        let toolInput = request.callID.flatMap { toolInputs[ToolInputKey(sessionID: request.sessionID, callID: $0)] }
         let context = RuleContext(cwd: dir, paths: settings.paths)
         let (subject, assessment) = OpenCodeRule.assess(request, toolInput: toolInput, directory: dir, context: context)
         let decision = AutoModePolicy.decide(subject: subject, assessment: assessment, autoMode: settings.autoMode,
@@ -224,9 +231,9 @@ public struct OpenCodeBridgeCore {
         return [.withdrawCard(id: id)]
     }
 
-    private mutating func remember(_ input: [String: String], for callID: String) {
-        if toolInputs[callID] == nil { toolInputOrder.append(callID) }
-        toolInputs[callID] = input
+    private mutating func remember(_ input: [String: String], for key: ToolInputKey) {
+        if toolInputs[key] == nil { toolInputOrder.append(key) }
+        toolInputs[key] = input
         while toolInputOrder.count > Self.toolInputCap {
             toolInputs.removeValue(forKey: toolInputOrder.removeFirst())
         }

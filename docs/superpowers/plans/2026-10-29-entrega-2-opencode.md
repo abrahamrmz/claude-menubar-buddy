@@ -1133,7 +1133,7 @@ La revisión del bloque 2 encontró un hueco del plan, no de la ejecución. El c
 
 **Interfaces:** sin cambios públicos.
 
-- [ ] **Paso 1: escribir el test**
+- [x] **Paso 1: escribir el test**
 
 En `OpenCodeBridgeCoreTests`:
 
@@ -1152,22 +1152,22 @@ En `OpenCodeBridgeCoreTests`:
     }
 ```
 
-- [ ] **Paso 2: verificar que falla**
+- [x] **Paso 2: verificar que falla**
 
 Corre: `swift build && swift test --filter OpenCodeBridgeCoreTests`
 Esperado: falla `toolInputsAreKeptPerSession` (sale un `autoReply` con el hint `ls`); los demás pasan.
 
-- [ ] **Paso 3: corregir**
+- [x] **Paso 3: corregir**
 
 - La llave del caché (el diccionario y la lista de orden para el tope de 200) es el par `(sessionID, callID)`: un `struct` privado `Hashable` con los dos campos.
 - `toolCalled` guarda con su `sessionID`. `permissionAsked` busca con `request.sessionID` y `request.callID`.
 
-- [ ] **Paso 4: verificar que pasa todo**
+- [x] **Paso 4: verificar que pasa todo**
 
 Corre: `swift build && swift test`
 Esperado: todo en verde (223 + 1).
 
-- [ ] **Paso 5: commit**
+- [x] **Paso 5: commit**
 
 ```bash
 git add Sources/BuddyCore/OpenCode/OpenCodeBridgeCore.swift Tests/ClaudeMenuBarBuddyTests/OpenCodeBridgeCoreTests.swift
