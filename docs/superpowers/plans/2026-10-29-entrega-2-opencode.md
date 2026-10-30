@@ -1270,7 +1270,7 @@ git commit -m "El buddy se conecta a opencode: sus permisos y preguntas llegan a
 - Modificar (en `Sources/ClaudeMenuBarBuddy/`): `ApprovalCard.swift`, `CardLayout.swift`, `Toast.swift`, `Health.swift` y `OpenCodeBridge.swift`
 - Modificar: `README.md`
 
-- [ ] **Paso 1: implementar**
+- [x] **Paso 1: implementar**
 
 - **`ApprovalCard.swift`:** en el encabezado, cuando `req.agent == "opencode"`, la etiqueta de proyecto muestra `opencode · <proyecto>` (y `opencode` solo si no hay proyecto). El botón de "ir a la sesión" ya no aparece solo, porque estas solicitudes no traen `host_bundle` ni `term_program`; no hay que tocarlo.
 - **`CardLayout.swift` → `toolSymbol`:** agrega:
@@ -1302,12 +1302,12 @@ git commit -m "El buddy se conecta a opencode: sus permisos y preguntas llegan a
   - si el buddy no está abierto, opencode pregunta en su propia terminal;
   - las solicitudes de opencode no tienen límite de tiempo.
 
-- [ ] **Paso 2: verificar**
+- [x] **Paso 2: verificar**
 
 Corre: `swift build && swift test`
 Esperado: todo en verde.
 
-- [ ] **Paso 3: commit**
+- [x] **Paso 3: commit**
 
 ```bash
 git add Sources/ClaudeMenuBarBuddy/ApprovalCard.swift Sources/ClaudeMenuBarBuddy/CardLayout.swift Sources/ClaudeMenuBarBuddy/Toast.swift Sources/ClaudeMenuBarBuddy/Health.swift Sources/ClaudeMenuBarBuddy/OpenCodeBridge.swift README.md

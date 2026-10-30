@@ -20,7 +20,17 @@ final class OpenCodeBridge: NSObject, URLSessionDataDelegate {
         case unavailable(String)
     }
 
-    private(set) var state: State = .idle
+    private(set) var state: State = .idle {
+        didSet {
+            // The health check reads this; the password and URL never do.
+            switch state {
+            case .idle: BuddyHealth.openCodeState = nil
+            case .connecting: BuddyHealth.openCodeState = "connecting"
+            case .connected: BuddyHealth.openCodeState = "connected"
+            case .unavailable(let reason): BuddyHealth.openCodeState = "unavailable: \(reason)"
+            }
+        }
+    }
 
     private let configDir: URL
     private var core = OpenCodeBridgeCore()

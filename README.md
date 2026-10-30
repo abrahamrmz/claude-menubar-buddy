@@ -81,6 +81,21 @@ The card only writes into `projects`, keyed on the session's absolute path and m
 
 A path is settled before it is matched, because one file answers to many spellings. Repeated slashes are squeezed, `/./` and symlinks resolved (`/etc` is really `/private/etc`, and a home directory can sit behind a link of its own), and the comparison is case-insensitive: on the case-insensitive volume macOS formats by default, a write to `.GIT/config` lands in `.git/config`, and a list that only knew the lowercase spelling would be a list you could walk around.
 
+## opencode
+
+The buddy also serves [opencode](https://opencode.ai). When opencode runs as a local service (v2, `opencode serve --service`), the buddy connects to it by itself — only to the service on this machine, never a remote one — and shows its permission requests and its questions in the same card, judged by the same rule and the same auto mode as Claude Code's. A permission card's answer goes back to opencode; a question card offers the same options opencode's own picker would. The card says which agent is asking (`opencode · <project>`), and a finished turn gets the same toast, labelled `opencode — <project>`.
+
+For the buddy to see them, opencode has to ask. Add this to its global config, `~/.config/opencode/opencode.json`:
+
+```json
+"permissions": [
+  { "action": "shell", "resource": "*", "effect": "ask" },
+  { "action": "edit",  "resource": "*", "effect": "ask" }
+]
+```
+
+If the buddy isn't open, opencode asks in its own terminal exactly as before — the buddy is an addition, not a gate. And unlike Claude Code's, opencode's requests have no time limit: a card waits until someone answers, here or in opencode's terminal.
+
 ## Tests
 
 ```bash
