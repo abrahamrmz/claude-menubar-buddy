@@ -4,7 +4,7 @@ Este archivo lo lee opencode al empezar. Si algo de aquí choca con una instrucc
 
 ## Qué estás construyendo
 
-Sigue el plan en `docs/superpowers/plans/`, tarea por tarea y en orden. El diseño que lo respalda está en `docs/superpowers/specs/2026-10-21-modo-auto-y-opencode-design.md`. **No cambies decisiones de diseño.** Si una tarea no se puede hacer como dice el plan, no improvises una alternativa:
+Sigue el plan vigente, tarea por tarea y en orden. Hoy es `docs/superpowers/plans/2026-10-29-entrega-2-opencode.md`; el de la entrega 1 ya se completó y es solo referencia. El diseño que lo respalda está en `docs/superpowers/specs/2026-10-21-modo-auto-y-opencode-design.md`. **No cambies decisiones de diseño.** Si una tarea no se puede hacer como dice el plan, no improvises una alternativa:
 1. Escribe la duda en `docs/superpowers/plans/NOTAS-EJECUCION.md` (qué tarea, qué paso, qué falló, qué intentaste).
 2. Detente y avisa en el chat.
 
@@ -27,7 +27,7 @@ Sigue el plan en `docs/superpowers/plans/`, tarea por tarea y en orden. El dise�
   `swift test` solo no reconstruye el ejecutable `buddy-rule` que usan los tests del hook. Sin `swift build` antes, esos tests corren contra un binario viejo.
 - Un solo grupo de tests: `swift build && swift test --filter NombreDeLaSuite`.
 - Hooks de shell: `shellcheck hook.sh notify-done.sh` (debe salir sin avisos).
-- El punto de partida está en verde: 79 tests pasan. Lo que imprime la terminal como `Terminated: 15` durante los tests del hook es normal.
+- El punto de partida de la entrega 2 está en verde: 174 tests pasan. Lo que imprime la terminal como `Terminated: 15` durante los tests del hook es normal.
 
 ## Cómo escribir el código
 
