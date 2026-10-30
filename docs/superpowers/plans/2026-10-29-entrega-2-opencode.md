@@ -1318,17 +1318,17 @@ git commit -m "La tarjeta y el aviso dicen cuándo es opencode, y el chequeo de 
 
 ### Tarea 10: verificación final
 
-- [ ] **Paso 1: todo en verde desde cero**
+- [x] **Paso 1: todo en verde desde cero**
 
 Corre: `swift build && swift test 2>&1 | tail -5 && shellcheck hook.sh notify-done.sh`
 Esperado: `Test run with N tests passed` con N mayor que 174, ningún fallo, y `shellcheck` sin salida.
 
-- [ ] **Paso 2: nada pendiente**
+- [x] **Paso 2: nada pendiente**
 
 Corre: `git status --short && git log --oneline origin/personal..HEAD`
 Esperado: `git status` vacío y un commit por tarea (1–9), más el del plan.
 
-- [ ] **Paso 3: avisar y detenerse**
+- [x] **Paso 3: avisar y detenerse**
 
 Escribe en el chat:
 - que la entrega 2 está lista;
