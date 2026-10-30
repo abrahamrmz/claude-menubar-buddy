@@ -260,7 +260,7 @@ enum OpenCodeFixtures {
 }
 ```
 
-- [ ] **Paso 1: escribir los tests**
+- [x] **Paso 1: escribir los tests**
 
 ```swift
 import Testing
@@ -328,12 +328,12 @@ import BuddyCore
 }
 ```
 
-- [ ] **Paso 2: verificar que falla**
+- [x] **Paso 2: verificar que falla**
 
 Corre: `swift build && swift test --filter OpenCodeEventTests`
 Esperado: no compila.
 
-- [ ] **Paso 3: implementar `OpenCodeEvent.decode`**
+- [x] **Paso 3: implementar `OpenCodeEvent.decode`**
 
 - Usa `JSONSerialization` (los campos son abiertos y varían entre versiones; `Codable` estricto rompería con cualquier campo nuevo).
 - `directory` sale de `location.directory` del envoltorio.
@@ -347,12 +347,12 @@ Esperado: no compila.
 - `resources` faltante = `[]`. En `toolCalled`, `input` guarda solo los valores de tipo `String`.
 - Los campos de formulario sin `key` o sin `type` se descartan; las opciones sin `value` o sin `label` también.
 
-- [ ] **Paso 4: verificar que pasa**
+- [x] **Paso 4: verificar que pasa**
 
 Corre: `swift build && swift test --filter OpenCodeEventTests`
 Esperado: PASA.
 
-- [ ] **Paso 5: commit**
+- [x] **Paso 5: commit**
 
 ```bash
 git add Sources/BuddyCore/OpenCode/OpenCodeEvent.swift Tests/ClaudeMenuBarBuddyTests/Support/OpenCodeFixtures.swift Tests/ClaudeMenuBarBuddyTests/OpenCodeEventTests.swift
