@@ -390,7 +390,7 @@ public enum OpenCodeRule {
 }
 ```
 
-- [ ] **Paso 1: escribir los tests**
+- [x] **Paso 1: escribir los tests**
 
 ```swift
 import Testing
@@ -455,12 +455,12 @@ import BuddyCore
 }
 ```
 
-- [ ] **Paso 2: verificar que falla**
+- [x] **Paso 2: verificar que falla**
 
 Corre: `swift build && swift test --filter OpenCodeRuleTests`
 Esperado: no compila.
 
-- [ ] **Paso 3: implementar**
+- [x] **Paso 3: implementar**
 
 - **`.fileRead` en `CommandRule.assess`,** como dice el bloque de interfaces. Agrega el caso nuevo también en el `switch` de `HookRuleCLI.hint(for:)`, que devuelve la ruta; si no, no compila.
 - **Mapeo de `OpenCodeRule.subjects`** (la acción, sin distinguir mayúsculas):
@@ -472,12 +472,12 @@ Esperado: no compila.
   - cualquier otra → `[.other(tool: action)]`.
 - **Peor evaluación:** por `RuleCategory.severity`; en empate gana la primera.
 
-- [ ] **Paso 4: verificar que pasa todo**
+- [x] **Paso 4: verificar que pasa todo**
 
 Corre: `swift build && swift test`
 Esperado: todo en verde.
 
-- [ ] **Paso 5: commit**
+- [x] **Paso 5: commit**
 
 ```bash
 git add Sources/BuddyCore/Rule/RuleTypes.swift Sources/BuddyCore/Rule/CommandRule.swift Sources/BuddyCore/OpenCode/OpenCodeRule.swift Tests/ClaudeMenuBarBuddyTests/OpenCodeRuleTests.swift
