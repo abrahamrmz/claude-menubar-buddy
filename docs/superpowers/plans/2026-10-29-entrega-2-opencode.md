@@ -899,7 +899,7 @@ public enum OpenCodeAnswer {
 }
 ```
 
-- [ ] **Paso 1: escribir los tests**
+- [x] **Paso 1: escribir los tests**
 
 ```swift
 import Foundation
@@ -991,12 +991,12 @@ import BuddyCore
 }
 ```
 
-- [ ] **Paso 2: verificar que falla**
+- [x] **Paso 2: verificar que falla**
 
 Corre: `swift build && swift test --filter OpenCodeAPITests`
 Esperado: no compila.
 
-- [ ] **Paso 3: implementar**
+- [x] **Paso 3: implementar**
 
 - **`OpenCodeService.load`:**
   - JSON con `url` y `password` (cadenas no vacías);
@@ -1018,12 +1018,12 @@ Esperado: no compila.
   | Formulario | `answer` | Por cada `choice`, la etiqueta en `answers[choice.question]` se traduce al `value` de la opción con esa etiqueta, y queda `answer[choice.fieldKey] = value`. Si no queda ninguna respuesta, nil |
   | Formulario | Cualquier otra | nil |
 
-- [ ] **Paso 4: verificar que pasa**
+- [x] **Paso 4: verificar que pasa**
 
 Corre: `swift build && swift test --filter OpenCodeAPITests`
 Esperado: PASA.
 
-- [ ] **Paso 5: commit**
+- [x] **Paso 5: commit**
 
 ```bash
 git add Sources/BuddyCore/OpenCode/OpenCodeAPI.swift Tests/ClaudeMenuBarBuddyTests/OpenCodeAPITests.swift
