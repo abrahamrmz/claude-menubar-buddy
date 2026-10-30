@@ -501,7 +501,7 @@ public enum UnifiedDiff {
 }
 ```
 
-- [ ] **Paso 1: escribir los tests**
+- [x] **Paso 1: escribir los tests**
 
 ```swift
 import Testing
@@ -531,24 +531,24 @@ import BuddyCore
 }
 ```
 
-- [ ] **Paso 2: verificar que falla**
+- [x] **Paso 2: verificar que falla**
 
 Corre: `swift build && swift test --filter UnifiedDiffTests`
 Esperado: no compila.
 
-- [ ] **Paso 3: implementar `UnifiedDiff.buddyHint`**
+- [x] **Paso 3: implementar `UnifiedDiff.buddyHint`**
 
 - Por cada archivo, en orden, emite su ruta.
 - Si tiene parche, cada línea `@@` abre un bloque. Del bloque se juntan las líneas que empiezan con `-` (pero no `---`), sin el `-`, como "quita", y las que empiezan con `+` (pero no `+++`), sin el `+`, como "pone". El contexto y los encabezados (`Index:`, `====`, `---`, `+++`) se ignoran.
 - Cada bloque emite `--- quita` más lo quitado (si hay) y `+++ pone` más lo puesto (si hay).
 - Todo se une con `\n`, sin `\n` final.
 
-- [ ] **Paso 4: verificar que pasa**
+- [x] **Paso 4: verificar que pasa**
 
 Corre: `swift build && swift test --filter UnifiedDiffTests`
 Esperado: PASA.
 
-- [ ] **Paso 5: commit**
+- [x] **Paso 5: commit**
 
 ```bash
 git add Sources/BuddyCore/OpenCode/UnifiedDiff.swift Tests/ClaudeMenuBarBuddyTests/UnifiedDiffTests.swift
