@@ -557,6 +557,73 @@ git commit -m "El diff de una edición de opencode se ve en la tarjeta como el d
 
 ---
 
+### Tarea 4b: dos huecos de la revisión del bloque 1
+
+La revisión encontró dos casos que el plan dejó mal especificados. No son errores de la ejecución.
+
+1. **El diff se come líneas.** El paso 3 de la tarea 4 descarta toda línea que empieza con `---` o `+++` como si fuera encabezado, aunque esté dentro de un bloque. Por eso una línea quitada `-- borra la tabla` (un comentario de SQL), que en el parche es `--- borra la tabla`, desaparece de la tarjeta. Pasa lo mismo con una línea puesta `++ x` o con un `---` de Markdown. Cada parche de opencode (`metadata.files[].patch`) es de **un solo archivo**, así que los encabezados `Index:`, `====`, `---` y `+++` solo aparecen **antes del primer `@@`**. Después de él, toda línea con `-` o `+` es contenido.
+2. **Las rutas con `~` se resuelven mal.** `OpenCodeRule` une `~/.aws/credentials` a la carpeta de la sesión y produce `/repo/~/.aws/credentials`, que la regla evalúa como lectura normal y deja pasar. El buddy no sabe si opencode expande `~`. Una ruta que empieza con `~` se deja **tal cual**, y la regla la trata como desconocida: muestra tarjeta.
+
+**Archivos:**
+- Modificar: `Sources/BuddyCore/OpenCode/UnifiedDiff.swift`, `Sources/BuddyCore/OpenCode/OpenCodeRule.swift`
+- Test: `Tests/ClaudeMenuBarBuddyTests/UnifiedDiffTests.swift`, `Tests/ClaudeMenuBarBuddyTests/OpenCodeRuleTests.swift`
+
+**Interfaces:** sin cambios.
+
+- [ ] **Paso 1: escribir los tests**
+
+En `UnifiedDiffTests`:
+
+```swift
+    @Test func contentThatLooksLikeAHeaderIsKept() {
+        let patch = "Index: a.sql\n===================================================================\n--- a.sql\n+++ a.sql\n@@ -1,3 +1,3 @@\n select 1;\n--- borra la tabla\n+-- nada\n+++ suma\n drop table x;\n"
+        #expect(UnifiedDiff.buddyHint(files: ["a.sql"], patches: [patch])
+                == "a.sql\n--- quita\n-- borra la tabla\n+++ pone\n-- nada\n++ suma")
+    }
+
+    @Test func markdownRuleIsKept() {
+        let patch = "--- README.md\n+++ README.md\n@@ -1,2 +1,2 @@\n----\n+===\n texto\n"
+        #expect(UnifiedDiff.buddyHint(files: ["README.md"], patches: [patch]) == "README.md\n--- quita\n---\n+++ pone\n===")
+    }
+```
+
+En `OpenCodeRuleTests`:
+
+```swift
+    @Test func tildePathsAreLeftAsTheyCome() {
+        #expect(OpenCodeRule.subjects(for: req("read", ["~/.aws/credentials"]), toolInput: nil, directory: dir)
+                == [.fileRead(path: "~/.aws/credentials")])
+        #expect(OpenCodeRule.subjects(for: req("edit", [], files: ["~/notas.txt"]), toolInput: nil, directory: dir)
+                == [.fileEdit(path: "~/notas.txt")])
+        #expect(OpenCodeRule.assess(req("read", ["~/.aws/credentials"]), toolInput: nil, directory: dir,
+                                    context: ruleContext).assessment.category == .desconocido)
+    }
+```
+
+- [ ] **Paso 2: verificar que fallan**
+
+Corre: `swift build && swift test --filter "UnifiedDiffTests|OpenCodeRuleTests"`
+Esperado: fallan `contentThatLooksLikeAHeaderIsKept`, `markdownRuleIsKept` y `tildePathsAreLeftAsTheyCome`; los demás pasan.
+
+- [ ] **Paso 3: corregir**
+
+- **`UnifiedDiff`:** antes del primer `@@` de un parche se ignora todo. Después del primer `@@` ya no se descarta ninguna línea por empezar con `---` o `+++`: la que empieza con `-` es "quita" y la que empieza con `+` es "pone", siempre sin su primer carácter. Lo demás (contexto, `\ No newline at end of file`, líneas vacías) se sigue ignorando. Corrige también el comentario del código que habla de los encabezados.
+- **`OpenCodeRule`:** en el helper que vuelve absolutas las rutas, una ruta que empieza con `~` se devuelve sin tocar, igual que una absoluta.
+
+- [ ] **Paso 4: verificar que pasa todo**
+
+Corre: `swift build && swift test`
+Esperado: todo en verde (199 + 3).
+
+- [ ] **Paso 5: commit**
+
+```bash
+git add Sources/BuddyCore/OpenCode/UnifiedDiff.swift Sources/BuddyCore/OpenCode/OpenCodeRule.swift Tests/ClaudeMenuBarBuddyTests/UnifiedDiffTests.swift Tests/ClaudeMenuBarBuddyTests/OpenCodeRuleTests.swift
+git commit -m "La tarjeta ya no pierde líneas del diff que parecen encabezados y las rutas con ~ piden tarjeta"
+```
+
+---
+
 ### Tarea 5: el estado del puente
 
 **Archivos:**
