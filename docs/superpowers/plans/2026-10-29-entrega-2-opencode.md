@@ -679,7 +679,7 @@ public struct OpenCodeBridgeCore {
 }
 ```
 
-- [ ] **Paso 1: escribir los tests**
+- [x] **Paso 1: escribir los tests**
 
 ```swift
 import Foundation
@@ -812,12 +812,12 @@ import BuddyCore
 }
 ```
 
-- [ ] **Paso 2: verificar que falla**
+- [x] **Paso 2: verificar que falla**
 
 Corre: `swift build && swift test --filter OpenCodeBridgeCoreTests`
 Esperado: no compila.
 
-- [ ] **Paso 3: implementar `OpenCodeBridgeCore`**
+- [x] **Paso 3: implementar `OpenCodeBridgeCore`**
 
 - **Estado interno:**
   - el caché `callID → input` de `toolCalled`, con un máximo de 200 entradas (descarta la más vieja);
@@ -849,12 +849,12 @@ Esperado: no compila.
 - **`executionFinished`:** si hay inicio, da `.turnFinished` con los segundos enteros y borra el inicio.
 - **`forget(id:)`:** quita de `pending` y deja el id en `handled`.
 
-- [ ] **Paso 4: verificar que pasa**
+- [x] **Paso 4: verificar que pasa**
 
 Corre: `swift build && swift test --filter OpenCodeBridgeCoreTests`
 Esperado: PASA.
 
-- [ ] **Paso 5: commit**
+- [x] **Paso 5: commit**
 
 ```bash
 git add Sources/BuddyCore/OpenCode/OpenCodeBridgeCore.swift Tests/ClaudeMenuBarBuddyTests/OpenCodeBridgeCoreTests.swift
