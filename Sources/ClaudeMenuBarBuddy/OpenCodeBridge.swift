@@ -110,13 +110,17 @@ final class OpenCodeBridge: NSObject, URLSessionDataDelegate {
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse,
                     completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
         let code = (response as? HTTPURLResponse)?.statusCode ?? -1
-        if code == 200 {
-            retryDelay = 1
-            state = .connected
-            recover()
-        } else {
+        guard code == 200 else {
+            // Not the event stream — an error body must not reach the SSE
+            // reader. Cancelling closes the task, and the completion handler
+            // that follows reconnects with the usual backoff.
             DebugLog.note("opencode event stream: HTTP \(code)")
+            completionHandler(.cancel)
+            return
         }
+        retryDelay = 1
+        state = .connected
+        recover()
         completionHandler(.allow)
     }
 
@@ -135,7 +139,15 @@ final class OpenCodeBridge: NSObject, URLSessionDataDelegate {
         } else {
             DebugLog.note("opencode event stream closed")
         }
-        state = .connecting
+        // A refused connection means opencode isn't listening at all — a stale
+        // service.json left behind when opencode closed. Saying "connecting"
+        // would make the health check blame the buddy for a service that is
+        // simply not running.
+        if let urlError = error as? URLError, urlError.code == .cannotConnectToHost {
+            state = .unavailable("opencode no está corriendo")
+        } else {
+            state = .connecting
+        }
         scheduleReconnect()
     }
 
@@ -193,7 +205,12 @@ final class OpenCodeBridge: NSObject, URLSessionDataDelegate {
     private func confirmPermissionStillPending(_ card: OpenCodeCardRequest) {
         send(.permissionStillPending(sessionID: card.sessionID, requestID: card.id)) { [weak self] code, _ in
             guard let self else { return }
-            if code == 200 {
+            // The card may have been withdrawn while this check was in flight:
+            // the terminal answered, permission.replied arrived, and the core
+            // forgot it. Writing the file now would put a card on screen with
+            // nothing behind it, and opencode cards have no 60 s window to
+            // sweep it away — so only write when the core still has it.
+            if code == 200, self.core.pending(id: card.id) != nil {
                 self.writeRequestFile(card)
             } else {
                 // Answered in the terminal: drop it so a later reconnect
@@ -226,10 +243,12 @@ final class OpenCodeBridge: NSObject, URLSessionDataDelegate {
     // MARK: - Recovery on (re)connect
 
     /// A fresh connection knows nothing about what happened while it was
-    /// away, so it re-asks: every session touched in the last day has its
+    /// away, so it re-asks: cards shown before the stream went down are
+    /// re-checked first, then every session touched in the last day has its
     /// pending permissions and forms turned back into events. An id already
     /// known is not duplicated — the core's `handled` set takes care of it.
     private func recover() {
+        recheckPendingCards()
         send(.sessions(limit: 20)) { [weak self] code, data in
             guard let self, code == 200, let data, let sessions = Self.array(from: data) else { return }
             let cutoff = Date().timeIntervalSince1970 * 1000 - 24 * 60 * 60 * 1000
@@ -238,6 +257,35 @@ final class OpenCodeBridge: NSObject, URLSessionDataDelegate {
                 if let updated = (session["time"] as? [String: Any])?["updated"] as? Double, updated < cutoff { continue }
                 let directory = (session["location"] as? [String: Any])?["directory"] as? String
                 self.recoverPending(sessionID: id, directory: directory)
+            }
+        }
+    }
+
+    /// A card may have been answered in opencode's terminal, or dropped when
+    /// opencode restarted (an `/update`, say), while the stream was down and
+    /// no `permission.replied` arrived. Ask again for each pending card and
+    /// withdraw the ones opencode no longer knows about, so no card outlives
+    /// its request.
+    private func recheckPendingCards() {
+        for card in core.pendingCards {
+            switch card.kind {
+            case .permission:
+                send(.permissionStillPending(sessionID: card.sessionID, requestID: card.id)) { [weak self] code, _ in
+                    guard let self else { return }
+                    // -1 is a transport error, not an answer: leave the card
+                    // and let the next reconnect try again.
+                    guard code != 200 && code != -1 else { return }
+                    self.removeRequestFile(card.id)
+                    self.core.forget(id: card.id)
+                }
+            case .form:
+                send(.pendingForms(sessionID: card.sessionID)) { [weak self] code, data in
+                    guard let self, code == 200, let data, let items = Self.array(from: data) else { return }
+                    let stillPending = items.contains { $0["id"] as? String == card.id }
+                    guard !stillPending else { return }
+                    self.removeRequestFile(card.id)
+                    self.core.forget(id: card.id)
+                }
             }
         }
     }
@@ -275,6 +323,10 @@ final class OpenCodeBridge: NSObject, URLSessionDataDelegate {
     /// The card's decision for an opencode request. Called by writeDecision
     /// instead of writing response_<id>.json: opencode answers over HTTP.
     func answer(id: String, decision: String, reason: String?, answers: [String: String]?) {
+        // Remove the file first, even when the core has already forgotten the
+        // card: a request file whose card is gone is a card nothing can ever
+        // take off the screen, and opencode cards have no 60 s window.
+        removeRequestFile(id)
         guard let card = core.pending(id: id) else { return }
         if let call = OpenCodeAnswer.call(for: card, decision: decision, reason: reason, answers: answers) {
             // A 404 means somebody answered first (the terminal, another
@@ -285,7 +337,6 @@ final class OpenCodeBridge: NSObject, URLSessionDataDelegate {
                 }
             }
         }
-        removeRequestFile(id)
         core.forget(id: id)
     }
 
@@ -299,13 +350,17 @@ final class OpenCodeBridge: NSObject, URLSessionDataDelegate {
         let request = call.urlRequest(service: service)
         apiSession.dataTask(with: request) { data, response, error in
             let code = (response as? HTTPURLResponse)?.statusCode ?? -1
-            if let error {
-                DebugLog.note("opencode \(Self.label(call)) failed: \(error.localizedDescription)")
-            } else if code >= 400 {
-                DebugLog.note("opencode \(Self.label(call)) → HTTP \(code)")
+            // The rest of the app logs from the main thread only; this
+            // callback runs on URLSession's own queue, so hop over before
+            // touching DebugLog (and hand the result back at the same time).
+            DispatchQueue.main.async {
+                if let error {
+                    DebugLog.note("opencode \(Self.label(call)) failed: \(error.localizedDescription)")
+                } else if code >= 400 {
+                    DebugLog.note("opencode \(Self.label(call)) → HTTP \(code)")
+                }
+                completion?(code, data)
             }
-            guard let completion else { return }
-            DispatchQueue.main.async { completion(code, data) }
         }.resume()
     }
 

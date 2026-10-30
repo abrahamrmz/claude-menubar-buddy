@@ -1361,7 +1361,7 @@ La revisión de la tarea 8 encontró huecos del plan, no de la ejecución. Ningu
     public var pendingCards: [OpenCodeCardRequest] { get }
 ```
 
-- [ ] **Paso 1: escribir el test**
+- [x] **Paso 1: escribir el test**
 
 En `OpenCodeBridgeCoreTests`:
 
@@ -1375,14 +1375,14 @@ En `OpenCodeBridgeCoreTests`:
     }
 ```
 
-- [ ] **Paso 2: verificar que falla**
+- [x] **Paso 2: verificar que falla**
 
 Corre: `swift build && swift test --filter OpenCodeBridgeCoreTests`
 Esperado: no compila (`pendingCards` no existe).
 
-- [ ] **Paso 3: implementar `pendingCards`** (los valores de `pending`, en cualquier orden) y verificar que pasa con el mismo comando.
+- [x] **Paso 3: implementar `pendingCards`** (los valores de `pending`, en cualquier orden) y verificar que pasa con el mismo comando.
 
-- [ ] **Paso 4: corregir `OpenCodeBridge.swift`**
+- [x] **Paso 4: corregir `OpenCodeBridge.swift`**
 
 - **Hueco 1:**
   - en `confirmPermissionStillPending`, con 200, escribe el archivo **solo si** `core.pending(id: card.id) != nil`;
@@ -1394,7 +1394,7 @@ Esperado: no compila (`pendingCards` no existe).
 - **Hueco 4:** en `didCompleteWithError`, si el error es `URLError` con código `.cannotConnectToHost`, `state = .unavailable("opencode no está corriendo")` en vez de `.connecting`. Lo demás sigue igual.
 - **Hueco 5:** en `send`, las dos llamadas a `DebugLog.note` van dentro de `DispatchQueue.main.async`.
 
-- [ ] **Paso 5: corregir el README**
+- [x] **Paso 5: corregir el README**
 
 En la sección `## opencode`, cambia el principio del primer párrafo («When opencode runs as a local service (v2, `opencode serve --service`), the buddy connects to it by itself») por:
 
@@ -1404,12 +1404,12 @@ Al final del último párrafo de la sección, agrega:
 
 > A session started with `opencode --standalone` runs its own private server, which the buddy doesn't see: it keeps asking in its own terminal.
 
-- [ ] **Paso 6: verificar todo**
+- [x] **Paso 6: verificar todo**
 
 Corre: `swift build && swift test 2>&1 | tail -5 && shellcheck hook.sh notify-done.sh`
 Esperado: 225 tests en verde y `shellcheck` sin salida.
 
-- [ ] **Paso 7: commit**
+- [x] **Paso 7: commit**
 
 ```bash
 git add Sources/BuddyCore/OpenCode/OpenCodeBridgeCore.swift Sources/ClaudeMenuBarBuddy/OpenCodeBridge.swift README.md Tests/ClaudeMenuBarBuddyTests/OpenCodeBridgeCoreTests.swift

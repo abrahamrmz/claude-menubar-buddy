@@ -158,6 +158,10 @@ public struct OpenCodeBridgeCore {
 
     public func pending(id: String) -> OpenCodeCardRequest? { pending[id] }
 
+    /// Every card still waiting for an answer, for the bridge to re-check
+    /// after a reconnect. Unordered.
+    public var pendingCards: [OpenCodeCardRequest] { Array(pending.values) }
+
     /// After answering, or when the pending check says it's gone.
     public mutating func forget(id: String) {
         pending.removeValue(forKey: id)

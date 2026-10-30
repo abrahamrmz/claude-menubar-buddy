@@ -78,6 +78,14 @@ import BuddyCore
         #expect(run([OpenCodeFixtures.permissionShell], auto: false, core: &core).isEmpty)
     }
 
+    @Test func pendingCardsListsWhatIsStillWaiting() {
+        var core = OpenCodeBridgeCore()
+        _ = run([OpenCodeFixtures.toolCalledShell, OpenCodeFixtures.permissionShell], auto: false, core: &core)
+        #expect(core.pendingCards.map(\.id) == ["per_1"])
+        core.forget(id: "per_1")
+        #expect(core.pendingCards.isEmpty)
+    }
+
     @Test func questionFormBecomesAChoiceCard() {
         var core = OpenCodeBridgeCore()
         let out = run([OpenCodeFixtures.formCreated], auto: true, core: &core)
