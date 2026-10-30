@@ -1123,6 +1123,59 @@ git commit -m "BuddyCore sabe si la configuración de opencode le deja algo al b
 
 ---
 
+### Tarea 7b: el caché de comandos se separa por sesión
+
+La revisión del bloque 2 encontró un hueco del plan, no de la ejecución. El caché `callID → input` de la tarea 5 solo usa el `callID` como llave. Si dos sesiones de opencode usan el mismo id de llamada, el `toolCalled` de una pisa el de la otra. Entonces el `ls` de la sesión B se usa para evaluar el `python3 enviar.py` de la sesión A, y el modo auto lo aprueba sin tarjeta. Los modelos de hoy generan ids con una parte aleatoria, pero el buddy no debe depender de eso.
+
+**Archivos:**
+- Modificar: `Sources/BuddyCore/OpenCode/OpenCodeBridgeCore.swift`
+- Test: `Tests/ClaudeMenuBarBuddyTests/OpenCodeBridgeCoreTests.swift`
+
+**Interfaces:** sin cambios públicos.
+
+- [ ] **Paso 1: escribir el test**
+
+En `OpenCodeBridgeCoreTests`:
+
+```swift
+    @Test func toolInputsAreKeptPerSession() {
+        var core = OpenCodeBridgeCore()
+        let s = settings(auto: true)
+        _ = core.handle(.toolCalled(sessionID: "ses_A", callID: "call_0", input: ["command": "python3 enviar.py"]), settings: s, now: t0)
+        _ = core.handle(.toolCalled(sessionID: "ses_B", callID: "call_0", input: ["command": "ls"]), settings: s, now: t0)
+        let ask = OpenCodePermissionRequest(id: "per_A", sessionID: "ses_A", action: "shell",
+                                            resources: ["python3 enviar.py"], callID: "call_0")
+        let out = core.handle(.permissionAsked(ask, directory: "/tmp/oc-prueba"), settings: s, now: t0)
+        guard case let .showCard(card)? = out.first else { Issue.record("\(out)"); return }
+        #expect(card.hint == "python3 enviar.py")
+        #expect(card.category == "ejecuta")
+    }
+```
+
+- [ ] **Paso 2: verificar que falla**
+
+Corre: `swift build && swift test --filter OpenCodeBridgeCoreTests`
+Esperado: falla `toolInputsAreKeptPerSession` (sale un `autoReply` con el hint `ls`); los demás pasan.
+
+- [ ] **Paso 3: corregir**
+
+- La llave del caché (el diccionario y la lista de orden para el tope de 200) es el par `(sessionID, callID)`: un `struct` privado `Hashable` con los dos campos.
+- `toolCalled` guarda con su `sessionID`. `permissionAsked` busca con `request.sessionID` y `request.callID`.
+
+- [ ] **Paso 4: verificar que pasa todo**
+
+Corre: `swift build && swift test`
+Esperado: todo en verde (223 + 1).
+
+- [ ] **Paso 5: commit**
+
+```bash
+git add Sources/BuddyCore/OpenCode/OpenCodeBridgeCore.swift Tests/ClaudeMenuBarBuddyTests/OpenCodeBridgeCoreTests.swift
+git commit -m "El comando que explica un permiso de opencode se busca solo en su sesión"
+```
+
+---
+
 ### Tarea 8: la conexión con opencode en la app
 
 **Archivos:**
