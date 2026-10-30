@@ -570,7 +570,7 @@ La revisión encontró dos casos que el plan dejó mal especificados. No son err
 
 **Interfaces:** sin cambios.
 
-- [ ] **Paso 1: escribir los tests**
+- [x] **Paso 1: escribir los tests**
 
 En `UnifiedDiffTests`:
 
@@ -600,22 +600,22 @@ En `OpenCodeRuleTests`:
     }
 ```
 
-- [ ] **Paso 2: verificar que fallan**
+- [x] **Paso 2: verificar que fallan**
 
 Corre: `swift build && swift test --filter "UnifiedDiffTests|OpenCodeRuleTests"`
 Esperado: fallan `contentThatLooksLikeAHeaderIsKept`, `markdownRuleIsKept` y `tildePathsAreLeftAsTheyCome`; los demás pasan.
 
-- [ ] **Paso 3: corregir**
+- [x] **Paso 3: corregir**
 
 - **`UnifiedDiff`:** antes del primer `@@` de un parche se ignora todo. Después del primer `@@` ya no se descarta ninguna línea por empezar con `---` o `+++`: la que empieza con `-` es "quita" y la que empieza con `+` es "pone", siempre sin su primer carácter. Lo demás (contexto, `\ No newline at end of file`, líneas vacías) se sigue ignorando. Corrige también el comentario del código que habla de los encabezados.
 - **`OpenCodeRule`:** en el helper que vuelve absolutas las rutas, una ruta que empieza con `~` se devuelve sin tocar, igual que una absoluta.
 
-- [ ] **Paso 4: verificar que pasa todo**
+- [x] **Paso 4: verificar que pasa todo**
 
 Corre: `swift build && swift test`
 Esperado: todo en verde (199 + 3).
 
-- [ ] **Paso 5: commit**
+- [x] **Paso 5: commit**
 
 ```bash
 git add Sources/BuddyCore/OpenCode/UnifiedDiff.swift Sources/BuddyCore/OpenCode/OpenCodeRule.swift Tests/ClaudeMenuBarBuddyTests/UnifiedDiffTests.swift Tests/ClaudeMenuBarBuddyTests/OpenCodeRuleTests.swift

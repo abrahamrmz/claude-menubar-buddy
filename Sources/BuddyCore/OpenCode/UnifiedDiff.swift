@@ -44,9 +44,10 @@ public enum UnifiedDiff {
                 continue
             }
             guard insideHunk else { continue }
-            // The "--- file" / "+++ file" headers (and any "Index:"/"===="
-            // preamble) are not content; the hunk body starts after "@@".
-            if line.hasPrefix("---") || line.hasPrefix("+++") { continue }
+            // Everything before the first "@@" is preamble ("Index:", "====",
+            // the "--- file" / "+++ file" headers) and is skipped above. Once a
+            // hunk has started, a leading "-" or "+" is always diff content, even
+            // when the rest of the line looks like a header or a Markdown rule.
             if line.hasPrefix("-") {
                 removed.append(String(line.dropFirst()))
             } else if line.hasPrefix("+") {

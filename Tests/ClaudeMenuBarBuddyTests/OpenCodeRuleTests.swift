@@ -57,4 +57,13 @@ import BuddyCore
         #expect(CommandRule.assess(.fileRead(path: "/Users/u/.aws/credentials"), context: ruleContext).category == .sensible)
         #expect(CommandRule.assess(.fileRead(path: "/Users/u/repo/a.swift"), context: ruleContext) == Assessment(.lectura, "solo lee"))
     }
+
+    @Test func tildePathsAreLeftAsTheyCome() {
+        #expect(OpenCodeRule.subjects(for: req("read", ["~/.aws/credentials"]), toolInput: nil, directory: dir)
+                == [.fileRead(path: "~/.aws/credentials")])
+        #expect(OpenCodeRule.subjects(for: req("edit", [], files: ["~/notas.txt"]), toolInput: nil, directory: dir)
+                == [.fileEdit(path: "~/notas.txt")])
+        #expect(OpenCodeRule.assess(req("read", ["~/.aws/credentials"]), toolInput: nil, directory: dir,
+                                    context: ruleContext).assessment.category == .desconocido)
+    }
 }

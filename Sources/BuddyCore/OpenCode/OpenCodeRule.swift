@@ -48,8 +48,10 @@ public enum OpenCodeRule {
     }
 
     /// opencode names files relative to the session's directory; the rule needs an absolute path.
+    /// A leading `~` is left untouched: the buddy doesn't know whether opencode expands it, and
+    /// joining it to the session would hide a home-directory secret as an ordinary relative path.
     private static func absolute(_ path: String, in directory: String) -> String {
-        if path.hasPrefix("/") || directory.isEmpty { return path }
+        if path.hasPrefix("/") || path.hasPrefix("~") || directory.isEmpty { return path }
         return directory + "/" + path
     }
 }

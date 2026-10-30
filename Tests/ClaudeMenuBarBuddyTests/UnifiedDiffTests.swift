@@ -22,4 +22,15 @@ import BuddyCore
     @Test func noPatchIsJustTheFiles() {
         #expect(UnifiedDiff.buddyHint(files: ["a", "b"], patches: []) == "a\nb")
     }
+
+    @Test func contentThatLooksLikeAHeaderIsKept() {
+        let patch = "Index: a.sql\n===================================================================\n--- a.sql\n+++ a.sql\n@@ -1,3 +1,3 @@\n select 1;\n--- borra la tabla\n+-- nada\n+++ suma\n drop table x;\n"
+        #expect(UnifiedDiff.buddyHint(files: ["a.sql"], patches: [patch])
+                == "a.sql\n--- quita\n-- borra la tabla\n+++ pone\n-- nada\n++ suma")
+    }
+
+    @Test func markdownRuleIsKept() {
+        let patch = "--- README.md\n+++ README.md\n@@ -1,2 +1,2 @@\n----\n+===\n texto\n"
+        #expect(UnifiedDiff.buddyHint(files: ["README.md"], patches: [patch]) == "README.md\n--- quita\n---\n+++ pone\n===")
+    }
 }
