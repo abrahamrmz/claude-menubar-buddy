@@ -100,7 +100,7 @@ public struct SSEParser {
 }
 ```
 
-- [ ] **Paso 1: escribir los tests**
+- [x] **Paso 1: escribir los tests**
 
 ```swift
 import Foundation
@@ -154,12 +154,12 @@ import BuddyCore
 }
 ```
 
-- [ ] **Paso 2: verificar que falla**
+- [x] **Paso 2: verificar que falla**
 
 Corre: `swift build && swift test --filter SSEParserTests`
 Esperado: no compila.
 
-- [ ] **Paso 3: implementar `SSEParser`**
+- [x] **Paso 3: implementar `SSEParser`**
 
 - Guarda **bytes** pendientes, no texto. Solo convierte a `String` (UTF-8) una línea completa, cuando aparece `\n`; así una letra partida entre dos trozos nunca se rompe.
 - Quita un `\r` final de cada línea.
@@ -168,12 +168,12 @@ Esperado: no compila.
 - **`data:` con o sin un espacio después:** agrega lo que sigue a los datos del evento.
 - **Cualquier otro campo** (`event:`, `id:`, `retry:`): se ignora.
 
-- [ ] **Paso 4: verificar que pasa**
+- [x] **Paso 4: verificar que pasa**
 
 Corre: `swift build && swift test --filter SSEParserTests`
 Esperado: PASA.
 
-- [ ] **Paso 5: commit**
+- [x] **Paso 5: commit**
 
 ```bash
 git add Sources/BuddyCore/OpenCode/SSEParser.swift Tests/ClaudeMenuBarBuddyTests/SSEParserTests.swift
