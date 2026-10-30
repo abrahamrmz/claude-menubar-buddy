@@ -67,6 +67,8 @@ struct BuddyHealth {
             claudeVersionCheck(),
             transcriptShapeCheck(),
             ungatedToolsCheck(),
+            openCodeConnectionCheck(),
+            openCodeConfigCheck(),
         ])
     }
 
@@ -280,6 +282,69 @@ struct BuddyHealth {
 
     static var verifiedVersionURL: URL {
         dirURL.appendingPathComponent("verified_claude_version")
+    }
+
+    // MARK: - opencode
+    //
+    // Two optional checks about the opencode bridge: whether it is talking to
+    // the local service, and whether opencode's own config leaves shell and
+    // edit for the buddy to ask about. Neither can break Claude approvals.
+
+    /// Updated by OpenCodeBridge on every state change: "connected",
+    /// "connecting", or "unavailable: <motivo>". Nil until the bridge runs.
+    static var openCodeState: String?
+
+    /// Where opencode's global config lives, first match wins.
+    private static var openCodeConfigURLs: [URL] {
+        let root = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".config/opencode")
+        return [root.appendingPathComponent("opencode.jsonc"),
+                root.appendingPathComponent("opencode.json")]
+    }
+
+    private static func openCodeConnectionCheck() -> Check {
+        let title = "opencode connection"
+        guard let state = openCodeState else {
+            return Check(title: title, ok: true,
+                         detail: "Skipped — opencode bridge not started",
+                         remedy: nil, optional: true)
+        }
+        if state == "connected" {
+            return Check(title: title, ok: true, detail: "Connected to the local opencode service",
+                         remedy: nil, optional: true)
+        }
+        if state.hasPrefix("unavailable") {
+            // opencode simply isn't running. That is not the buddy failing,
+            // so it reads as ok with the reason spelled out.
+            return Check(title: title, ok: true, detail: "opencode no está corriendo",
+                         remedy: nil, optional: true)
+        }
+        return Check(title: title, ok: false,
+                     detail: "opencode is running but the buddy can't connect (\(state))",
+                     remedy: "opencode está corriendo pero el buddy no logra conectarse; "
+                           + "revisa ~/.local/state/opencode/service.json",
+                     optional: true)
+    }
+
+    private static func openCodeConfigCheck() -> Check {
+        let title = "opencode asks before shell and edit"
+        guard let url = openCodeConfigURLs.first(where: {
+            FileManager.default.fileExists(atPath: $0.path)
+        }), let text = try? String(contentsOf: url, encoding: .utf8) else {
+            return Check(title: title, ok: true,
+                         detail: "Skipped — no global opencode config",
+                         remedy: nil, optional: true)
+        }
+        if OpenCodeConfigCheck.asksForShellAndEdit(configText: text) {
+            return Check(title: title, ok: true, detail: url.path, remedy: nil, optional: true)
+        }
+        return Check(
+            title: title, ok: false,
+            detail: "opencode would run shell and edit without asking the buddy",
+            remedy: "Add to ~/.config/opencode/opencode.json: \"permissions\": "
+                  + "[{ \"action\": \"shell\", \"resource\": \"*\", \"effect\": \"ask\" }, "
+                  + "{ \"action\": \"edit\", \"resource\": \"*\", \"effect\": \"ask\" }].",
+            optional: true)
     }
 
     /// Cached because `claude --version` costs ~0.66s cold, and this runs on

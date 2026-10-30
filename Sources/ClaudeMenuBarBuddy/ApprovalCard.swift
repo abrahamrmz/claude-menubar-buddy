@@ -189,8 +189,19 @@ extension AppDelegate {
         card.addSubview(icon)
 
         var rightEdge = cardWidth - pad
-        if let project = req.project, !project.isEmpty {
-            let badge = pillLabel(project, textColor: CardTheme.ink.withAlphaComponent(0.45),
+        // opencode's requests carry no host app, so the badge is also where the
+        // card says which agent is asking: "opencode · <proyecto>", or just
+        // "opencode" when the session has no project.
+        let badgeText: String? = {
+            if req.agent == "opencode" {
+                guard let project = req.project, !project.isEmpty else { return "opencode" }
+                return "opencode · \(project)"
+            }
+            guard let project = req.project, !project.isEmpty else { return nil }
+            return project
+        }()
+        if let badgeText {
+            let badge = pillLabel(badgeText, textColor: CardTheme.ink.withAlphaComponent(0.45),
                                   background: CardTheme.inkChip)
             badge.setFrameOrigin(NSPoint(x: rightEdge - badge.frame.width, y: headerY + 1))
             card.addSubview(badge)

@@ -5,6 +5,7 @@ import Foundation
 public enum RuleSubject: Equatable {
     case shell(command: String)
     case fileEdit(path: String)
+    case fileRead(path: String)
     case web(tool: String)
     case question(tool: String)
     case other(tool: String)
@@ -34,6 +35,8 @@ public enum CommandRule {
             return ShellRule.assess(command, context: context)
         case .fileEdit(let path):
             return assessFileEdit(path, context: context)
+        case .fileRead(let path):
+            return assessFileRead(path, context: context)
         case .web(let tool):
             return Assessment(.sale, "sale de tu máquina: \(tool)")
         case .question(let tool):
@@ -60,5 +63,19 @@ public enum CommandRule {
             return Assessment(.sensible, "toca un archivo sensible: \(canonical)")
         }
         return Assessment(.edicion, "edición de archivo")
+    }
+
+    private static func assessFileRead(_ path: String, context: RuleContext) -> Assessment {
+        // A read only leaks what it can name, so an unknown path is an unknown
+        // decision; a known one can still be a secret worth a card.
+        guard !path.isEmpty, path.hasPrefix("/"),
+              !path.split(separator: "/").contains("..") else {
+            return Assessment(.desconocido, "no se puede saber qué lee: \(path)")
+        }
+        let canonical = context.paths.canonicalize(path)
+        if context.paths.isSensitive(canonical) {
+            return Assessment(.sensible, "toca un archivo sensible: \(canonical)")
+        }
+        return Assessment(.lectura, "solo lee")
     }
 }

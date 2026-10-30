@@ -19,3 +19,26 @@ Los dos primeros porque `sed` y `find` no están en ningún `CommandCatalog`, y 
 **Qué se hizo (decisión del usuario):** adelantar a la tarea 4 los manejadores de `sed` y `find` tal como los define la tarea 5, para no dejar ningún commit intermedio donde `sed -i` o `find -delete` se lean como lectura. La tarea 5 añade `git`, `gh`, `ssh`, `awk` y `xargs`, más su batería adversaria. El manejador de `sed` vive en `Sources/BuddyCore/Rule/ShellRule+Commands.swift`, el mismo archivo que la tarea 5 extiende.
 
 **`[[` en el analizador:** el caso `[[ -f x ]] && cat x` fallaba porque la tarea 2 marca `[` sin comillas como glob, y el analizador devolvía `[[` con `expands = true`; la regla, con razón, no aprueba una palabra que expande. En bash `[[` es una palabra reservada, no un glob. Se corrigió en `ShellScript.parse` (un `[` seguido de otro `[`, o pegado a uno, ya no marca `expands`), sin cambios en las interfaces públicas ni en el resto de los casos de la tarea 2.
+
+---
+
+## Tarea 3 (entrega 2): el caso `.fileRead` de `RuleSubject` vive en `CommandRule.swift`, no en `RuleTypes.swift`
+
+**Paso:** el mapa de archivos de la tarea: «Modificar: `Sources/BuddyCore/Rule/RuleTypes.swift` (nuevo caso de `RuleSubject`) y `Sources/BuddyCore/Rule/CommandRule.swift`».
+
+**Qué pasó:** el plan sitúa el caso nuevo de `RuleSubject` en `RuleTypes.swift`, pero el enum `RuleSubject` está definido en `Sources/BuddyCore/Rule/CommandRule.swift`; `RuleTypes.swift` solo contiene `RuleCategory`, `Assessment` y `RuleContext`. En Swift un caso de enum solo se puede agregar donde el enum está declarado, así que `.fileRead(path:)` se agregó en `CommandRule.swift`, junto a los demás casos.
+
+**Qué se hizo:** el caso y su evaluación (`assessFileRead`) quedaron en `CommandRule.swift`; `RuleTypes.swift` no se tocó porque no había nada que cambiar ahí. El comportamiento y las interfaces son exactamente los del bloque de la tarea.
+
+---
+
+## Tarea 8 (entrega 2): dos detalles del texto del plan que no compilan tal cual
+
+**Paso:** paso 1 (implementar `OpenCodeBridge`).
+
+**Qué pasó:**
+
+1. El bloque de interfaces escribe `OpenCodeService.load(from: .defaultFile)`. El parámetro es `from file: URL`, así que `.defaultFile` se busca como miembro de `URL`, y `defaultFile` en realidad es un estático de `OpenCodeService`. Tal cual, no compila.
+2. El paso 1 pide «una `URLSession` propia con delegado». En Foundation, `URLSession.delegate` es de solo lectura: solo se fija al construir la sesión con `init(configuration:delegate:delegateQueue:)`. Como `self` todavía no existe antes de `super.init()`, no se puede asignar el delegado después.
+
+**Qué se hizo (sin cambiar el diseño):** `OpenCodeService.load(from: OpenCodeService.defaultFile)`, que es lo que el plan quiere decir; y la sesión del stream se declaró `lazy` con `delegate: self`, en lugar de asignar el delegado tras `init`. Los endpoints, el ciclo de reconexión y la recuperación son los del plan, y el delegado sigue recibiendo solo los eventos del stream porque las demás llamadas van por una `URLSession` aparte.

@@ -14,7 +14,7 @@ extension AppDelegate {
     func processDoneMarkers() {
         let fm = FileManager.default
         let now = Date().timeIntervalSince1970
-        var latest: (project: String, elapsed: Int)? = nil
+        var latest: (project: String, elapsed: Int, agent: String?)? = nil
         for url in dirEntries where url.lastPathComponent.hasPrefix("done_") && url.pathExtension == "json" {
             defer { try? fm.removeItem(at: url) }
             guard let data = try? Data(contentsOf: url),
@@ -25,24 +25,32 @@ extension AppDelegate {
             if let ts = obj["ts"] as? Double, now - ts > 60 { continue }
             guard elapsed >= toastMinSeconds else { continue }
             let project = obj["project"] as? String ?? ""
-            if latest == nil || elapsed > latest!.elapsed { latest = (project, elapsed) }
+            let agent = obj["agent"] as? String
+            if latest == nil || elapsed > latest!.elapsed { latest = (project, elapsed, agent) }
         }
         guard let done = latest else { return }
         if currentRequestId != nil {
             // An approval card is up — that keeps the spotlight, the finish
             // notice degrades to a banner.
-            sendNotification(title: "Claude Code — \(done.project)",
-                             body: "Finished in \(formatDuration(done.elapsed))")
+            sendNotification(title: doneTitle(project: done.project, agent: done.agent),
+                              body: "Finished in \(formatDuration(done.elapsed))")
         } else {
-            showDoneToast(project: done.project, elapsed: done.elapsed)
+            showDoneToast(project: done.project, elapsed: done.elapsed, agent: done.agent)
             flashMood("celebrate", for: 4.0)
             NSSound(named: "Glass")?.play()
         }
     }
 
-    func showDoneToast(project: String, elapsed: Int) {
+    /// `opencode — <proyecto>` for opencode turns, `Claude Code — <proyecto>`
+    /// otherwise. Shared by the toast and the banner so the two agree.
+    func doneTitle(project: String, agent: String?) -> String {
+        if agent == "opencode" { return project.isEmpty ? "opencode" : "opencode — \(project)" }
+        return "Claude Code — \(project)"
+    }
+
+    func showDoneToast(project: String, elapsed: Int, agent: String?) {
         guard floatingPetVisible, floatingWindow != nil else {
-            sendNotification(title: "Claude Code — \(project)",
+            sendNotification(title: doneTitle(project: project, agent: agent),
                              body: "Finished in \(formatDuration(elapsed))")
             return
         }
@@ -73,7 +81,11 @@ extension AppDelegate {
         }
 
         let bubble = BubbleBackgroundView(frame: NSRect(origin: .zero, size: windowSize))
-        bubble.setAccessibilityLabel("\(project.isEmpty ? "Claude Code" : project): turn finished in \(formatDuration(elapsed))")
+        // opencode's toast is labelled with its own name; Claude's keeps the
+        // project name alone, as it always has.
+        let titleText = agent == "opencode" ? doneTitle(project: project, agent: agent)
+                                            : (project.isEmpty ? "Claude Code" : project)
+        bubble.setAccessibilityLabel("\(titleText): turn finished in \(formatDuration(elapsed))")
         window.contentView = bubble
         let card = bubble.content
 
@@ -93,7 +105,7 @@ extension AppDelegate {
         card.addSubview(icon)
 
         let textX = pad + 28
-        let titleField = NSTextField(labelWithString: project.isEmpty ? "Claude Code" : project)
+        let titleField = NSTextField(labelWithString: titleText)
         titleField.font = CardTheme.heading(CardTheme.titleSize, weight: 700)
         titleField.textColor = CardTheme.inkPrimary
         titleField.lineBreakMode = .byTruncatingTail

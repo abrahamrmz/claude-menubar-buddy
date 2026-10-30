@@ -341,6 +341,12 @@ extension AppDelegate {
         case "NotebookEdit": return "text.book.closed.fill"
         case "ExitPlanMode": return "list.bullet.clipboard.fill"
         case "AskUserQuestion": return "questionmark.bubble.fill"
+        // opencode actions, lowercase.
+        case "shell": return "terminal.fill"
+        case "edit": return "pencil"
+        case "read": return "doc.text"
+        case "webfetch", "websearch": return "globe"
+        case "question": return "questionmark.bubble.fill"
         default: return "questionmark.circle.fill"
         }
     }

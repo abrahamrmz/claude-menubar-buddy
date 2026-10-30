@@ -61,7 +61,7 @@ public enum HookRuleCLI {
         switch subject {
         case .shell(let command):
             return command
-        case .fileEdit(let path):
+        case .fileEdit(let path), .fileRead(let path):
             return path
         case .web(let tool), .question(let tool), .other(let tool):
             return tool
