@@ -1201,7 +1201,7 @@ var openCodeBridge: OpenCodeBridge?
 
 La app no tiene tests de UI ni de red. La verificación es que compile, que todo siga en verde y la prueba en vivo que Claude hace con el usuario al final.
 
-- [ ] **Paso 1: implementar `OpenCodeBridge`**
+- [x] **Paso 1: implementar `OpenCodeBridge`**
 
 - **Todo en el hilo principal,** salvo la lectura de red: los callbacks de `URLSession` se despachan a `DispatchQueue.main`.
 - **Conectar:**
@@ -1238,7 +1238,7 @@ La app no tiene tests de UI ni de red. La verificación es que compile, que todo
   4. `core.forget(id:)`.
 - **Errores:** nunca tumban la app; van a `DebugLog.note` con el tipo de llamada y el código HTTP. **Nunca** la contraseña ni el encabezado `Authorization`.
 
-- [ ] **Paso 2: conectar la app**
+- [x] **Paso 2: conectar la app**
 
 - **`main.swift` → `applicationDidFinishLaunching`,** después de `sweepStaleArtifacts()`:
   - borra los `request_*.json` de una corrida anterior cuyo JSON tenga `"agent": "opencode"`; el puente los vuelve a traer al reconectar;
@@ -1250,12 +1250,12 @@ La app no tiene tests de UI ni de red. La verificación es que compile, que todo
   - el registro en `decisions.jsonl` y `noteDecision` siguen igual;
   - `respondToQueue` y `allowAllNonCriticalQueued` ya pasan por `writeDecision`, así que no cambian.
 
-- [ ] **Paso 3: verificar**
+- [x] **Paso 3: verificar**
 
 Corre: `swift build && swift test`
 Esperado: compila sin errores y todo en verde.
 
-- [ ] **Paso 4: commit**
+- [x] **Paso 4: commit**
 
 ```bash
 git add Sources/ClaudeMenuBarBuddy/OpenCodeBridge.swift Sources/ClaudeMenuBarBuddy/main.swift Sources/ClaudeMenuBarBuddy/CardDecision.swift

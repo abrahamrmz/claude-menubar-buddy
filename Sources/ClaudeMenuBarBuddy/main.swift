@@ -198,6 +198,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     /// that just popped up cannot be approved by reflex.
     var currentCardShownAt: Date?
 
+    // The connection to the local opencode service. Nil until launch, and nil
+    // forever if opencode never comes up — the app is fully usable without it.
+    var openCodeBridge: OpenCodeBridge?
+
     // One listing of the config directory per poll tick, shared by everyone
     // who reads it: pending requests, done markers, turn_start markers and the
     // debug capture flags. Between them they were scanning the same directory
@@ -394,6 +398,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         }
     }
 
+    /// The bridge re-fetches what opencode still has pending the moment it
+    /// connects, so a request_<id>.json left by a previous run is a card for
+    /// something that may already be answered. Clear the opencode ones at
+    /// launch; the reconnect rebuilds the live ones. Claude's requests are
+    /// left alone — those are hook.sh's, and it cleans up after itself.
+    func removeStaleOpenCodeRequests() {
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(at: dirURL, includingPropertiesForKeys: nil) else { return }
+        for url in entries where url.lastPathComponent.hasPrefix("request_") && url.pathExtension == "json" {
+            guard let data = try? Data(contentsOf: url),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  obj["agent"] as? String == "opencode" else { continue }
+            try? fm.removeItem(at: url)
+        }
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Before anything draws: the card's faces have to be in the process's
         // font table or every label silently falls back to the system's, and
@@ -419,6 +439,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         // The old edit-only flag retires here; auto mode is NOT turned on by it.
         try? FileManager.default.removeItem(at: dirURL.appendingPathComponent("auto_approve_edits"))
         sweepStaleArtifacts()
+        removeStaleOpenCodeRequests()
+        openCodeBridge = OpenCodeBridge(configDir: dirURL)
+        openCodeBridge?.start()
         loadDecisionWindow()
 
         approvalHotKeys.onAllow = { [weak self] in self?.decideViaHotKey("allow") }
@@ -553,7 +576,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         for url in urls {
             guard let data = try? Data(contentsOf: url),
                   let req = try? JSONDecoder().decode(PendingRequest.self, from: data) else { continue }
-            if let ts = req.ts, now - ts > Self.hookAnswerWindow {
+            if let ts = req.ts, req.agent != "opencode", now - ts > Self.hookAnswerWindow {
                 DebugLog.note("swept expired request \(req.id) (\(req.tool)) — \(Int(now - ts))s old, window is \(Int(Self.hookAnswerWindow))s")
                 try? fm.removeItem(at: url)
                 continue

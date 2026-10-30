@@ -296,13 +296,20 @@ extension AppDelegate {
     /// respond() because a batch does this N times but animates once.
     func writeDecision(id: String, request: PendingRequest?, decision: String,
                        reason: String? = nil, answers: [String: String]? = nil) {
-        let responseURL = dirURL.appendingPathComponent("response_\(id).json")
         DebugLog.note("decision \(decision) written for \(id)\(request.map { " (\($0.tool))" } ?? "")")
-        var payload: [String: Any] = ["decision": decision]
-        if let reason = reason { payload["reason"] = reason }
-        if let answers = answers { payload["answers"] = answers }
-        if let data = try? JSONSerialization.data(withJSONObject: payload) {
-            try? data.write(to: responseURL, options: [.atomic])
+        if request?.agent == "opencode" {
+            // opencode has no response file: the answer goes back over HTTP,
+            // and the bridge also drops request_<id>.json and forgets the
+            // card. The audit trail below still runs the same way.
+            openCodeBridge?.answer(id: id, decision: decision, reason: reason, answers: answers)
+        } else {
+            let responseURL = dirURL.appendingPathComponent("response_\(id).json")
+            var payload: [String: Any] = ["decision": decision]
+            if let reason = reason { payload["reason"] = reason }
+            if let answers = answers { payload["answers"] = answers }
+            if let data = try? JSONSerialization.data(withJSONObject: payload) {
+                try? data.write(to: responseURL, options: [.atomic])
+            }
         }
 
         // Append to the decision audit trail (shown in the Decision History
@@ -375,6 +382,7 @@ extension AppDelegate {
         // Retiring goes through poll(), which fades the card neutrally (no
         // ✓/✕ — the buddy decided nothing) or surfaces the next in line.
         if let ts = currentRequest?.ts,
+           currentRequest?.agent != "opencode",
            Date().timeIntervalSince1970 - ts > AppDelegate.hookAnswerWindow {
             DebugLog.note("refused \(decision) for \(id): past the \(Int(AppDelegate.hookAnswerWindow))s answer window — nobody is listening, no log entry written")
             try? FileManager.default.removeItem(at: dirURL.appendingPathComponent("request_\(id).json"))
