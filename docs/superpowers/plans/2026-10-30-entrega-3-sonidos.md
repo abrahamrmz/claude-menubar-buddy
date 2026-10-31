@@ -433,7 +433,7 @@ El repo es público: cada sonido necesita su fuente y su licencia comprobables. 
 - Consume: `SoundCatalog.bundled` y `SoundSource` de la tarea 1, y los archivos de la tarea 0.
 - Produce: nada; es solo un test.
 
-- [ ] **Paso 1: escribir el test**
+- [x] **Paso 1: escribir el test**
 
 Crea `Tests/ClaudeMenuBarBuddyTests/SoundFilesAuditTests.swift` con exactamente esto:
 
@@ -533,19 +533,19 @@ import BuddyCore
 }
 ```
 
-- [ ] **Paso 2: verificar que pasa**
+- [x] **Paso 2: verificar que pasa**
 
 Corre: `swift build && swift test --filter SoundFilesAuditTests`
 Esperado: PASA (4 tests) **a la primera**. Este test no lleva código nuevo: vigila los archivos que ya puso la tarea 0 y el catálogo de la tarea 1.
 
 Si falla, **no toques los archivos de sonido ni `CREDITS.md`**. Anota el mensaje del fallo en `NOTAS-EJECUCION.md` y detente.
 
-- [ ] **Paso 3: correr todo**
+- [x] **Paso 3: correr todo**
 
 Corre: `swift build && swift test`
 Esperado: todo en verde, 246 tests (225 + 11 + 6 + 4).
 
-- [ ] **Paso 4: commit**
+- [x] **Paso 4: commit**
 
 ```bash
 git add Tests/ClaudeMenuBarBuddyTests/SoundFilesAuditTests.swift
