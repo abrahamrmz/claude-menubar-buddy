@@ -1,6 +1,6 @@
 # Entrega 3: sonidos — plan de implementación
 
-> **Para agentes:** ejecuta este plan tarea por tarea, en orden, marcando cada checkbox (`- [ ]` → `- [x]`) al terminar el paso. Si tienes las skills `superpowers:subagent-driven-development` o `superpowers:executing-plans`, úsalas. Lee `AGENTS.md` antes de empezar.
+> **Para agentes:** ejecuta este plan tarea por tarea, en orden, marcando cada checkbox (`- [ ]` → `- [x]`) al terminar el paso. El plan, con sus checkboxes marcados, entra en el commit de cada tarea: agrega `docs/superpowers/plans/2026-10-30-entrega-3-sonidos.md` al `git add` que da la tarea. Si tienes las skills `superpowers:subagent-driven-development` o `superpowers:executing-plans`, úsalas. Lee `AGENTS.md` antes de empezar.
 
 **Meta:** que el usuario elija desde el menú de la barra el sonido de cada uno de los cuatro eventos del buddy (o lo silencie), con cinco sonidos propios CC0 además de los 14 de macOS.
 
@@ -747,7 +747,7 @@ Corre: `shellcheck hook.sh notify-done.sh`
 Esperado: sin avisos. Esta entrega no los toca, pero se revisa igual.
 
 Corre: `git status --short`
-Esperado: solo `README.md` modificado.
+Esperado: solo `README.md` y el plan modificados.
 
 - [ ] **Paso 3: commit**
 
