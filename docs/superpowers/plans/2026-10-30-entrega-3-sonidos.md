@@ -323,7 +323,7 @@ public enum SoundMenu {
 }
 ```
 
-- [ ] **Paso 1: escribir los tests**
+- [x] **Paso 1: escribir los tests**
 
 Crea `Tests/ClaudeMenuBarBuddyTests/SoundMenuTests.swift` con exactamente esto:
 
@@ -394,12 +394,12 @@ import BuddyCore
 }
 ```
 
-- [ ] **Paso 2: verificar que falla**
+- [x] **Paso 2: verificar que falla**
 
 Corre: `swift build && swift test --filter SoundMenuTests`
 Esperado: no compila (no existe `SoundMenu`).
 
-- [ ] **Paso 3: implementar `Sources/BuddyCore/SoundMenu.swift`**
+- [x] **Paso 3: implementar `Sources/BuddyCore/SoundMenu.swift`**
 
 - **`rowTitle`:** según `SoundCatalog.resolve(stored:for:)`, `"\(event.title) — \(option.title)"` o `"\(event.title) — Sin sonido"`.
 - **`rows`, en este orden:**
@@ -408,12 +408,12 @@ Esperado: no compila (no existe `SoundMenu`).
   3. `.separator` y `.option(id: "none", title: "Sin sonido", …)`.
 - **La palomita (`checked`)** va en la fila cuyo id es lo que devuelve `resolve`: el id de la opción, o `"none"` si es `.silent`. Así, un valor guardado desconocido marca el sonido por defecto.
 
-- [ ] **Paso 4: verificar que pasa**
+- [x] **Paso 4: verificar que pasa**
 
 Corre: `swift build && swift test --filter SoundMenuTests`
 Esperado: PASA (6 tests).
 
-- [ ] **Paso 5: commit**
+- [x] **Paso 5: commit**
 
 ```bash
 git add Sources/BuddyCore/SoundMenu.swift Tests/ClaudeMenuBarBuddyTests/SoundMenuTests.swift
