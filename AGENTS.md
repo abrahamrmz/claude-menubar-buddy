@@ -4,12 +4,13 @@ Este archivo lo lee opencode al empezar. Si algo de aquí choca con una instrucc
 
 ## Qué estás construyendo
 
-La entrega 3 es el control de los sonidos del buddy. Hoy está en su **fase de investigación**: todavía no hay plan ni se toca código. El prompt del chat dice qué buscar y en qué archivo escribir los resultados.
+Sigue el plan vigente, tarea por tarea y en orden. Hoy es `docs/superpowers/plans/2026-10-30-entrega-3-sonidos.md`: el control de los sonidos del buddy desde el menú de la barra. El diseño que lo respalda está en `docs/superpowers/specs/2026-10-30-sonidos-design.md`. Los planes de las entregas 1 y 2 ya se completaron y son solo referencia.
 
-- En esta fase solo lees páginas web (webfetch y websearch) y escribes el archivo de resultados que pide el prompt. **No descargues archivos** (`curl` y `wget` están negados) y no edites nada más.
-- Solo cuentan los sonidos con licencia CC0 o de dominio público. El repo es público: cada sonido necesita una fuente y una licencia que cualquiera pueda comprobar.
+- El plan va por **bloques de revisión**. Al terminar cada bloque, detente y avisa en el chat; no empieces el siguiente hasta que te lo digan.
+- **No toques los archivos de `Sources/ClaudeMenuBarBuddy/Resources/Sounds/`** (los `.wav` y `CREDITS.md`). Los puso Claude con sus créditos, y un test compara sus SHA-256.
+- **No descargues archivos** (`curl` y `wget` están negados).
 
-Las entregas 1 y 2 ya se completaron; sus planes en `docs/superpowers/plans/` son solo referencia. Cuando exista el plan de la entrega 3, este archivo apuntará a él. **No cambies decisiones de diseño.** Si algo no se puede hacer como dice el prompt o el plan, no improvises una alternativa:
+**No cambies decisiones de diseño.** Si una tarea no se puede hacer como dice el plan, no improvises una alternativa:
 1. Escribe la duda en `docs/superpowers/plans/NOTAS-EJECUCION.md` (qué tarea, qué paso, qué falló, qué intentaste).
 2. Detente y avisa en el chat.
 
