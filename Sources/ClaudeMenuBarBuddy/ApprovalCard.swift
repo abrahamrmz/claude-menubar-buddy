@@ -701,7 +701,7 @@ extension AppDelegate {
         if switchingCardByHand {
             switchingCardByHand = false
         } else {
-            NSSound(named: "Ping")?.play()
+            playSound(.cardArrived)
         }
     }
 

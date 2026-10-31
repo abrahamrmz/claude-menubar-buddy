@@ -55,7 +55,7 @@ extension AppDelegate {
         if decision == "allow" || decision == "always" {
             guard CardSafety.hotKeyMayApprove(critical: currentRequest?.isCritical ?? false,
                                               shownAt: currentCardShownAt, now: Date()) else {
-                NSSound.beep()
+                playSound(.hotKeyBlocked)
                 shakeCard()
                 return
             }
@@ -115,11 +115,11 @@ extension AppDelegate {
         respond("allow")
     }
 
-    /// The "not yet" for a refused hotkey, made visible. The beep alone was
-    /// easy to miss — with alert sounds off, a refused ⌘⏎ looked exactly like
+    /// The "not yet" for a refused hotkey, made visible. The sound alone was
+    /// easy to miss — with it silenced, a refused ⌘⏎ looked exactly like
     /// a keypress that never registered. The classic macOS head-shake, on the
     /// window itself so nothing inside the card gets clipped; skipped under
-    /// Reduce Motion, where the beep has to carry it.
+    /// Reduce Motion, where the sound has to carry it.
     func shakeCard() {
         guard let window = statusBubbleWindow, window.isVisible,
               !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }

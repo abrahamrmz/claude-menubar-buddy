@@ -41,6 +41,13 @@ extension Defaults.Keys {
     // so an id left behind by a retired palette falls back instead of
     // leaving a card with no colors.
     static let cardPalette = Key<String>("cardPalette", default: CardPalette.masko.id)
+    // The sound chosen for each SoundEvent, by SoundCatalog id ("none" is
+    // silence). Resolved on read (SoundCatalog.resolve), so an id left
+    // behind by a retired sound plays the default instead of nothing.
+    static let cardSound = Key<String>(SoundEvent.cardArrived.defaultsKey, default: SoundEvent.cardArrived.defaultSoundID)
+    static let turnDoneSound = Key<String>(SoundEvent.turnDone.defaultsKey, default: SoundEvent.turnDone.defaultSoundID)
+    static let petClickSound = Key<String>(SoundEvent.petClicked.defaultsKey, default: SoundEvent.petClicked.defaultSoundID)
+    static let blockedSound = Key<String>(SoundEvent.hotKeyBlocked.defaultsKey, default: SoundEvent.hotKeyBlocked.defaultSoundID)
 }
 
 extension AppDelegate {
@@ -99,6 +106,32 @@ extension AppDelegate {
     var cardPalette: String {
         get { Defaults[.cardPalette] }
         set { Defaults[.cardPalette] = newValue }
+    }
+
+    // MARK: - Sounds
+
+    /// The stored catalog id for an event's sound (a SoundCatalog id, or
+    /// "none" for silence).
+    func storedSoundID(for event: SoundEvent) -> String {
+        Defaults[soundKey(for: event)]
+    }
+
+    func setStoredSoundID(_ id: String, for event: SoundEvent) {
+        Defaults[soundKey(for: event)] = id
+    }
+
+    private func soundKey(for event: SoundEvent) -> Defaults.Key<String> {
+        switch event {
+        case .cardArrived: return .cardSound
+        case .turnDone: return .turnDoneSound
+        case .petClicked: return .petClickSound
+        case .hotKeyBlocked: return .blockedSound
+        }
+    }
+
+    /// Plays the event's sound. The one way the app makes a sound.
+    func playSound(_ event: SoundEvent) {
+        soundPlayer.play(event, stored: storedSoundID(for: event))
     }
 
     // MARK: - Start at login

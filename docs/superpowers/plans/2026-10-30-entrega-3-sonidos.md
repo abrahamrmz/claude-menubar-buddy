@@ -581,7 +581,7 @@ func playSound(_ event: SoundEvent)                          // Prefs.swift
 
 La app no tiene tests. La verificación es que compile y que todo siga en verde; lo demás lo ve Claude en el diff y en la prueba en vivo (puntos de revisión 1, 2, 3 y 5).
 
-- [ ] **Paso 1: crear `SoundPlayer.swift`**
+- [x] **Paso 1: crear `SoundPlayer.swift`**
 
 ```swift
 import AppKit
@@ -602,7 +602,7 @@ import BuddyCore
 - **`systemSoundExists(_:)`:** `FileManager.default.fileExists(atPath: "/System/Library/Sounds/\(name).aiff")`. Con un comentario: se revisa en disco para que armar el menú no cargue los 14.
 - **Comentario de la clase:** cada `NSSound` se carga la primera vez que suena y se guarda, así que en reposo no cuesta nada.
 
-- [ ] **Paso 2: las llaves y los accesos en `Prefs.swift`**
+- [x] **Paso 2: las llaves y los accesos en `Prefs.swift`**
 
 En `extension Defaults.Keys`, después de `cardPalette`:
 
@@ -621,7 +621,7 @@ En `extension AppDelegate`, después de `var cardPalette`:
 - `private func soundKey(for event: SoundEvent) -> Defaults.Key<String>` es un `switch` que devuelve `.cardSound`, `.turnDoneSound`, `.petClickSound` o `.blockedSound`.
 - `playSound(_:)` llama a `soundPlayer.play(event, stored: storedSoundID(for: event))`. Lleva el comentario `/// Plays the event's sound. The one way the app makes a sound.`
 
-- [ ] **Paso 3: la propiedad en `main.swift`**
+- [x] **Paso 3: la propiedad en `main.swift`**
 
 En `AppDelegate`, justo después de `var switchingCardByHand = false`:
 
@@ -630,7 +630,7 @@ En `AppDelegate`, justo después de `var switchingCardByHand = false`:
     let soundPlayer = SoundPlayer()
 ```
 
-- [ ] **Paso 4: los cuatro sonidos de hoy**
+- [x] **Paso 4: los cuatro sonidos de hoy**
 
 Cambia cada línea, en el mismo lugar donde está, y nada más:
 
@@ -645,7 +645,7 @@ En `CardDecision.swift`, el comentario `///` que está justo encima de `func sha
 - «The beep alone was easy to miss — with alert sounds off» queda «The sound alone was easy to miss — with it silenced»;
 - «where the beep has to carry it» queda «where the sound has to carry it».
 
-- [ ] **Paso 5: verificar**
+- [x] **Paso 5: verificar**
 
 Corre: `swift build && swift test`
 Esperado: compila sin errores y todo en verde (246 tests).
@@ -653,7 +653,7 @@ Esperado: compila sin errores y todo en verde (246 tests).
 Corre: `grep -rn "NSSound" Sources/ClaudeMenuBarBuddy | grep -v SoundPlayer.swift`
 Esperado: no imprime nada. Solo `SoundPlayer.swift` usa `NSSound`.
 
-- [ ] **Paso 6: commit**
+- [x] **Paso 6: commit**
 
 ```bash
 git add Sources/ClaudeMenuBarBuddy/SoundPlayer.swift Sources/ClaudeMenuBarBuddy/Prefs.swift Sources/ClaudeMenuBarBuddy/main.swift Sources/ClaudeMenuBarBuddy/ApprovalCard.swift Sources/ClaudeMenuBarBuddy/Toast.swift Sources/ClaudeMenuBarBuddy/MoodEngine.swift Sources/ClaudeMenuBarBuddy/CardDecision.swift

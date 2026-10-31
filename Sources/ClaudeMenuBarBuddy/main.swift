@@ -361,6 +361,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     // be pinged about a card they just asked for.
     var switchingCardByHand = false
 
+    // Every sound the buddy makes goes through here (SoundPlayer.swift).
+    let soundPlayer = SoundPlayer()
+
     // Turn-finished toast (see Toast.swift).
     var toastWindow: NSPanel?
     var toastDismissWorkItem: DispatchWorkItem?
