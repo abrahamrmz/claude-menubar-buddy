@@ -1,6 +1,6 @@
 # Sonidos del buddy — diseño
 
-Fecha: 2026-10-30 · Rama: `sonidos` (desde `personal`) · Estado: borrador para aprobación
+Fecha: 2026-10-30 · Rama: `sonidos` (desde `personal`) · Estado: aprobada por el usuario el 2026-10-30. La sección 6.1 se llenó después, con los sonidos que eligió al escucharlos.
 
 ## 1. Para qué es esto
 
@@ -59,26 +59,31 @@ Esta ronda deja elegir el sonido de cada evento desde el menú de la barra, o si
 - **Cada evento tiene su opción de silencio.**
 - Los sonidos nuevos son **CC0, de dominio público o hechos por nosotros**, con su fuente y su licencia en el repo.
 - **La búsqueda de candidatos la hace DeepSeek** en opencode (resultados en `docs/superpowers/research/2026-10-30-sonidos-sin-licencia.md`).
+- **Los sonidos elegidos al escucharlos:**
+  - **tarjeta nueva:** woodblock, con el volumen subido;
+  - **turno terminado:** Glass;
+  - **clic a la mascota:** clic;
+  - **atajo bloqueado:** bong.
+
+  El pluck también entra como opción (sección 6.1).
 
 ### 4.2 Mías (revísalas)
 
 1. **Un solo catálogo para los cuatro eventos.** Cualquier evento puede usar cualquier sonido. Así el usuario arma su combinación sin listas distintas por evento.
 2. **El catálogo incluye los 14 sonidos de macOS** (`/System/Library/Sounds`: Basso, Blow, Bottle, Frog, Funk, Glass, Hero, Morse, Ping, Pop, Purr, Sosumi, Submarine y Tink). Vienen en toda Mac y no se copian al repo, así que no tienen problema de licencia. Además, el que quiera puede volver a los sonidos de hoy.
-3. **Valores por defecto:**
-   - **Tarjeta nueva:** el sonido propio que el usuario elija como favorito al escuchar los candidatos (sección 6.1). Es el único que cambia sin que nadie toque el menú, porque el Ping es justo lo que se quiere quitar.
-   - **Turno terminado:** Glass; **clic a la mascota:** Tink. Son los de hoy.
-   - **Atajo bloqueado:** deja de ser `NSSound.beep()` y pasa a ser un sonido explícito del catálogo (sección 9). Cuál, se decide al escuchar los candidatos; si ninguno convence, Basso de macOS (grave, 0.77 s).
+3. **Valores por defecto:** los que eligió el usuario al escuchar (sección 6.1).
+   - **Tarjeta nueva:** Madera (woodblock).
+   - **Turno terminado:** Glass, el de hoy.
+   - **Clic a la mascota:** Clic.
+   - **Atajo bloqueado:** Bong. Deja de ser `NSSound.beep()` y pasa a ser un sonido explícito del catálogo (sección 9).
 4. **El atajo bloqueado corta el sonido de la tarjeta** si sigue sonando. Así no lo tapa (sección 9).
 5. **Si un sonido ya está sonando, vuelve a empezar.** `NSSound(named:)` devuelve siempre la misma instancia, y `play()` sobre una instancia que suena no hace nada. Por eso hoy, con dos tarjetas seguidas, la segunda llega muda.
 6. **Ganancia por sonido.** Cada sonido del catálogo lleva su volumen relativo (de 0 a 1, aplicado con `NSSound.volume`) para que los de fuentes distintas suenen parejos. Se fija al escucharlos. Los de macOS van en 1.0.
 7. **Cada fila del submenú dice qué sonido tiene**, por ejemplo "Tarjeta nueva — Gota", para no tener que abrirla para saberlo.
 8. **"Sonidos" vive solo en el menú de reposo.** Mientras hay una tarjeta, el menú de la barra es el de la tarjeta, y no se toca.
 9. **Elegir el que ya está marcado lo vuelve a tocar**, para escucharlo otra vez. Elegir "Sin sonido" no toca nada.
-10. **Quién baja los archivos:** Claude, con el OK del usuario para cada descarga, antes del primer bloque del plan. DeepSeek no puede (`curl` y `wget` están negados en `opencode.jsonc`), y los tests del plan necesitan que los archivos ya estén en el repo.
-11. **Si la investigación no da al menos tres sonidos suaves y graves que convenzan para la tarjeta**, se generan nosotros mismos con un script de síntesis (ondas senoidales amortiguadas, sin muestras de nadie):
-    - El script es Swift, en `scripts/generate-sounds.swift`, y escribe WAV.
-    - Claude lo corre con `swift scripts/generate-sounds.swift` antes del plan, igual que las descargas. DeepSeek no lo corre.
-    - En `CREDITS.md`, la fuente de esos archivos es la ruta del script y la licencia es la MIT del repo. La auditoría (sección 8) acepta esa forma, siempre que el script exista.
+10. **Quién baja los archivos:** Claude, con el OK del usuario para cada descarga, antes del primer bloque del plan. DeepSeek no puede (`curl` y `wget` están negados en `opencode.jsonc`), y los tests del plan necesitan que los archivos ya estén en el repo. Ya están: los cinco archivos y su `CREDITS.md` entraron con la spec.
+11. **Los nombres en el menú de los sonidos propios** son palabras en español: Madera, Cuerda, Gota, Clic y Bong.
 
 ### 4.3 Supuestos sin contestar
 
@@ -103,10 +108,11 @@ En el menú de reposo, justo antes de "Modo auto":
 
 ```
 Sonidos                        ▸
-    Tarjeta nueva — Gota          ▸   ✓ Gota
-    Turno terminado — Glass       ▸     Madera
-    Clic a la mascota — Tink      ▸     Toc
-    Atajo bloqueado — Basso       ▸     …(los propios)
+    Tarjeta nueva — Madera        ▸   ✓ Madera
+    Turno terminado — Glass       ▸     Cuerda
+    Clic a la mascota — Clic      ▸     Gota
+    Atajo bloqueado — Bong        ▸     Clic
+                                        Bong
                                         ─────────
                                         macOS            (encabezado, no se puede elegir)
                                         Basso
@@ -139,13 +145,30 @@ Cuatro llaves de `Defaults` (en `Prefs.swift`, con el resto), una por evento: `c
 
 ### 6.1 Sonidos propios
 
-**Pendiente de la investigación.** DeepSeek busca candidatos CC0 o de dominio público para los cuatro eventos. Luego:
+**Cómo se eligieron:**
+1. DeepSeek buscó candidatos CC0 en `docs/superpowers/research/2026-10-30-sonidos-sin-licencia.md`.
+2. Claude bajó 20 de ellos al scratchpad, con el OK del usuario, y comprobó los `LICENSE` en los commits fijados.
+3. Midió la duración y el volumen de cada uno y se los tocó al usuario, evento por evento, junto al sonido de hoy.
+4. El usuario eligió uno por evento:
+   - **tarjeta:** el woodblock, entre ese y el pluck;
+   - **turno terminado:** Glass, sobre los cuatro "confirmation" de Kenney;
+   - **clic a la mascota:** el clic;
+   - **atajo bloqueado:** el bong.
+5. El woodblock venía 17 dB más bajo que el Ping. Se le subió el volumen al archivo, y el usuario prefirió esa versión.
+6. La gota entra como tercera opción para la tarjeta, porque fue de lo primero que pidió el usuario.
 
-1. el usuario escucha los mejores (Claude los baja al scratchpad, con su OK, y los toca);
-2. se eligen **entre 6 y 8 sonidos propios en total, con al menos 3 para la tarjeta** (gota, madera, toc);
-3. se fijan aquí su id, su nombre en español, su archivo, su ganancia, su fuente, su licencia y cuál es el favorito de la tarjeta.
+En el orden del menú:
 
-Si hace falta recortar un archivo (quitarle silencio o una cola larga) o pasarlo a WAV, Claude lo hace al bajarlo y lo anota en los créditos. CC0 lo permite.
+| id | Nombre en el menú | Archivo | Ganancia | Duración | Origen | Por defecto de |
+|---|---|---|---|---|---|---|
+| `woodblock` | Madera | `woodblock.wav` | 1.0 | 0.31 s | VCSL, `wood_click_pp_rr3.wav`, con el volumen subido 16.2 dB | Tarjeta nueva |
+| `pluck` | Cuerda | `pluck.wav` | 0.25 | 0.11 s | Kenney Interface Sounds, `pluck_001.wav` | — |
+| `drop` | Gota | `drop.wav` | 0.28 | 0.13 s | Kenney Interface Sounds, `drop_001.wav` | — |
+| `click` | Clic | `click.wav` | 0.28 | 0.01 s | Kenney Interface Sounds, `click_002.wav` | Clic a la mascota |
+| `bong` | Bong | `bong.wav` | 0.28 | 0.13 s | Kenney Interface Sounds, `bong_001.wav` | Atajo bloqueado |
+
+- **Ganancias:** los de Kenney llegan casi a 0 dBFS de pico. Con su ganancia quedan cerca de −12 dBFS, como el woodblock subido y los sonidos de macOS (de −9 a −14). Son el punto de partida y se afinan en la prueba en vivo.
+- **Formatos:** todos son WAV PCM a 44.1 kHz. `NSSound` abre los cinco (comprobado).
 
 ### 6.2 Sonidos de macOS
 
@@ -193,7 +216,8 @@ En `BuddyCore`, con Swift Testing:
 - **auditoría contra el repo** (como la de `MoodPolicyTests`, que lee `Resources` vía `#filePath`):
   - cada sonido propio del catálogo tiene su archivo en `Resources/Sounds/`;
   - cada archivo de audio de esa carpeta está en el catálogo, para que no haya archivos sin licencia;
-  - cada uno aparece en `CREDITS.md` con su licencia y su fuente: CC0 o dominio público con una URL, o MIT con la ruta de un script del repo que existe (4.2.11);
+  - cada uno aparece en `CREDITS.md` con su licencia (CC0 o dominio público) y su URL de descarga, y no hay secciones de archivos que no existen;
+  - el SHA-256 de cada archivo coincide con el que dice `CREDITS.md` ("sha256 en el repo"), así que nadie puede cambiar un archivo sin actualizar sus créditos;
   - ninguno es OGG.
 
 La app (el menú, `NSSound`) no tiene tests; se prueba en vivo.
@@ -218,6 +242,5 @@ Lo arreglan tres decisiones: un sonido explícito para el evento (4.2.3), cortar
 
 ## 11. Riesgos
 
-- **Los sonidos CC0 pueden no convencer.** Si pasa, se generan nosotros mismos (4.2.11).
 - **Un paquete CC0 puede cambiar o desaparecer.** Por eso `CREDITS.md` guarda la URL fijada al commit y el SHA-256: aunque la fuente cambie, queda constancia de qué se bajó y bajo qué licencia.
 - **Ganancias mal calibradas** hacen que un sonido brinque sobre los demás. Se ajustan en la prueba en vivo; es un número en el catálogo.
