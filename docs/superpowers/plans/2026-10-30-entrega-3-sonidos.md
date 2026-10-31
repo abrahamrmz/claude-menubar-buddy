@@ -727,7 +727,7 @@ git commit -m "El menú de la barra deja elegir o silenciar el sonido de cada ev
 **Archivos:**
 - Modificar: `README.md`
 
-- [ ] **Paso 1: el README**
+- [x] **Paso 1: el README**
 
 - **En el árbol de archivos,** después de la línea de `Resources/Fonts/`, agrega con la misma alineación:
   `  Resources/Sounds/           # CC0 sounds + CREDITS.md (source, license, sha256)`
@@ -738,7 +738,7 @@ git commit -m "El menú de la barra deja elegir o silenciar el sonido de cada ev
 The sounds in `Resources/Sounds/` are CC0: four from Kenney's [Interface Sounds](https://kenney.nl/assets/interface-sounds) and a woodblock from Versilian Studios' [VCSL](https://github.com/sgossner/VCSL), louder than the original. `CREDITS.md` beside them gives each file's download URL, license and SHA-256, and `SoundFilesAuditTests` keeps it honest. The other sounds in the Sonidos menu are the ones macOS ships; they are played from the system, not bundled.
 ```
 
-- [ ] **Paso 2: verificación final**
+- [x] **Paso 2: verificación final**
 
 Corre: `swift build && swift test`
 Esperado: todo en verde, 246 tests.
@@ -749,7 +749,7 @@ Esperado: sin avisos. Esta entrega no los toca, pero se revisa igual.
 Corre: `git status --short`
 Esperado: solo `README.md` y el plan modificados.
 
-- [ ] **Paso 3: commit**
+- [x] **Paso 3: commit**
 
 ```bash
 git add README.md
