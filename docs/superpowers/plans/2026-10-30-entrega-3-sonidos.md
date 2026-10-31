@@ -678,7 +678,7 @@ func soundsMenuItem() -> NSMenuItem
 @objc func soundChosen(_ sender: NSMenuItem)
 ```
 
-- [ ] **Paso 1: implementar `soundsMenuItem()`**
+- [x] **Paso 1: implementar `soundsMenuItem()`**
 
 Va en `Menus.swift`, justo antes de `toggleAutoMode`.
 
@@ -693,14 +693,14 @@ Va en `Menus.swift`, justo antes de `toggleAutoMode`.
 
 - Comentario de la función: el orden, la palomita y los títulos salen de `SoundMenu` (`BuddyCore`).
 
-- [ ] **Paso 2: implementar `soundChosen(_:)`**
+- [x] **Paso 2: implementar `soundChosen(_:)`**
 
 1. Saca `[String]` de `sender.representedObject`, con dos elementos, y `SoundEvent(rawValue:)` del primero. Si algo falla, `return`.
 2. `setStoredSoundID(id, for: event)`.
 3. Si `SoundCatalog.option(id: id)` existe, `soundPlayer.preview(option)`. Con `"none"` no suena nada. **Sin `return` temprano cuando el id es el mismo que ya estaba:** elegirlo otra vez es para volver a oírlo.
 4. `buildIdleMenu()` y luego `if currentRequestId == nil { setIdle(); updatePetMood() }`, igual que `toggleAutoMode`. Con un comentario: solo `setIdle()` le pasa el menú nuevo a `statusItem.menu`, así que la palomita se vería tarde con el patrón de `petSizeChanged`.
 
-- [ ] **Paso 3: ponerlo en el menú**
+- [x] **Paso 3: ponerlo en el menú**
 
 En `buildIdleMenu()`, justo antes de la línea `let autoModeItem = NSMenuItem(title: "Modo auto", …`:
 
@@ -708,12 +708,12 @@ En `buildIdleMenu()`, justo antes de la línea `let autoModeItem = NSMenuItem(ti
         menu.addItem(soundsMenuItem())
 ```
 
-- [ ] **Paso 4: verificar**
+- [x] **Paso 4: verificar**
 
 Corre: `swift build && swift test`
 Esperado: compila sin errores y todo en verde (246 tests).
 
-- [ ] **Paso 5: commit**
+- [x] **Paso 5: commit**
 
 ```bash
 git add Sources/ClaudeMenuBarBuddy/Menus.swift

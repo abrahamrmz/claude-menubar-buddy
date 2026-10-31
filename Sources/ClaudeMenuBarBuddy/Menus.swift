@@ -74,6 +74,7 @@ extension AppDelegate {
             sizeItem.submenu = sizes
             menu.addItem(sizeItem)
         }
+        menu.addItem(soundsMenuItem())
         let autoModeItem = NSMenuItem(title: "Modo auto", action: #selector(toggleAutoMode), keyEquivalent: "")
         autoModeItem.target = self
         autoModeItem.state = autoModeEnabled ? .on : .off
@@ -331,6 +332,61 @@ extension AppDelegate {
         if autoModeEnabled { label += ", modo auto activo" }
         applyStatusIcon(pending: false, count: lastActiveCount,
                         autoMode: autoModeEnabled, accessibility: label)
+    }
+
+    /// The "Sonidos" submenu: one row per event, each with its own submenu.
+    /// The order, the checkmark and the titles all come from SoundMenu
+    /// (BuddyCore); this only paints them.
+    func soundsMenuItem() -> NSMenuItem {
+        let soundsItem = NSMenuItem(title: "Sonidos", action: nil, keyEquivalent: "")
+        let soundsMenu = NSMenu()
+        for event in SoundEvent.allCases {
+            let stored = storedSoundID(for: event)
+            let eventItem = NSMenuItem(title: SoundMenu.rowTitle(for: event, stored: stored),
+                                       action: nil, keyEquivalent: "")
+            let submenu = NSMenu()
+            for row in SoundMenu.rows(for: event, stored: stored,
+                                      systemAvailable: SoundPlayer.systemSoundExists) {
+                switch row {
+                case .separator:
+                    submenu.addItem(NSMenuItem.separator())
+                case .header(let text):
+                    let header = NSMenuItem(title: text, action: nil, keyEquivalent: "")
+                    header.isEnabled = false
+                    submenu.addItem(header)
+                case .option(let id, let title, let checked):
+                    let item = NSMenuItem(title: title, action: #selector(soundChosen(_:)),
+                                          keyEquivalent: "")
+                    item.target = self
+                    item.representedObject = [event.rawValue, id]
+                    item.state = checked ? .on : .off
+                    submenu.addItem(item)
+                }
+            }
+            eventItem.submenu = submenu
+            soundsMenu.addItem(eventItem)
+        }
+        soundsItem.submenu = soundsMenu
+        return soundsItem
+    }
+
+    /// Stores the chosen sound for the event and previews it. Choosing the
+    /// one already checked still plays it, so it can be heard again.
+    @objc func soundChosen(_ sender: NSMenuItem) {
+        guard let parts = sender.representedObject as? [String], parts.count == 2,
+              let event = SoundEvent(rawValue: parts[0]) else { return }
+        let id = parts[1]
+        setStoredSoundID(id, for: event)
+        if let option = SoundCatalog.option(id: id) {
+            soundPlayer.preview(option)
+        }
+        // Only setIdle() hands the new menu to statusItem.menu, so following
+        // petSizeChanged's pattern alone would show the checkmark late.
+        buildIdleMenu()
+        if currentRequestId == nil {
+            setIdle()
+            updatePetMood()
+        }
     }
 
     @objc func toggleAutoMode() {
