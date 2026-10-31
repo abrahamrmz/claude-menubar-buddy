@@ -144,7 +144,7 @@ public enum SoundCatalog {
 }
 ```
 
-- [ ] **Paso 1: escribir los tests**
+- [x] **Paso 1: escribir los tests**
 
 Crea `Tests/ClaudeMenuBarBuddyTests/SoundCatalogTests.swift` con exactamente esto:
 
@@ -245,12 +245,12 @@ import BuddyCore
 }
 ```
 
-- [ ] **Paso 2: verificar que falla**
+- [x] **Paso 2: verificar que falla**
 
 Corre: `swift build && swift test --filter SoundCatalogTests`
 Esperado: no compila (no existe `SoundCatalog`).
 
-- [ ] **Paso 3: implementar `Sources/BuddyCore/Sounds.swift`**
+- [x] **Paso 3: implementar `Sources/BuddyCore/Sounds.swift`**
 
 Las firmas son las de Interfaces. Los valores, exactos:
 
@@ -284,12 +284,12 @@ Las firmas son las de Interfaces. Los valores, exactos:
   - en `defaultsKey`, que una llave no se renombra nunca, o lo que eligió el usuario se pierde y vuelve el valor por defecto;
   - en `eventsToStop`, que el atajo bloqueado corta el de la tarjeta porque si no, lo tapa (spec §9).
 
-- [ ] **Paso 4: verificar que pasa**
+- [x] **Paso 4: verificar que pasa**
 
 Corre: `swift build && swift test --filter SoundCatalogTests`
 Esperado: PASA (11 tests).
 
-- [ ] **Paso 5: commit**
+- [x] **Paso 5: commit**
 
 ```bash
 git add Sources/BuddyCore/Sounds.swift Tests/ClaudeMenuBarBuddyTests/SoundCatalogTests.swift
