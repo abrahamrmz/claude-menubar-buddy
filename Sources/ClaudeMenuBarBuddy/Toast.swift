@@ -37,7 +37,7 @@ extension AppDelegate {
         } else {
             showDoneToast(project: done.project, elapsed: done.elapsed, agent: done.agent)
             flashMood("celebrate", for: 4.0)
-            NSSound(named: "Glass")?.play()
+            playSound(.turnDone)
         }
     }
 

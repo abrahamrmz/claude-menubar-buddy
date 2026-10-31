@@ -145,7 +145,8 @@ Sources/ClaudeMenuBarBuddy/
   SettingsWindow / Onboarding / StatusIcon / HotKeys / JumpToHost / Prefs / UsageStats / DecisionStats
   Resources/                  # generated GIFs + species.txt (checked in)
   Resources/Fonts/            # Fredoka + Rubik (variable, OFL), registered at launch
-Tests/ClaudeMenuBarBuddyTests # hook fixtures, burn-rate shapes, art audit
+  Resources/Sounds/           # CC0 sounds + CREDITS.md (source, license, sha256)
+Tests/ClaudeMenuBarBuddyTests # hook fixtures, burn-rate shapes, art and sound audits
 hook.sh                       # the PreToolUse hook
 notify-done.sh                # UserPromptSubmit/Stop/PreCompact hook
 generate_pets.py              # regenerates all pet art via PixelLab
@@ -171,5 +172,7 @@ They're complementary. This one needs no hardware or pairing, covers Claude Code
 [MIT](./LICENSE) — use it, fork it, modify it freely.
 
 The card is set in [Fredoka](https://fonts.google.com/specimen/Fredoka) and [Rubik](https://fonts.google.com/specimen/Rubik), bundled as variable fonts under the [SIL Open Font License 1.1](https://openfontlicense.org) — each ships with its own `OFL.txt` in `Resources/Fonts/`. Its look owes a debt to [Masko Code](https://masko.ai) (MIT), which this fork replaced.
+
+The sounds in `Resources/Sounds/` are CC0: four from Kenney's [Interface Sounds](https://kenney.nl/assets/interface-sounds) and a woodblock from Versilian Studios' [VCSL](https://github.com/sgossner/VCSL), louder than the original. `CREDITS.md` beside them gives each file's download URL, license and SHA-256, and `SoundFilesAuditTests` keeps it honest. The other sounds in the Sonidos menu are the ones macOS ships; they are played from the system, not bundled.
 
 All four current pets are original art generated for this project via PixelLab (see the manifests). Earlier versions rendered 18 additional pets from ASCII-art poses in Anthropic's [claude-desktop-buddy](https://github.com/anthropics/claude-desktop-buddy) firmware (© 2026 Anthropic, PBC, MIT) — retired in `1d4636f`, still in the git history.

@@ -4,13 +4,19 @@ Este archivo lo lee opencode al empezar. Si algo de aquí choca con una instrucc
 
 ## Qué estás construyendo
 
-Sigue el plan vigente, tarea por tarea y en orden. Hoy es `docs/superpowers/plans/2026-10-29-entrega-2-opencode.md`; el de la entrega 1 ya se completó y es solo referencia. El diseño que lo respalda está en `docs/superpowers/specs/2026-10-21-modo-auto-y-opencode-design.md`. **No cambies decisiones de diseño.** Si una tarea no se puede hacer como dice el plan, no improvises una alternativa:
+Sigue el plan vigente, tarea por tarea y en orden. Hoy es `docs/superpowers/plans/2026-10-30-entrega-3-sonidos.md`: el control de los sonidos del buddy desde el menú de la barra. El diseño que lo respalda está en `docs/superpowers/specs/2026-10-30-sonidos-design.md`. Los planes de las entregas 1 y 2 ya se completaron y son solo referencia.
+
+- El plan va por **bloques de revisión**. Al terminar cada bloque, detente y avisa en el chat; no empieces el siguiente hasta que te lo digan.
+- **No toques los archivos de `Sources/ClaudeMenuBarBuddy/Resources/Sounds/`** (los `.wav` y `CREDITS.md`). Los puso Claude con sus créditos, y un test compara sus SHA-256.
+- **No descargues archivos** (`curl` y `wget` están negados).
+
+**No cambies decisiones de diseño.** Si una tarea no se puede hacer como dice el plan, no improvises una alternativa:
 1. Escribe la duda en `docs/superpowers/plans/NOTAS-EJECUCION.md` (qué tarea, qué paso, qué falló, qué intentaste).
 2. Detente y avisa en el chat.
 
 ## Dónde puedes trabajar
 
-- Solo dentro de esta carpeta (el worktree `claude-menubar-buddy-opencode`).
+- Solo dentro de esta carpeta (el worktree `claude-menubar-buddy-sonidos`).
 - **Nunca** toques, leas ni compiles en:
   - `~/Desktop/repos/claude-menubar-buddy` (la carpeta principal: de ahí corre el buddy que el usuario usa a diario);
   - `~/.config/claude-menubar-buddy/`;
@@ -27,7 +33,7 @@ Sigue el plan vigente, tarea por tarea y en orden. Hoy es `docs/superpowers/plan
   `swift test` solo no reconstruye el ejecutable `buddy-rule` que usan los tests del hook. Sin `swift build` antes, esos tests corren contra un binario viejo.
 - Un solo grupo de tests: `swift build && swift test --filter NombreDeLaSuite`.
 - Hooks de shell: `shellcheck hook.sh notify-done.sh` (debe salir sin avisos).
-- El punto de partida de la entrega 2 está en verde: 174 tests pasan. Lo que imprime la terminal como `Terminated: 15` durante los tests del hook es normal.
+- El punto de partida de la entrega 3 está en verde: 225 tests pasan. Lo que imprime la terminal como `Terminated: 15` durante los tests del hook es normal.
 
 ## Cómo escribir el código
 

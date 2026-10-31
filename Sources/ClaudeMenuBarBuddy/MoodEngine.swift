@@ -235,7 +235,7 @@ extension AppDelegate {
     }
 
     @objc func petClicked() {
-        NSSound(named: "Tink")?.play()
+        playSound(.petClicked)
         flashMood("heart", for: 2.0)
     }
 }
