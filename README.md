@@ -85,14 +85,29 @@ A path is settled before it is matched, because one file answers to many spellin
 
 The buddy also serves [opencode](https://opencode.ai). opencode v2 keeps a background service on this machine (`opencode serve --service`, started by its terminal), and the buddy connects to it by itself — only to the service on this machine, never a remote one — and shows its permission requests and its questions in the same card, judged by the same rule and the same auto mode as Claude Code's. A permission card's answer goes back to opencode; a question card offers the same options opencode's own picker would. The card says which agent is asking (`opencode · <project>`), and a finished turn gets the same toast, labelled `opencode — <project>`.
 
-For the buddy to see them, opencode has to ask. Add this to its global config, `~/.config/opencode/opencode.json`:
+For the buddy to see them, opencode has to ask — and in opencode v2 whatever no rule names is allowed, so a config that only lists `shell` and `edit` lets web requests, MCP tools and Code Mode through unseen. Make asking the default and let the read-only work through by name, in its global config, `~/.config/opencode/opencode.json`:
 
 ```json
 "permissions": [
-  { "action": "shell", "resource": "*", "effect": "ask" },
-  { "action": "edit",  "resource": "*", "effect": "ask" }
+  { "action": "*",        "resource": "*", "effect": "ask" },
+  { "action": "read",     "resource": "*", "effect": "allow" },
+  { "action": "glob",     "resource": "*", "effect": "allow" },
+  { "action": "grep",     "resource": "*", "effect": "allow" },
+  { "action": "skill",    "resource": "*", "effect": "allow" },
+  { "action": "question", "resource": "*", "effect": "allow" },
+  { "action": "subagent", "resource": "*", "effect": "allow" },
+  { "action": "shell",    "resource": "*", "effect": "ask" },
+  { "action": "edit",     "resource": "*", "effect": "ask" },
+  { "action": "execute",  "resource": "*", "effect": "deny" }
 ]
 ```
+
+The last matching rule wins, so the catch-all goes first and the exceptions after it. A project's own `opencode.jsonc` loads after the global one and can override any of it. With these rules:
+
+- **`webfetch` and `websearch` ask** — the card shows the URL or the query, and the rule files both as leaving the machine, so they ask even in auto mode. Reads pass without a card, which is why the step that would carry a file out has to.
+- **Code Mode is off** — `execute` runs a JavaScript script whose `fetch()` reaches the network without going through `webfetch`'s rule ([anomalyco/opencode#54595](https://github.com/anomalyco/opencode/issues/54595)), and a script thousands of characters long can't be judged on a card. Denying it removes the tool altogether, along with the opencode tools that only live inside it (`session_move`, `worktree_create`).
+- **So are MCP tools** — in v2 they are reached only from inside Code Mode: with `execute` denied, an MCP server connects but the agent has no way to call it. A project that needs one can turn `execute` back on in its own config; there each MCP call still asks, as `<server>_<tool>`, but the script's own `fetch()` is open again.
+- **Anything opencode adds later asks** until it gets a rule, on a card that says "la regla no reconoce: …". So does `external_directory`, opencode's check before it touches something outside the project.
 
 If the buddy isn't open, opencode asks in its own terminal exactly as before — the buddy is an addition, not a gate. And unlike Claude Code's, opencode's requests have no time limit: a card waits until someone answers, here or in opencode's terminal.
 
