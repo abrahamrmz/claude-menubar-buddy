@@ -3418,7 +3418,7 @@ extension OpenCodeEvent {
 }
 ```
 
-- [ ] **Paso 1: escribir los tests**
+- [x] **Paso 1: escribir los tests**
 
 Agrega al final de `enum OpenCodeFixtures` (antes de su `}` de cierre), en `Tests/ClaudeMenuBarBuddyTests/Support/OpenCodeFixtures.swift`:
 
@@ -3506,12 +3506,12 @@ En `Tests/ClaudeMenuBarBuddyTests/OpenCodeEventTests.swift`:
     }
 ```
 
-- [ ] **Paso 2: verificar que falla**
+- [x] **Paso 2: verificar que falla**
 
 Corre: `swift build && swift test --filter OpenCodeEventTests`
 Esperado: `swift build` termina bien (no compila los tests) y `swift test` no compila: `extra argument 'parentID' in call` y miembros que no existen (`sessionEnded`, `sessionInfo`).
 
-- [ ] **Paso 3: implementar**
+- [x] **Paso 3: implementar**
 
 En `Sources/BuddyCore/OpenCode/OpenCodeEvent.swift`:
 - Los casos del enum, tal como están en **Interfaces**, con esos comentarios.
@@ -3543,12 +3543,12 @@ En `Sources/BuddyCore/OpenCode/OpenCodeBridgeCore.swift`, solo para que compile 
 ```
 Hoy esos eventos llegan como `.other` y se ignoran, así que este commit no cambia nada para el usuario.
 
-- [ ] **Paso 4: verificar que pasa**
+- [x] **Paso 4: verificar que pasa**
 
 Corre: `swift build && swift test`
 Esperado: todo pasa, con 5 tests más que al terminar la tarea 8.
 
-- [ ] **Paso 5: commit**
+- [x] **Paso 5: commit**
 
 ```bash
 git add Sources/BuddyCore/OpenCode/OpenCodeEvent.swift Sources/BuddyCore/OpenCode/OpenCodeBridgeCore.swift Tests/ClaudeMenuBarBuddyTests/Support/OpenCodeFixtures.swift Tests/ClaudeMenuBarBuddyTests/OpenCodeEventTests.swift

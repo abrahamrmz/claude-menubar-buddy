@@ -142,8 +142,11 @@ public struct OpenCodeBridgeCore {
             return withdraw(requestID)
         case .formClosed(_, let formID):
             return withdraw(formID)
-        case .sessionCreated(let sessionID, let directory):
+        case .sessionCreated(let sessionID, let directory, _):
             if let directory { sessionDirectories[sessionID] = directory }
+            return []
+        case .sessionEnded, .sessionInfo, .sessionGone, .lineageUnavailable:
+            // Task 10 gives these their meaning; until then, ignored as today.
             return []
         case .executionStarted(let sessionID):
             executionStarts[sessionID] = now
