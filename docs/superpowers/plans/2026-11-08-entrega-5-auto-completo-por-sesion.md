@@ -1490,7 +1490,7 @@ public enum AutoModePolicy {
 }
 ```
 
-- [ ] **Paso 1: escribir los tests**
+- [x] **Paso 1: escribir los tests**
 
 Crea `Tests/ClaudeMenuBarBuddyTests/SessionGrantPolicyTests.swift`:
 
@@ -1622,12 +1622,12 @@ import BuddyCore
 }
 ```
 
-- [ ] **Paso 2: verificar que falla**
+- [x] **Paso 2: verificar que falla**
 
 Corre: `swift build && swift test --filter SessionGrantPolicyTests`
 Esperado: no compila (`extra argument 'sessionGrant' in call`, `type 'Grant?' has no member 'session'`).
 
-- [ ] **Paso 3: implementar**
+- [x] **Paso 3: implementar**
 
 En `AutoModePolicy.swift`, `Grant` suma `case session`, y:
 
@@ -1668,12 +1668,12 @@ El orden (spec 5.4) queda: pregunta → tarjeta; "siempre permitir" → `.always
 
 En `HookRuleCLI.swift`, el caso `.none` del `switch decision.grant` pasa a `case .session, .none:` con el mismo cuerpo (`reason = assessment.reason`) y el comentario `// Nothing here passes sessionGrant yet; block 2 writes this reason.`
 
-- [ ] **Paso 4: verificar que pasa**
+- [x] **Paso 4: verificar que pasa**
 
 Corre: `swift build && swift test`
 Esperado: todo en verde, 336 tests. `CommandRuleTests` y `HookRuleCLITests` sin cambios (`decide` sin `sessionGrant` se porta como hoy). Después: `swift test --filter hugeCommandStaysFast` y anota el tiempo.
 
-- [ ] **Paso 5: commit**
+- [x] **Paso 5: commit**
 
 ```bash
 git add Sources/BuddyCore/Rule/AutoModePolicy.swift Sources/BuddyCore/HookRuleCLI.swift Tests/ClaudeMenuBarBuddyTests/SessionGrantPolicyTests.swift

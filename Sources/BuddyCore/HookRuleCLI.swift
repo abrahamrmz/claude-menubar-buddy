@@ -35,7 +35,8 @@ public enum HookRuleCLI {
             reason = "Modo auto (\(assessment.category.rawValue)) vía Claude Menu Bar Buddy"
         case .always:
             reason = "Always-allowed \(decision.grantScope ?? "everywhere") via Claude Menu Bar Buddy: \(decision.base ?? "")"
-        case .none:
+        // Nothing here passes sessionGrant yet; block 2 writes this reason.
+        case .session, .none:
             reason = assessment.reason
         }
 
