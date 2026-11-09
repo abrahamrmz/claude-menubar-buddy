@@ -152,6 +152,9 @@ import BuddyCore
         "/System/Volumes/Data/Users/u/.gitconfig", "/System/Volumes/Data/Users/u/.config/claude-menubar-buddy/auto_mode",
         "/system/volumes/data/Users/u/.gitconfig", "/System/Volumes/Data/private/etc/hosts",
         "/System/Volumes/Data/opt/homebrew/bin/jq", "/System/Volumes/Data/Users/u/.claude.json",
+        // The fold has to come after `..` is settled, or stepping out and back in walks around it.
+        "/System/Volumes/Data/../Data/Users/u/.gitconfig", "/System/Volumes/Data/./../Data/Users/u/.gitconfig",
+        "/System/Volumes/Data/..//Data/Users/u/.gitconfig", "/System/Volumes/Data/x/../Users/u/.gitconfig",
     ])
     func theDataVolumeSpellingIsTheSameFile(path: String) {
         #expect(policy.isProtected(path), "should be protected: \(path)")
@@ -185,6 +188,11 @@ import BuddyCore
     ])
     func lookAlikeLettersTheVolumeFoldsAreFoldedHere(path: String) {
         #expect(policy.isProtected(path), "should be protected: \(path)")
+    }
+
+    @Test(arguments: ["/Users/u/.ssh/id_ecdsa", "/Users/u/.ssh/id_dsa", "/tmp/p/llaves/id_ecdsa.bak"])
+    func otherPrivateKeyNamesAreSensitive(path: String) {
+        #expect(policy.isSensitive(path), "should be sensitive: \(path)")
     }
 
     @Test func lookAlikeLettersInASecretNameAreFolded() {

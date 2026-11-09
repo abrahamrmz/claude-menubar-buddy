@@ -119,7 +119,6 @@ public struct PathPolicy {
         while path.contains("/./") { path = path.replacingOccurrences(of: "/./", with: "/") }
         while path.hasSuffix("/.") { path.removeLast(2) }
         if path.count > 1 && path.hasSuffix("/") { path.removeLast() }
-        path = Self.outOfTheDataVolume(path)
 
         var components = path.split(separator: "/").map(String.init)
         guard let name = components.popLast() else { return nil }
@@ -157,6 +156,12 @@ public struct PathPolicy {
             parent = (parent as NSString).deletingLastPathComponent
             if parent == "/" { parent = "" }
         }
+
+        // The data volume is folded last, once `..` is settled: stepping out
+        // of the mount and back in (`Data/../Data`) is still the mount.
+        let spelled = parent + "/" + below.joined(separator: "/")
+        let folded = Self.outOfTheDataVolume(spelled)
+        if folded != spelled { return settle(folded) }
         return (parent, below)
     }
 
@@ -281,7 +286,8 @@ public struct PathPolicy {
 
     private var sensitivePatterns: [String] {
         expandPatterns([
-            "*/.env", "*/.env.*", "*.pem", "*.key", "*.p12", "*/id_rsa*", "*/id_ed25519*", "*/.netrc",
+            "*/.env", "*/.env.*", "*.pem", "*.key", "*.p12", "*/id_rsa*", "*/id_ed25519*", "*/id_ecdsa*",
+            "*/id_dsa*", "*/.netrc",
             "*/.pgpass", "*/.npmrc", "*/.pypirc",
             "*/credenciales/*", "*/secrets.json", "*service_account*.json", "*/google_sa*.json",
             "*cookies*.json",
