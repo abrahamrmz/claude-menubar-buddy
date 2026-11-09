@@ -4235,7 +4235,7 @@ Esta tarea no tiene tests unitarios: `OpenCodeBridge` vive en el ejecutable y lo
     func sweepCoveredCards(excluding requestID: String? = nil)
 ```
 
-- [ ] **Paso 1: propiedades e `init`**
+- [x] **Paso 1: propiedades e `init`**
 
 Debajo de `private let configDir: URL`:
 ```swift
@@ -4249,7 +4249,7 @@ Debajo de `private let configDir: URL`:
 ```
 En `init(configDir:)`, justo después de `self.configDir = configDir`: `self.grantStore = SessionGrantStore(configDirectory: configDir)`. (`Prefs.sessionGrantStore` llega en la tarea 13; el puente tiene el suyo, sobre la misma carpeta.)
 
-- [ ] **Paso 2: `handle(_:)` y `currentSettings()`**
+- [x] **Paso 2: `handle(_:)` y `currentSettings()`**
 
 `handle(_:)` (sección `// MARK: - Events → actions`):
 ```swift
@@ -4275,7 +4275,7 @@ Al final de `currentSettings()`, en lugar del `return` de hoy:
         return settings
 ```
 
-- [ ] **Paso 3: las acciones nuevas en `perform(_:)`**
+- [x] **Paso 3: las acciones nuevas en `perform(_:)`**
 
 Reemplaza el caso que dejó la tarea 10 (`case .resolveLineage, .touchSessionGrant, .revokeSessionGrant: break`) por:
 ```swift
@@ -4295,7 +4295,7 @@ Reemplaza el caso que dejó la tarea 10 (`case .resolveLineage, .touchSessionGra
 ```
 Los casos de hoy (`autoReply`, `showCard`, `withdrawCard`, `turnFinished`) no cambian: `autoReply` ya responde `once` y anota su registro, y `withdrawCard` ya borra el `request_<id>.json`, que es lo que necesita el barrido.
 
-- [ ] **Paso 4: el linaje al escribir una tarjeta cubrible**
+- [x] **Paso 4: el linaje al escribir una tarjeta cubrible**
 
 En `confirmPermissionStillPending(_:)`, dentro de la rama que escribe el archivo, justo después de `self.writeRequestFile(card)`:
 ```swift
@@ -4307,7 +4307,7 @@ En `confirmPermissionStillPending(_:)`, dentro de la rama que escribe el archivo
 ```
 Es la única consulta nueva que ocurre sin concesiones, y no cambia ninguna decisión. Las tarjetas de formulario no la hacen (nunca son cubribles).
 
-- [ ] **Paso 5: consulta de linaje, barrido, `grantSessionID` y reconciliación**
+- [x] **Paso 5: consulta de linaje, barrido, `grantSessionID` y reconciliación**
 
 Agrega una sección nueva `// MARK: - Lineage` justo antes de `// MARK: - Recovery on (re)connect`:
 ```swift
@@ -4369,7 +4369,7 @@ Agrega una sección nueva `// MARK: - Lineage` justo antes de `// MARK: - Recove
 ```
 La reconciliación no revoca por su cuenta: le entrega al núcleo lo que dijo la API, y el núcleo emite `.revokeSessionGrant` solo si esa sesión tiene concesión (que `currentSettings()` acaba de leer del almacén).
 
-- [ ] **Paso 6: la recuperación al conectar**
+- [x] **Paso 6: la recuperación al conectar**
 
 En `recover()`:
 1. Justo después de `recheckPendingCards()`, llama a `reconcileGrants()`.
@@ -4384,7 +4384,7 @@ En `recover()`:
 ```
 Así una sesión archivada de la lista con concesión también se revoca, y las peticiones recuperadas se deciden conociendo a su padre.
 
-- [ ] **Paso 7: el tiempo límite de la consulta**
+- [x] **Paso 7: el tiempo límite de la consulta**
 
 `send(_:completion:)` gana un parámetro de tiempo límite. Su firma y sus dos primeras líneas quedan:
 ```swift
@@ -4396,12 +4396,12 @@ Así una sesión archivada de la lista con concesión también se revoca, y las 
 ```
 El resto de `send` no cambia. Las llamadas de hoy no pasan `timeout` y siguen con los 30 s de `apiSession`.
 
-- [ ] **Paso 8: compilar y probar**
+- [x] **Paso 8: compilar y probar**
 
 Corre: `swift build && swift test`
 Esperado: compila sin avisos nuevos y pasa el mismo número de tests que al terminar la tarea 10.
 
-- [ ] **Paso 9: comprobaciones de lectura del diff**
+- [x] **Paso 9: comprobaciones de lectura del diff**
 
 Corre cada una y compara con lo esperado:
 - `grep -n "grantStore\.\(grant\|live\)(" Sources/ClaudeMenuBarBuddy/OpenCodeBridge.swift` → sin salida: el puente nunca crea ni consulta una concesión suelta, solo lista, renueva y revoca.
@@ -4413,7 +4413,7 @@ Corre cada una y compara con lo esperado:
 - En el diff, `handle(_:)` reusa `lastSettings` solo para `.other` y `.toolCalled`; todo otro evento relee `currentSettings()`, y `sweepCoveredCards` también.
 - `.revokeSessionGrant` borra con `revoke`, anota `grantEnded(..., cause: .sessionEnded, ...)` solo si había una concesión, y la quita de `lastSettings`.
 
-- [ ] **Paso 10: commit**
+- [x] **Paso 10: commit**
 
 ```bash
 git add Sources/ClaudeMenuBarBuddy/OpenCodeBridge.swift

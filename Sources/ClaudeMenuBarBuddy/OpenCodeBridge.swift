@@ -33,6 +33,13 @@ final class OpenCodeBridge: NSObject, URLSessionDataDelegate {
     }
 
     private let configDir: URL
+    // Read for every event that can decide something, and only opencode's
+    // grants. The bridge never creates one: only the card's button does.
+    private let grantStore: SessionGrantStore
+    // The settings of the last event that built them. Text deltas and tool
+    // calls reuse them: the core decides nothing with settings on those, and
+    // they arrive dozens of times a second while a session streams.
+    private var lastSettings: OpenCodeBridgeCore.Settings?
     private var core = OpenCodeBridgeCore()
     private var service: OpenCodeService?
     // The event stream has its own delegate-based session; every other call
@@ -53,6 +60,7 @@ final class OpenCodeBridge: NSObject, URLSessionDataDelegate {
 
     init(configDir: URL) {
         self.configDir = configDir
+        self.grantStore = SessionGrantStore(configDirectory: configDir)
         let apiConfig = URLSessionConfiguration.default
         apiConfig.timeoutIntervalForRequest = 30
         self.apiSession = URLSession(configuration: apiConfig)
@@ -154,7 +162,14 @@ final class OpenCodeBridge: NSObject, URLSessionDataDelegate {
     // MARK: - Events → actions
 
     private func handle(_ event: OpenCodeEvent) {
-        for action in core.handle(event, settings: currentSettings(), now: Date()) {
+        let settings: OpenCodeBridgeCore.Settings
+        switch event {
+        case .other, .toolCalled:
+            settings = lastSettings ?? currentSettings()
+        default:
+            settings = currentSettings()
+        }
+        for action in core.handle(event, settings: settings, now: Date()) {
             perform(action)
         }
     }
@@ -172,7 +187,11 @@ final class OpenCodeBridge: NSObject, URLSessionDataDelegate {
         let base = env["PATH"].flatMap { $0.isEmpty ? nil : $0 } ?? "/usr/bin:/bin:/usr/sbin:/sbin"
         env["PATH"] = ([base] + extras).joined(separator: ":")
         let paths = PathPolicy.fromEnvironment(env, probe: LiveFileProbe())
-        return OpenCodeBridgeCore.Settings(autoMode: autoMode, allowList: allowList, paths: paths)
+        let grants = Set(grantStore.list().filter { $0.grant.agent == "opencode" }.map(\.grant.sessionID))
+        let settings = OpenCodeBridgeCore.Settings(autoMode: autoMode, allowList: allowList, paths: paths,
+                                                   sessionGrants: grants)
+        lastSettings = settings
+        return settings
     }
 
     private func perform(_ action: OpenCodeAction) {
@@ -200,10 +219,19 @@ final class OpenCodeBridge: NSObject, URLSessionDataDelegate {
         case .turnFinished(let sessionID, let elapsed):
             confirmTurn(sessionID: sessionID, elapsed: elapsed)
 
-        case .resolveLineage, .touchSessionGrant, .revokeSessionGrant:
-            // Task 11 wires these. Nothing emits them yet: this bridge passes
-            // no grants, never feeds .sessionInfo and never sweeps.
-            break
+        case .resolveLineage(let sessionID):
+            requestLineage(sessionID)
+
+        case .touchSessionGrant(let sessionID):
+            // Never creates the file: a grant revoked a moment ago stays revoked.
+            grantStore.touch(agent: "opencode", sessionID: sessionID)
+
+        case .revokeSessionGrant(let sessionID):
+            if let ended = grantStore.revoke(agent: "opencode", sessionID: sessionID) {
+                AutoLog.append(.grantEnded(ended, cause: .sessionEnded, ts: Date().timeIntervalSince1970),
+                               in: configDir)
+            }
+            lastSettings?.sessionGrants.remove(sessionID)
         }
     }
 
@@ -217,6 +245,11 @@ final class OpenCodeBridge: NSObject, URLSessionDataDelegate {
             // sweep it away — so only write when the core still has it.
             if code == 200, self.core.pending(id: card.id) != nil {
                 self.writeRequestFile(card)
+                // So the root is known if the user clicks this card's grant
+                // button. The card is already out: nothing waits for this.
+                if let missing = self.core.lineageRequest(forCard: card.id, now: Date()) {
+                    self.requestLineage(missing)
+                }
             } else {
                 // Answered in the terminal: drop it so a later reconnect
                 // doesn't bring the card back.
@@ -245,6 +278,64 @@ final class OpenCodeBridge: NSObject, URLSessionDataDelegate {
         }
     }
 
+    // MARK: - Lineage
+
+    /// One GET for the parent of `sessionID`, answered back to the core as an
+    /// event. The timer is the guarantee: whatever the request does, the core
+    /// hears `.lineageUnavailable` once `lineageWait` has passed, and ignores
+    /// it when the answer already came.
+    private func requestLineage(_ sessionID: String) {
+        send(.session(id: sessionID), timeout: OpenCodeBridgeCore.lineageWait) { [weak self] code, data in
+            guard let self else { return }
+            switch code {
+            case 200:
+                if let data, let info = OpenCodeEvent.sessionInfo(sessionID: sessionID, responseBody: data) {
+                    self.handle(info)
+                } else {
+                    self.handle(.lineageUnavailable(sessionID: sessionID))
+                }
+            case 404:
+                self.handle(.sessionGone(sessionID: sessionID))
+            default:
+                self.handle(.lineageUnavailable(sessionID: sessionID))
+            }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + OpenCodeBridgeCore.lineageWait) { [weak self] in
+            self?.handle(.lineageUnavailable(sessionID: sessionID))
+        }
+    }
+
+    /// The session a click on this card's grant button should grant: the root
+    /// of its tree when known, else the session that asked.
+    func grantSessionID(for sessionID: String) -> String {
+        core.grantSessionID(for: sessionID)
+    }
+
+    /// Approves the waiting opencode cards a grant now covers, anywhere in the
+    /// tree. `requestID` is the card being clicked, which the caller answers.
+    func sweepCoveredCards(excluding requestID: String? = nil) {
+        for action in core.sweep(settings: currentSettings(), now: Date(), excluding: requestID) {
+            perform(action)
+        }
+    }
+
+    /// Grants whose session ended while the app was closed or the stream was
+    /// down: archived or gone revokes; a transport error keeps the grant.
+    private func reconcileGrants() {
+        for status in grantStore.list() where status.grant.agent == "opencode" {
+            let sessionID = status.grant.sessionID
+            send(.session(id: sessionID)) { [weak self] code, data in
+                guard let self else { return }
+                if code == 404 {
+                    self.handle(.sessionGone(sessionID: sessionID))
+                } else if code == 200, let data,
+                          let info = OpenCodeEvent.sessionInfo(sessionID: sessionID, responseBody: data) {
+                    self.handle(info)
+                }
+            }
+        }
+    }
+
     // MARK: - Recovery on (re)connect
 
     /// A fresh connection knows nothing about what happened while it was
@@ -254,11 +345,18 @@ final class OpenCodeBridge: NSObject, URLSessionDataDelegate {
     /// known is not duplicated — the core's `handled` set takes care of it.
     private func recover() {
         recheckPendingCards()
+        reconcileGrants()
         send(.sessions(limit: 20)) { [weak self] code, data in
             guard let self, code == 200, let data, let sessions = Self.array(from: data) else { return }
             let cutoff = Date().timeIntervalSince1970 * 1000 - 24 * 60 * 60 * 1000
             for session in sessions {
                 guard let id = session["id"] as? String else { continue }
+                // Lineage first, so the permissions recovered below are judged
+                // knowing their parents. Older sessions count too.
+                if let body = try? JSONSerialization.data(withJSONObject: session),
+                   let info = OpenCodeEvent.sessionInfo(sessionID: id, responseBody: body) {
+                    self.handle(info)
+                }
                 if let updated = (session["time"] as? [String: Any])?["updated"] as? Double, updated < cutoff { continue }
                 let directory = (session["location"] as? [String: Any])?["directory"] as? String
                 self.recoverPending(sessionID: id, directory: directory)
@@ -350,9 +448,11 @@ final class OpenCodeBridge: NSObject, URLSessionDataDelegate {
     /// Runs one call off the main thread and hands the result back on it.
     /// Errors are logged by call type and status only — never the password or
     /// the Authorization header.
-    private func send(_ call: OpenCodeCall, completion: ((Int, Data?) -> Void)? = nil) {
+    private func send(_ call: OpenCodeCall, timeout: TimeInterval? = nil,
+                      completion: ((Int, Data?) -> Void)? = nil) {
         guard let service else { return }
-        let request = call.urlRequest(service: service)
+        var request = call.urlRequest(service: service)
+        if let timeout { request.timeoutInterval = timeout }
         apiSession.dataTask(with: request) { data, response, error in
             let code = (response as? HTTPURLResponse)?.statusCode ?? -1
             // The rest of the app logs from the main thread only; this
