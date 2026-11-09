@@ -51,6 +51,8 @@ extension AppDelegate {
 
     /// Repaints whatever shows the grants.
     func refreshSessionGrantViews() {
+        if let item = idleSessionGrantsItem { fillSessionGrantsMenuItem(item) }
+        if let item = pendingSessionGrantsItem { fillSessionGrantsMenuItem(item) }
         if let req = currentRequest {
             applyPendingStatusIcon(for: req, queued: lastQueuedCount)
         } else {

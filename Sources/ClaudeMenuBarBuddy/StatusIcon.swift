@@ -1,4 +1,5 @@
 import AppKit
+import BuddyCore
 
 // What the menu bar actually shows. One function owns the whole icon so the
 // three places that used to poke `statusItem.button?.title` can't drift.
@@ -12,12 +13,15 @@ extension AppDelegate {
     /// Panda as a silhouette: filled ears + head with the eye patches punched
     /// OUT of the mask. That inversion is what keeps it recognizable in
     /// monochrome — a solid blob would just read as a circle.
-    func pandaIcon(pending: Bool, autoMode: Bool) -> NSImage {
+    func pandaIcon(pending: Bool, autoMode: Bool, sessionGrant: Bool) -> NSImage {
         let side: CGFloat = 18
         // Auto mode is a standing grant to watch for, so it earns
         // its own glyph beside the panda rather than a subtlety inside it.
         let boltWidth: CGFloat = autoMode ? 11 : 0
-        let image = NSImage(size: NSSize(width: side + boltWidth, height: side))
+        // A session grant is wider still (it passes what auto mode stops),
+        // so it gets a mark of its own after the bolt, never the bolt again.
+        let grantWidth: CGFloat = sessionGrant ? 12 : 0
+        let image = NSImage(size: NSSize(width: side + boltWidth + grantWidth, height: side))
         image.lockFocus()
 
         let body = NSBezierPath()
@@ -45,6 +49,12 @@ extension AppDelegate {
             bolt.draw(in: NSRect(x: side + 0.5, y: 3.5, width: 10, height: 11))
         }
 
+        if sessionGrant,
+           let mark = NSImage(systemSymbolName: "forward.fill", accessibilityDescription: nil)?
+               .withSymbolConfiguration(.init(pointSize: 10, weight: .bold)) {
+            mark.draw(in: NSRect(x: side + boltWidth + 0.5, y: 4, width: 11, height: 10))
+        }
+
         image.unlockFocus()
         // Alpha-only: AppKit tints it for the current appearance and inverts
         // it while the menu is open.
@@ -55,12 +65,12 @@ extension AppDelegate {
     /// The single entry point for the menu bar's state.
     /// - count: sessions when idle, queued requests when pending — either way
     ///   a number worth showing next to the icon.
-    func applyStatusIcon(pending: Bool, count: Int, autoMode: Bool, accessibility: String) {
+    func applyStatusIcon(pending: Bool, count: Int, autoMode: Bool, sessionGrant: Bool, accessibility: String) {
         guard let button = statusItem.button else { return }
         button.setAccessibilityLabel(accessibility)
         button.toolTip = accessibility
 
-        button.image = pandaIcon(pending: pending, autoMode: autoMode)
+        button.image = pandaIcon(pending: pending, autoMode: autoMode, sessionGrant: sessionGrant)
         button.title = count > 0 ? " \(count)" : ""
         button.imagePosition = count > 0 ? .imageLeading : .imageOnly
         // Color carries urgency, the wide eyes carry it again for anyone who
@@ -73,8 +83,12 @@ extension AppDelegate {
     func applyPendingStatusIcon(for req: PendingRequest, queued: Int) {
         let project = (req.project?.isEmpty == false) ? " in \(req.project!)" : ""
         let waiting = queued > 0 ? ", \(queued) more waiting" : ""
+        let grants = SessionGrantCard.accessibilitySuffix(count: sessionGrants.count)
+        // The bolt stays off while a card is up, as before; the grant mark
+        // stays on — the cards left in such a session are the ones that publish.
         applyStatusIcon(pending: true, count: queued > 0 ? queued + 1 : 0, autoMode: false,
-                        accessibility: "Claude Menu Bar Buddy — \(req.tool) permission request\(project)\(waiting)")
+                        sessionGrant: !sessionGrants.isEmpty,
+                        accessibility: "Claude Menu Bar Buddy — \(req.tool) permission request\(project)\(waiting)\(grants)")
     }
 
     /// Debug/docs helper, same idea as capture_card/capture_pet: `touch
@@ -87,9 +101,12 @@ extension AppDelegate {
         try? FileManager.default.removeItem(at: flagURL)
 
         let variants: [(String, NSImage)] = [
-            ("idle", pandaIcon(pending: false, autoMode: false)),
-            ("pending", pandaIcon(pending: true, autoMode: false)),
-            ("auto-mode", pandaIcon(pending: false, autoMode: true)),
+            ("idle", pandaIcon(pending: false, autoMode: false, sessionGrant: false)),
+            ("pending", pandaIcon(pending: true, autoMode: false, sessionGrant: false)),
+            ("auto-mode", pandaIcon(pending: false, autoMode: true, sessionGrant: false)),
+            ("session-grant", pandaIcon(pending: false, autoMode: false, sessionGrant: true)),
+            ("auto-and-session", pandaIcon(pending: false, autoMode: true, sessionGrant: true)),
+            ("pending-session", pandaIcon(pending: true, autoMode: false, sessionGrant: true)),
         ]
         let scale: CGFloat = 6
         let gap: CGFloat = 12

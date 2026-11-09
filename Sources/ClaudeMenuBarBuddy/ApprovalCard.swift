@@ -681,6 +681,11 @@ extension AppDelegate {
         if let target = jumpTarget(for: req) {
             menu.addItem(withTitle: "Show in \(target.name)", action: #selector(jumpToHost), keyEquivalent: "m")
         }
+        // The cards left in a session with a grant are the ones that publish:
+        // exactly when the grant is worth seeing, and switching off.
+        let grantsItem = sessionGrantsMenuItem()
+        pendingSessionGrantsItem = grantsItem
+        menu.addItem(grantsItem)
         menu.addItem(NSMenuItem.separator())
         menu.addItem(withTitle: "Quit", action: #selector(quit), keyEquivalent: "q")
         statusItem.menu = menu

@@ -80,6 +80,9 @@ extension AppDelegate {
         autoModeItem.state = autoModeEnabled ? .on : .off
         autoModeItem.toolTip = "Lo rutinario pasa sin tarjeta; lo crítico siempre te pregunta. El ícono lleva un rayo mientras está prendido."
         menu.addItem(autoModeItem)
+        let grantsItem = sessionGrantsMenuItem()
+        idleSessionGrantsItem = grantsItem
+        menu.addItem(grantsItem)
         menu.addItem(NSMenuItem.separator())
         // Always in the menu, hidden unless menuWillOpen finds a real problem.
         setupWarningItem = NSMenuItem(title: "⚠︎ Setup needs attention…",
@@ -186,8 +189,10 @@ extension AppDelegate {
             historyLines(from: "auto_decisions.jsonl", isAuto: true),
             limit: 10)
         for line in lines {
-            let icon = line.isAuto ? "⚡︎"
-                : line.decision == "allow" ? "✓" : line.decision == "pass" ? "→" : "✕"
+            // The click that switched a grant on is a human line too: only
+            // the rule's own lines get a rule glyph.
+            let icon = (line.isAuto ? DecisionHistory.glyph(for: line) : nil)
+                ?? (line.decision == "allow" ? "✓" : line.decision == "pass" ? "→" : "✕")
             var title = "\(icon) \(line.tool)"
             if !line.project.isEmpty { title += " — \(line.project)" }
             title += "   \(timeFormatter.string(from: Date(timeIntervalSince1970: line.ts)))"
@@ -330,8 +335,9 @@ extension AppDelegate {
             ? "Claude Menu Bar Buddy — \(lastActiveCount) active session\(lastActiveCount == 1 ? "" : "s")"
             : "Claude Menu Bar Buddy — no pending requests"
         if autoModeEnabled { label += ", modo auto activo" }
-        applyStatusIcon(pending: false, count: lastActiveCount,
-                        autoMode: autoModeEnabled, accessibility: label)
+        label += SessionGrantCard.accessibilitySuffix(count: sessionGrants.count)
+        applyStatusIcon(pending: false, count: lastActiveCount, autoMode: autoModeEnabled,
+                        sessionGrant: !sessionGrants.isEmpty, accessibility: label)
     }
 
     /// The "Sonidos" submenu: one row per event, each with its own submenu.
@@ -387,6 +393,56 @@ extension AppDelegate {
             setIdle()
             updatePetMood()
         }
+    }
+
+    /// "Auto completo: N sesiones": one row per live grant — a click switches
+    /// that one off — and "Apagar en todas". Hidden while there is none, and
+    /// never a way to switch one on: that is the card's button alone.
+    func sessionGrantsMenuItem() -> NSMenuItem {
+        let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        item.submenu = NSMenu()
+        fillSessionGrantsMenuItem(item)
+        return item
+    }
+
+    /// Rebuilds the item in place, like updateSessionsSubmenu: its title and
+    /// its submenu's rows change; statusItem.menu is never swapped.
+    func fillSessionGrantsMenuItem(_ item: NSMenuItem) {
+        item.title = SessionGrantCard.menuTitle(count: sessionGrants.count)
+        item.isHidden = sessionGrants.isEmpty
+        guard let submenu = item.submenu else { return }
+        submenu.removeAllItems()
+        for status in sessionGrants {
+            let row = NSMenuItem(title: SessionGrantCard.rowTitle(status.grant),
+                                 action: #selector(revokeSessionGrant(_:)), keyEquivalent: "")
+            row.target = self
+            row.representedObject = [status.grant.agent, status.grant.sessionID]
+            row.toolTip = SessionGrantCard.rowToolTip(status)
+            submenu.addItem(row)
+        }
+        submenu.addItem(NSMenuItem.separator())
+        let all = NSMenuItem(title: SessionGrantCard.revokeAllTitle,
+                             action: #selector(revokeAllSessionGrants), keyEquivalent: "")
+        all.target = self
+        submenu.addItem(all)
+    }
+
+    @objc func revokeSessionGrant(_ sender: NSMenuItem) {
+        guard let key = sender.representedObject as? [String], key.count == 2 else { return }
+        if let gone = sessionGrantStore.revoke(agent: key[0], sessionID: key[1]) {
+            AutoLog.append(.grantEnded(gone, cause: .menu, ts: Date().timeIntervalSince1970), in: dirURL)
+        }
+        reloadSessionGrantCache()
+        refreshSessionGrantViews()
+    }
+
+    @objc func revokeAllSessionGrants() {
+        let now = Date().timeIntervalSince1970
+        for gone in sessionGrantStore.revokeAll() {
+            AutoLog.append(.grantEnded(gone, cause: .all, ts: now), in: dirURL)
+        }
+        reloadSessionGrantCache()
+        refreshSessionGrantViews()
     }
 
     @objc func toggleAutoMode() {

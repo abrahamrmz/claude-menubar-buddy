@@ -5025,7 +5025,7 @@ func pandaIcon(pending: Bool, autoMode: Bool, sessionGrant: Bool) -> NSImage
 func applyStatusIcon(pending: Bool, count: Int, autoMode: Bool, sessionGrant: Bool, accessibility: String)
 ```
 
-- [ ] **Paso 1: propiedades y `setIdle` (`main.swift`)**
+- [x] **Paso 1: propiedades y `setIdle` (`main.swift`)**
 
 Después de `var sessionGrantTicks = 0`:
 
@@ -5038,7 +5038,7 @@ Después de `var sessionGrantTicks = 0`:
 
 En `setIdle()`, justo después de `approvalHotKeys.disable()`: `pendingSessionGrantsItem = nil` (el menú de petición se descarta ahí).
 
-- [ ] **Paso 2: el elemento del menú (`Menus.swift`)**
+- [x] **Paso 2: el elemento del menú (`Menus.swift`)**
 
 Agrega estas tres funciones al `extension AppDelegate`, antes de `@objc func toggleAutoMode()`:
 
@@ -5096,7 +5096,7 @@ Agrega estas tres funciones al `extension AppDelegate`, antes de `@objc func tog
 
 Apagar no pide confirmación: es la dirección segura. Una fila cuya concesión ya no existe (otro proceso la borró) no anota nada, y la recarga la quita.
 
-- [ ] **Paso 3: dónde aparece**
+- [x] **Paso 3: dónde aparece**
 
 - **Menú de reposo (`Menus.swift` → `buildIdleMenu`):** justo después de `menu.addItem(autoModeItem)` y antes del separador que le sigue:
   ```swift
@@ -5120,7 +5120,7 @@ Apagar no pide confirmación: es la dirección segura. Una fila cuya concesión 
 
 Es el patrón de "Active Sessions": se cambian el título del elemento y las filas de su submenú, y **nunca** se reasigna `statusItem.menu` fuera de `setIdle`/`setPending`, porque el menú puede estar abierto (el temporizador de `poll()` corre en modo `.common`).
 
-- [ ] **Paso 4: el ícono (`StatusIcon.swift`)**
+- [x] **Paso 4: el ícono (`StatusIcon.swift`)**
 
 - Agrega `import BuddyCore` debajo de `import AppKit` (hace falta para `SessionGrantCard`).
 - **`pandaIcon(pending:autoMode:)` → `pandaIcon(pending:autoMode:sessionGrant:)`.** Después de `let boltWidth…`:
@@ -5165,7 +5165,7 @@ Es el patrón de "Active Sessions": se cambian el título del elemento y las fil
 
 (reemplaza a la llamada de hoy a `applyStatusIcon`).
 
-- [ ] **Paso 5: el historial (`Menus.swift` → `updateHistorySubmenu`)**
+- [x] **Paso 5: el historial (`Menus.swift` → `updateHistorySubmenu`)**
 
 La línea `let icon = line.isAuto ? "⚡︎" : line.decision == "allow" ? "✓" : …` pasa a:
 
@@ -5178,12 +5178,12 @@ La línea `let icon = line.isAuto ? "⚡︎" : line.decision == "allow" ? "✓" 
 
 El `line.isAuto ?` es a propósito: la línea de `decisions.jsonl` del clic que prendió la concesión lleva `grant: "session"`, y tiene que verse como lo que es, una aprobación humana (✓), no como "⇉".
 
-- [ ] **Paso 6: correr todo**
+- [x] **Paso 6: correr todo**
 
 Corre: `swift build && swift test`
 Esperado: compila sin errores y todo en verde, con el mismo número de tests que al terminar la tarea 12.
 
-- [ ] **Paso 7: revisar el diff**
+- [x] **Paso 7: revisar el diff**
 
 - `git grep -n "pandaIcon(\|applyStatusIcon(" Sources/ClaudeMenuBarBuddy`: toda llamada pasa `sessionGrant:` de forma explícita.
 - `applyPendingStatusIcon` sigue con `autoMode: false`.
@@ -5191,7 +5191,7 @@ Esperado: compila sin errores y todo en verde, con el mismo número de tests que
 - `git grep -n "\.grant(" Sources/ClaudeMenuBarBuddy` no encuentra nada: el menú no prende concesiones.
 - El elemento se agrega en `buildIdleMenu` justo después de "Modo auto", y en `setPending` antes del separador de "Quit".
 
-- [ ] **Paso 8: commit**
+- [x] **Paso 8: commit**
 
 ```bash
 git add Sources/ClaudeMenuBarBuddy/main.swift Sources/ClaudeMenuBarBuddy/SessionGrants.swift Sources/ClaudeMenuBarBuddy/ApprovalCard.swift Sources/ClaudeMenuBarBuddy/Menus.swift Sources/ClaudeMenuBarBuddy/StatusIcon.swift

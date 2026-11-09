@@ -218,6 +218,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     var sessionGrantsFolderStamp: Date?
     var sessionGrantTicks = 0
 
+    // "Auto completo: N sesiones" in the idle menu and in the pending one,
+    // kept so a change can be painted into them in place.
+    var idleSessionGrantsItem: NSMenuItem?
+    var pendingSessionGrantsItem: NSMenuItem?
+
     // One listing of the config directory per poll tick, shared by everyone
     // who reads it: pending requests, done markers, turn_start markers and the
     // debug capture flags. Between them they were scanning the same directory
@@ -560,6 +565,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         choiceIndex = 0
         collectedAnswers = [:]
         approvalHotKeys.disable()
+        pendingSessionGrantsItem = nil
         updateIdleTitle()
         statusItem.menu = idleMenu
         hideStatusBubble()
