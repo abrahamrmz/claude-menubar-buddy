@@ -78,6 +78,11 @@ public struct PathPolicy {
     /// Secret folders known only by name (`*/credenciales`): also just a word,
     /// so they count only where a folder called so really exists.
     private let secretFoldersByName: [String]
+    /// The protected places pinned to one location — the patterns that start
+    /// at the root or at the home folder, not the ones matched by name in any
+    /// folder — cut at their first wildcard, folded and lowercased: "/etc",
+    /// "/users/u/.gitconfig", "/users/u/.config/claude-menubar-buddy".
+    private let pinnedProtected: [String]
 
     public init(home: String, pathDirs: [String], tempDirs: [String], probe: FileProbe) {
         self.probe = probe
@@ -95,6 +100,11 @@ public struct PathPolicy {
 
         let inside = Self.expand(Self.protectedList, home: canonicalHome) + dirs.map { "\($0)/*" }
         self.protectedPatterns = inside + Self.foldersThemselves(inside)
+        self.pinnedProtected = inside.filter { $0.hasPrefix("/") }.compactMap { pattern in
+            var fixed = String(pattern.prefix { !"*?[".contains($0) })
+            while fixed.count > 1 && fixed.hasSuffix("/") { fixed.removeLast() }
+            return fixed.isEmpty ? nil : Self.foldedLikeTheVolume(fixed).lowercased()
+        }
         let secrets = Self.expand(Self.sensitiveList, home: canonicalHome)
         self.sensitivePatterns = secrets
         let secretFolders = Self.foldersThemselves(secrets)
@@ -242,6 +252,19 @@ public struct PathPolicy {
 
     public func isSensitive(_ absolutePath: String) -> Bool {
         sensitiveSpelling(absolutePath) != nil
+    }
+
+    /// The spelling of `absolutePath` — as named, or what a link leads to —
+    /// that is a protected place pinned to one location or a folder above
+    /// one: the root, the home folder, `~/.config`, `~/Library`… Places
+    /// protected by name in any folder (`*/.git`, `*/.ssh/*`) don't count, so
+    /// a project folder with its `.git` inside is not one. Nil otherwise.
+    public func pinnedProtectedContainer(_ absolutePath: String) -> String? {
+        spellings(absolutePath).first { spelled in
+            let folded = Self.foldedLikeTheVolume(spelled).lowercased()
+            if folded == "/" { return true }
+            return pinnedProtected.contains { $0 == folded || $0.hasPrefix(folded + "/") }
+        }
     }
 
     /// The spelling that makes `absolutePath` a secret, or nil.

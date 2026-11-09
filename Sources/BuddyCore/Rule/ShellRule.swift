@@ -6,14 +6,16 @@ public enum ShellRule {
     public static func assess(_ command: String, context: RuleContext) -> Assessment {
         // Nothing to approve blindly.
         guard !command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return Assessment(.desconocido, "la regla no reconoce: ")
+            return Assessment(.desconocido, "la regla no reconoce: ", sessionHold: "comando vacío")
         }
         let script = ShellScript.parse(command)
         if script.unparseable || script.hasCaseStatement {
-            return Assessment(.desconocido, "no se pudo analizar el comando")
+            return Assessment(.desconocido, "no se pudo analizar el comando",
+                              sessionHold: "no se pudo analizar el comando")
         }
         if script.definesFunction {
-            return Assessment(.desconocido, "define funciones de shell")
+            return Assessment(.desconocido, "define funciones de shell",
+                              sessionHold: "define funciones de shell")
         }
 
         var state = RuleState(dir: context.cwd, dirKnown: !context.cwd.isEmpty, context: context)
@@ -68,7 +70,8 @@ public enum ShellRule {
             words.removeFirst()
         }
         for name in leadingAssignments where changesCommandResolution(name) {
-            return Assessment(.ejecuta, "cambia cómo se resuelve el comando: \(name)=")
+            let why = "cambia cómo se resuelve el comando: \(name)="
+            return Assessment(.ejecuta, why, sessionHold: why)
         }
         // An assignment in front changes which binary the next word finds, so
         // it can never be waved through on the strength of that word alone.
@@ -108,6 +111,9 @@ public enum ShellRule {
         if !leadingAssignments.isEmpty, hadCommandWord, !result.critical {
             result = worse(result, Assessment(.desconocido, "asignación de entorno antes del comando"))!
         }
+        if let hold = commandHold(words, state: state) {
+            result = result.holding(hold)
+        }
         return result
     }
 
@@ -116,7 +122,8 @@ public enum ShellRule {
                                    targets: inout [WriteTarget],
                                    protectedOnly: inout [ShellWord]) -> Assessment {
         if head.expands || head.substitutes {
-            return Assessment(.desconocido, "la regla no reconoce: \(short(head.text))")
+            return Assessment(.desconocido, "la regla no reconoce: \(short(head.text))",
+                              sessionHold: "no se sabe qué comando corre: \(short(head.text))")
         }
         let original = head.text
         if original.contains("deploy") {
@@ -208,11 +215,13 @@ public enum ShellRule {
 
     private static func assessReader(_ name: String, original: String,
                                      arguments: [ShellWord]) -> Assessment {
-        let unknown = Assessment(.desconocido, "la regla no reconoce: \(short(original))")
+        let unknown = Assessment(.desconocido, "la regla no reconoce: \(short(original))",
+                                 sessionHold: "escribe un archivo que la regla no revisa: \(name)")
         if ["export", "declare", "typeset", "local", "readonly"].contains(name) {
             for argument in arguments {
                 if let assigned = assignmentName(argument.text), changesCommandResolution(assigned) {
-                    return Assessment(.ejecuta, "cambia cómo se resuelve el comando: \(assigned)=")
+                    let why = "cambia cómo se resuelve el comando: \(assigned)="
+                    return Assessment(.ejecuta, why, sessionHold: why)
                 }
             }
             return Assessment(.lectura, "solo lee")
@@ -289,11 +298,13 @@ public enum ShellRule {
         for target in targets {
             if isIgnoredDevice(target.word.text) { continue }
             if target.word.expands || target.word.substitutes {
-                worst = worse(worst, Assessment(.desconocido, "no se puede saber dónde escribe"))
+                worst = worse(worst, Assessment(.desconocido, "no se puede saber dónde escribe",
+                                                sessionHold: "no se sabe dónde escribe: \(short(target.word.text))"))
                 continue
             }
             guard let absolute = resolve(target.word.text, state: state) else {
-                worst = worse(worst, Assessment(.desconocido, "no se puede saber dónde escribe"))
+                worst = worse(worst, Assessment(.desconocido, "no se puede saber dónde escribe",
+                                                sessionHold: "no se sabe dónde escribe: \(short(target.word.text))"))
                 continue
             }
             let paths = state.context.paths
@@ -527,6 +538,26 @@ public enum ShellRule {
         }
     }
 
+    /// `cp "$f" dir/` drops a file whose name the rule can't read into a
+    /// folder, and `mv "$f" x` takes one from a place it can't read: both
+    /// write somewhere unknown. The category stays as it was (a session hold,
+    /// spec 5.3 point 5); nil when every name is readable.
+    static func landingHold(_ name: String, arguments: [ShellWord], state: RuleState) -> String? {
+        guard ["cp", "mv", "install"].contains(name) else { return nil }
+        let nonFlags = nonFlagArguments(arguments)
+        guard nonFlags.count >= 2 else { return nil }
+        let unreadable = { (words: [ShellWord]) in words.first { $0.expands || $0.substitutes } }
+        let hidden: ShellWord?
+        if namesItsFolderFirst(arguments) {
+            hidden = unreadable(nonFlags)
+        } else if name == "mv" || isFolder(nonFlags[nonFlags.count - 1], among: nonFlags.count, state: state) {
+            hidden = unreadable(Array(nonFlags.dropLast()))
+        } else {
+            hidden = nil
+        }
+        return hidden.map { "no se sabe dónde escribe: \(short($0.text))" }
+    }
+
     /// A link is a second name for what it points at: once it exists, writing
     /// to the new name writes there, and reading it reads there. The path
     /// policy follows links that are already on disk, but the rule runs
@@ -549,7 +580,8 @@ public enum ShellRule {
         var worst: Assessment?
         for source in sources {
             if source.expands || source.substitutes {
-                worst = worse(worst, Assessment(.desconocido, "no se puede saber a dónde apunta el enlace"))
+                worst = worse(worst, Assessment(.desconocido, "no se puede saber a dónde apunta el enlace",
+                                                sessionHold: "no se sabe a dónde apunta el enlace: \(short(source.text))"))
                 continue
             }
             var candidates: [String] = []
@@ -564,7 +596,8 @@ public enum ShellRule {
                 candidates.append((landing as NSString).deletingLastPathComponent + "/" + source.text)
             }
             if candidates.isEmpty {
-                worst = worse(worst, Assessment(.desconocido, "no se puede saber a dónde apunta el enlace"))
+                worst = worse(worst, Assessment(.desconocido, "no se puede saber a dónde apunta el enlace",
+                                                sessionHold: "no se sabe a dónde apunta el enlace: \(short(source.text))"))
                 continue
             }
             for candidate in candidates {
@@ -650,7 +683,7 @@ public enum ShellRule {
         wrapperLoop: while let head = words.first?.text {
             switch head {
             case "sudo", "doas":
-                return Assessment(.ejecuta, "ejecuta con sudo")
+                return Assessment(.ejecuta, "ejecuta con sudo", sessionHold: "usa \(head)")
             case "time":
                 words.removeFirst()
                 if words.first?.text == "-p" { words.removeFirst() }
@@ -701,7 +734,8 @@ public enum ShellRule {
                 }
                 while let first = words.first, let name = assignmentName(first.text) {
                     if changesCommandResolution(name) {
-                        return Assessment(.ejecuta, "cambia cómo se resuelve el comando: \(name)=")
+                        let why = "cambia cómo se resuelve el comando: \(name)="
+                        return Assessment(.ejecuta, why, sessionHold: why)
                     }
                     words.removeFirst()
                 }

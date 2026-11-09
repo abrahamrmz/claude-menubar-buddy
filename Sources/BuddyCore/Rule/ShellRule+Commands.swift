@@ -129,10 +129,12 @@ extension ShellRule {
 
     static func assessFind(_ arguments: [ShellWord], state: RuleState) -> Assessment {
         var worst = Assessment(.lectura, "solo lee")
+        var deletes = false
         var index = 0
         while index < arguments.count {
             switch arguments[index].text {
             case "-delete":
+                deletes = true
                 worst = worse(worst, Assessment(.irreversible, "no se puede deshacer: find"))!
                 index += 1
             case "-exec", "-execdir", "-ok", "-okdir":
@@ -144,6 +146,9 @@ extension ShellRule {
                     cursor += 1
                 }
                 if !nested.isEmpty {
+                    if let first = nested.first, deleters.contains((first.text as NSString).lastPathComponent) {
+                        deletes = true
+                    }
                     var nestedState = state
                     worst = worse(worst, evaluate(CommandInput(words: nested, redirects: [],
                                                                subshellDepth: 0),
@@ -151,10 +156,17 @@ extension ShellRule {
                 }
                 index = cursor + 1
             case "-fprint", "-fprint0", "-fprintf", "-fls":
-                worst = worse(worst, Assessment(.desconocido, "la regla no reconoce: find"))!
+                worst = worse(worst, Assessment(.desconocido, "la regla no reconoce: find",
+                                                sessionHold: "escribe un archivo que la regla no revisa: find"))!
                 index += 1
             default:
                 index += 1
+            }
+        }
+        if deletes {
+            let roots = arguments.prefix { !$0.text.hasPrefix("-") && $0.text != "(" && $0.text != "!" }
+            if let why = deletionHold(Array(roots), state: state) {
+                worst = worst.holding(why)
             }
         }
         return worst
@@ -162,8 +174,19 @@ extension ShellRule {
 
     // MARK: - git
 
+    /// Every push stays out of a session grant whatever else the line says
+    /// (`git push --receive-pack=x` is `ejecuta`), and so does every git the
+    /// rule doesn't know (spec 5.3 point 8).
     static func assessGit(_ arguments: [ShellWord], state: RuleState,
                           targets: inout [WriteTarget]) -> Assessment {
+        let (result, subcommand) = gitAssessment(arguments, state: state, targets: &targets)
+        if subcommand == "push" { return result.holding("sale de tu máquina: git push") }
+        if result.category == .desconocido { return result.holding(result.reason) }
+        return result
+    }
+
+    private static func gitAssessment(_ arguments: [ShellWord], state: RuleState,
+                                      targets: inout [WriteTarget]) -> (Assessment, subcommand: String?) {
         var localState = state
         var index = 0
         var subcommand: String?
@@ -189,18 +212,18 @@ extension ShellRule {
                 continue
             }
             if text == "-c" || (text.hasPrefix("-c") && !text.hasPrefix("--")) {
-                return Assessment(.rutaProtegida, "git -c puede ejecutar código")
+                return (Assessment(.rutaProtegida, "git -c puede ejecutar código"), nil)
             }
             if ["--git-dir", "--work-tree", "--exec-path", "--namespace"].contains(text)
                 || ["--git-dir=", "--work-tree=", "--exec-path=", "--namespace="].contains(where: { text.hasPrefix($0) }) {
-                return Assessment(.desconocido, "la regla no reconoce: git")
+                return (Assessment(.desconocido, "la regla no reconoce: git"), nil)
             }
             if ["--no-pager", "--paginate", "-p", "--bare", "--literal-pathspecs", "--no-optional-locks"].contains(text) {
                 index += 1
                 continue
             }
             if text.hasPrefix("-") {
-                return Assessment(.desconocido, "la regla no reconoce: git")
+                return (Assessment(.desconocido, "la regla no reconoce: git"), nil)
             }
             subcommand = text
             subArguments = Array(arguments[(index + 1)...])
@@ -208,26 +231,26 @@ extension ShellRule {
         }
 
         guard let subcommand else {
-            return Assessment(.desconocido, "la regla no reconoce: git")
+            return (Assessment(.desconocido, "la regla no reconoce: git"), nil)
         }
 
         // A transport can name a program of the caller's choosing.
         if subArguments.contains(where: { $0.text.hasPrefix("ext::") || $0.text.hasPrefix("fd::") }) {
-            return Assessment(.ejecuta, "ejecuta código a través de un transporte de git")
+            return (Assessment(.ejecuta, "ejecuta código a través de un transporte de git"), subcommand)
         }
 
         // Transport options can name the program git will run on either end.
         for word in subArguments {
             for option in ["--upload-pack", "--receive-pack", "--exec"]
             where word.text == option || word.text.hasPrefix(option + "=") {
-                return Assessment(.ejecuta, "ejecuta código a través de una opción: \(option)")
+                return (Assessment(.ejecuta, "ejecuta código a través de una opción: \(option)"), subcommand)
             }
         }
         if ["clone", "fetch", "pull", "ls-remote", "archive"].contains(subcommand),
            subArguments.contains(where: {
                $0.text == "-u" || ($0.text.hasPrefix("-u") && !$0.text.hasPrefix("--") && $0.text.count > 2)
            }) {
-            return Assessment(.ejecuta, "ejecuta código a través de una opción: -u")
+            return (Assessment(.ejecuta, "ejecuta código a través de una opción: -u"), subcommand)
         }
 
         var cursor = 0
@@ -248,7 +271,7 @@ extension ShellRule {
             cursor += 1
         }
 
-        return assessGitSubcommand(subcommand, arguments: subArguments, state: localState)
+        return (assessGitSubcommand(subcommand, arguments: subArguments, state: localState), subcommand)
     }
 
     private static let gitReadSubcommands: Set<String> = [
@@ -445,24 +468,29 @@ extension ShellRule {
         for index in arguments.indices {
             let text = arguments[index].text
             if text == "-F" || (text.hasPrefix("-F") && text.count > 2) {
-                return Assessment(.ejecuta, "ejecuta código a través de una opción: -F")
+                return Assessment(.ejecuta, "ejecuta código a través de una opción: -F",
+                                  sessionHold: "ssh que no solo lee")
             }
             if text == "-o" {
                 if index + 1 < arguments.count, dangerousSSHOption(arguments[index + 1].text) {
-                    return Assessment(.ejecuta, "ejecuta código a través de una opción: -o")
+                    return Assessment(.ejecuta, "ejecuta código a través de una opción: -o",
+                                      sessionHold: "ssh que no solo lee")
                 }
             } else if text.hasPrefix("-o"), text.count > 2,
                       dangerousSSHOption(String(text.dropFirst(2))) {
-                return Assessment(.ejecuta, "ejecuta código a través de una opción: -o")
+                return Assessment(.ejecuta, "ejecuta código a través de una opción: -o",
+                                  sessionHold: "ssh que no solo lee")
             }
         }
 
         var index = 0
         var host: String?
-        var remoteWords: [String] = []
+        var remoteWords: [ShellWord] = []
+        var localExpansion: String?
 
         while index < arguments.count {
-            let text = arguments[index].text
+            let word = arguments[index]
+            let text = word.text
             if host == nil {
                 if text.hasPrefix("-"), text.count > 1 {
                     if sshValueOptions.contains(text) {
@@ -478,7 +506,8 @@ extension ShellRule {
                 index += 1
                 continue
             }
-            remoteWords.append(text)
+            if word.expands || word.substitutes { localExpansion = "ssh con una expansión local" }
+            remoteWords.append(word)
             index += 1
         }
 
@@ -486,10 +515,13 @@ extension ShellRule {
             return Assessment(.sale, "ssh interactivo")
         }
 
-        let script = ShellScript.parse(remoteWords.joined(separator: " "))
+        let script = ShellScript.parse(remoteWords.map(\.text).joined(separator: " "))
         if script.unparseable || script.hasCaseStatement || script.definesFunction {
             return Assessment(.sale, "ssh que no solo lee")
         }
+
+        let onlyReads = script.commands.allSatisfy { remoteSimpleIsRead($0, state: state) }
+        let hold = onlyReads ? localExpansion : "ssh que no solo lee"
 
         for simple in script.commands {
             var candidates = simple.words.filter { !$0.text.hasPrefix("-") }
@@ -501,15 +533,15 @@ extension ShellRule {
                 let path = word.text.hasPrefix("/") ? word.text : "/remote/" + word.text
                 let canonical = state.context.paths.canonicalize(path)
                 if state.context.paths.isSensitive(canonical) {
-                    return Assessment(.sensible, "toca un archivo sensible: \(canonical)")
+                    return Assessment(.sensible, "toca un archivo sensible: \(canonical)", sessionHold: hold)
                 }
             }
         }
 
-        for simple in script.commands where !remoteSimpleIsRead(simple, state: state) {
+        if !onlyReads {
             return Assessment(.sale, "ssh que no solo lee")
         }
-        return Assessment(.lectura, "ssh que solo lee")
+        return Assessment(.lectura, "ssh que solo lee", sessionHold: localExpansion)
     }
 
     private static func dangerousSSHOption(_ value: String) -> Bool {
@@ -622,5 +654,101 @@ extension ShellRule {
         var nestedState = state
         return evaluate(CommandInput(words: command, redirects: [], subshellDepth: 0),
                         state: &nestedState)
+    }
+
+    // MARK: - Session holds
+
+    /// The commands that delete what they name (spec 5.3 point 7).
+    static let deleters: Set<String> = ["rm", "rmdir", "unlink", "shred", "srm", "truncate"]
+
+    /// What `rm` and its family would delete: every word that isn't a flag,
+    /// and everything after `--`. For `dd`, the file after `of=`.
+    static func deletionOperands(_ name: String, arguments: [ShellWord]) -> [ShellWord] {
+        if name == "dd" {
+            return arguments.compactMap { word in
+                guard word.text.hasPrefix("of=") else { return nil }
+                return ShellWord(text: String(word.text.dropFirst(3)), expands: word.expands,
+                                 substitutes: word.substitutes, quoted: word.quoted)
+            }
+        }
+        var operands: [ShellWord] = []
+        var afterDoubleDash = false
+        for word in arguments {
+            if word.text == "--" { afterDoubleDash = true; continue }
+            if afterDoubleDash || !word.text.hasPrefix("-") { operands.append(word) }
+        }
+        return operands
+    }
+
+    /// The first operand whose deletion a session grant must not cover, or nil
+    /// when every one of them is ordinary (spec 5.3 point 7).
+    static func deletionHold(_ operands: [ShellWord], state: RuleState) -> String? {
+        for word in operands {
+            if word.substitutes
+                || (word.expands && word.text.contains("$"))
+                || (word.text.hasPrefix("~") && word.text != "~" && !word.text.hasPrefix("~/")) {
+                return "no se sabe qué borra: \(short(word.text))"
+            }
+            if word.expands {
+                if let why = globDeletionHold(word.text, state: state) { return why }
+                continue
+            }
+            guard let absolute = resolve(word.text, state: state) else {
+                return "no se sabe qué borra: \(short(word.text))"
+            }
+            let reached = reaches(absolute, state: state)
+            if let hit = reached.lazy.compactMap(state.context.paths.protectedSpelling).first {
+                return "borra una ruta protegida: \(PathPolicy.label(reached[0], landingOn: hit))"
+            }
+            if let hit = reached.lazy.compactMap(state.context.paths.pinnedProtectedContainer).first {
+                return "borra una carpeta que guarda rutas protegidas: \(PathPolicy.label(reached[0], landingOn: hit))"
+            }
+        }
+        return nil
+    }
+
+    /// A deletion with a wildcard: dangerous when it can reach a hidden name,
+    /// a protected folder, or a file the rule protects by name (spec 5.3 point 7).
+    private static func globDeletionHold(_ text: String, state: RuleState) -> String? {
+        let fixed = String(text.prefix { !"*?[".contains($0) })
+        let folder: String
+        let name: String
+        if let slash = fixed.lastIndex(of: "/") {
+            folder = String(fixed[...slash])
+            name = String(fixed[fixed.index(after: slash)...])
+        } else {
+            folder = "."
+            name = fixed
+        }
+        if name.hasPrefix(".") { return "borra con un comodín peligroso: \(text)" }
+        guard let folderAbsolute = resolve(folder, state: state),
+              let fullAbsolute = resolve(text, state: state) else {
+            return "no se sabe qué borra: \(short(text))"
+        }
+        let reachedFolder = reaches(folderAbsolute, state: state)
+        if reachedFolder.contains(where: { state.context.paths.protectedSpelling($0) != nil
+                                            || state.context.paths.pinnedProtectedContainer($0) != nil }) {
+            return "borra con un comodín peligroso: \(text)"
+        }
+        let paths = state.context.paths
+        if reaches(fullAbsolute, state: state).contains(where: { paths.protectedSpelling($0) != nil }) {
+            return "borra con un comodín peligroso: \(text)"
+        }
+        return nil
+    }
+
+    /// The holds that hang on a command's name and arguments rather than on
+    /// its category. nil when a session grant may cover it.
+    static func commandHold(_ words: [ShellWord], state: RuleState) -> String? {
+        guard let head = words.first, !head.expands, !head.substitutes else { return nil }
+        let name = (head.text as NSString).lastPathComponent
+        let arguments = Array(words.dropFirst())
+        if name == "sudo" || name == "doas" { return "usa \(name)" }
+        if name == "alias" { return "define un alias" }
+        if deleters.contains(name) || name == "dd",
+           let why = deletionHold(deletionOperands(name, arguments: arguments), state: state) {
+            return why
+        }
+        return landingHold(name, arguments: arguments, state: state)
     }
 }

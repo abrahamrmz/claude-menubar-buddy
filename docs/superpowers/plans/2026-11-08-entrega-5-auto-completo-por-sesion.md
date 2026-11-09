@@ -751,7 +751,7 @@ private static func globDeletionHold(_ text: String, state: RuleState) -> String
 func holdOf(_ command: String, in context: RuleContext = ruleContext) -> String?
 ```
 
-- [ ] **Paso 1: escribir los tests**
+- [x] **Paso 1: escribir los tests**
 
 Crea `Tests/ClaudeMenuBarBuddyTests/SessionHoldTests.swift`:
 
@@ -953,12 +953,12 @@ func holdOf(_ command: String, in context: RuleContext = ruleContext) -> String?
 }
 ```
 
-- [ ] **Paso 2: verificar que falla**
+- [x] **Paso 2: verificar que falla**
 
 Corre: `swift build && swift test --filter SessionHoldTests`
 Esperado: no compila (`value of type 'PathPolicy' has no member 'pinnedProtectedContainer'`).
 
-- [ ] **Paso 3: retenciones en los puntos donde la regla ya decide**
+- [x] **Paso 3: retenciones en los puntos donde la regla ya decide**
 
 Cada cambio de esta lista agrega `sessionHold:` a una evaluación que ya existe. **El primer argumento (categoría) y el segundo (motivo) no se tocan.**
 
@@ -980,7 +980,7 @@ Cada cambio de esta lista agrega `sessionHold:` a una evaluación que ya existe.
 
 El enlace con origen ilegible (`ln -s "$HOME" h && echo x >> h/.gitconfig`) entra en el punto 5: deja ilegible todo lo que la línea escribe a través de él.
 
-- [ ] **Paso 4: `pinnedProtectedContainer` en `PathPolicy`**
+- [x] **Paso 4: `pinnedProtectedContainer` en `PathPolicy`**
 
 "Ubicación protegida fija" (spec 5.3, punto 7) se deriva de **la misma lista** `protectedList` más las carpetas del `PATH`, sin duplicarla: son los patrones que, ya con `~` expandido, empiezan con `/` (no con `*`), cortados en su primer comodín. Así `~/.gitconfig`, `/etc/*`, `~/.config/claude-menubar-buddy/*` o `/opt/homebrew/bin/*` cuentan, y `*/.git` o `*/.ssh/*` (protegidos por nombre en cualquier carpeta) no. La raíz y la carpeta del usuario no hacen falta en la lista: cuentan porque contienen alguna de esas.
 
@@ -1014,7 +1014,7 @@ El enlace con origen ilegible (`ln -s "$HOME" h && echo x >> h/.gitconfig`) entr
 
 Va en `PathPolicy.swift` porque `spellings` (que sigue los enlaces del disco salto a salto) es privado ahí. Ponla antes de `isSensitive`.
 
-- [ ] **Paso 5: lo que se borra (punto 7)**
+- [x] **Paso 5: lo que se borra (punto 7)**
 
 Al final de la extensión de `ShellRule+Commands.swift`, una sección `// MARK: - Session holds` con:
 
@@ -1041,7 +1041,7 @@ Al final de la extensión de `ShellRule+Commands.swift`, una sección `// MARK: 
 
 En `assessFind`: lleva una bandera `deletes` que se prende con `-delete` y con un `-exec`/`-execdir`/`-ok`/`-okdir` cuyo primer comando (por su nombre base) está en `deleters`. Al final, si `deletes`, se juzgan las raíces (los argumentos del principio hasta el primero que empieza con `-`, o es `(` o `!`) con `deletionHold`, y la evaluación se devuelve con `.holding(...)`.
 
-- [ ] **Paso 6: `landingHold` (punto 5, lo que cae en una carpeta)**
+- [x] **Paso 6: `landingHold` (punto 5, lo que cae en una carpeta)**
 
 En `ShellRule.swift`, junto a `appendLandingTargets` (usa `isFolder` y `namesItsFolderFirst`, que son privados ahí):
 
@@ -1069,7 +1069,7 @@ En `ShellRule.swift`, junto a `appendLandingTargets` (usa `isFolder` y `namesIts
 
 No se hace agregando un `WriteTarget`: eso cambiaría la categoría de `cp "$f" ~/Documents/` de `cambio_local` a `desconocido` y rompe el invariante.
 
-- [ ] **Paso 7: `commandHold` y su llamada**
+- [x] **Paso 7: `commandHold` y su llamada**
 
 ```swift
     /// The holds that hang on a command's name and arguments rather than on
@@ -1098,7 +1098,7 @@ El nombre es el **nombre base** de la cabeza: `/usr/bin/sudo git push` hoy sale 
 
 `words` es la lista ya desenvuelta por `unwrap`; por eso `nohup`, `timeout`, `env`, `command`, `time`, `nice`, y los comandos anidados de `xargs` y `find -exec` (que pasan por `evaluate`) quedan cubiertos sin más.
 
-- [ ] **Paso 8: git (punto 8)**
+- [x] **Paso 8: git (punto 8)**
 
 En `ShellRule+Commands.swift`, el cuerpo de hoy de `assessGit` pasa a `private static func gitAssessment(_ arguments: [ShellWord], state: RuleState, targets: inout [WriteTarget]) -> (Assessment, subcommand: String?)`, igual que hoy pero devolviendo también el subcomando (`nil` en los `return` anteriores a conocerlo). `assessGit` queda:
 
@@ -1117,7 +1117,7 @@ En `ShellRule+Commands.swift`, el cuerpo de hoy de `assessGit` pasa a `private s
 
 `remoteSimpleIsRead` sigue llamando a `assessGit(...).category`, sin cambio.
 
-- [ ] **Paso 9: ssh (punto 9)**
+- [x] **Paso 9: ssh (punto 9)**
 
 En `assessSSH`, después de las tres retenciones de `-F`/`-o` del paso 3:
 - Una variable `var localExpansion: String?` que se pone en `"ssh con una expansión local"` cuando alguna palabra **después del host** tiene `expands || substitutes`: el shell local la expande antes de que ssh la mande.
@@ -1125,12 +1125,12 @@ En `assessSSH`, después de las tres retenciones de `-F`/`-o` del paso 3:
 - El `return` de `.sensible` lleva `sessionHold: hold`. Hoy `ssh h 'cat .env; sudo reboot'` sale `sensible` porque la lectura del secreto se mira antes, y sin esto pasaría con concesión.
 - El bucle final se reemplaza por `if !onlyReads { return Assessment(.sale, "ssh que no solo lee") }`, y el `return` de `.lectura` lleva `sessionHold: localExpansion`.
 
-- [ ] **Paso 10: verificar que pasa**
+- [x] **Paso 10: verificar que pasa**
 
 Corre: `swift build && swift test`
 Esperado: todo en verde, 313 tests. `RuleInvariantTests`, `ShellRuleTests` y `ShellRuleCommandsTests` sin cambios y en verde. Después: `swift test --filter hugeCommandStaysFast` y anota el tiempo.
 
-- [ ] **Paso 11: commit**
+- [x] **Paso 11: commit**
 
 ```bash
 git add Sources/BuddyCore/Rule/ShellRule.swift Sources/BuddyCore/Rule/ShellRule+Commands.swift Sources/BuddyCore/Rule/PathPolicy.swift Tests/ClaudeMenuBarBuddyTests/SessionHoldTests.swift
