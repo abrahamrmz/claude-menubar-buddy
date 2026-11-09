@@ -4,10 +4,12 @@ Este archivo lo lee opencode al empezar. Si algo de aquí choca con una instrucc
 
 ## Qué estás construyendo
 
-Sigue el plan vigente, tarea por tarea y en orden. Hoy es `docs/superpowers/plans/2026-10-30-entrega-3-sonidos.md`: el control de los sonidos del buddy desde el menú de la barra. El diseño que lo respalda está en `docs/superpowers/specs/2026-10-30-sonidos-design.md`. Los planes de las entregas 1 y 2 ya se completaron y son solo referencia.
+Sigue el plan vigente, tarea por tarea y en orden. Hoy es `docs/superpowers/plans/2026-11-08-entrega-5-auto-completo-por-sesion.md`: el "auto completo por sesión", una concesión que deja pasar todo en una sola sesión salvo lo que publica. El diseño que lo respalda está en `docs/superpowers/specs/2026-11-08-auto-completo-por-sesion-design.md`. Los planes de las entregas 1 a 3 ya se completaron y son solo referencia.
 
 - El plan va por **bloques de revisión**. Al terminar cada bloque, detente y avisa en el chat; no empieces el siguiente hasta que te lo digan.
-- **No toques los archivos de `Sources/ClaudeMenuBarBuddy/Resources/Sounds/`** (los `.wav` y `CREDITS.md`). Los puso Claude con sus créditos, y un test compara sus SHA-256.
+- **No toques los archivos de `Sources/ClaudeMenuBarBuddy/Resources/Sounds/`** (los `.wav` y `CREDITS.md`). Un test compara sus SHA-256.
+- **Esta entrega toca la regla de seguridad.** Si un test del plan pide que algo pase sin tarjeta y te parece peligroso, o si un test existente de la regla cambia de categoría, no lo ajustes: anótalo y detente.
+- **Nunca agregues un camino que cree una concesión** (`SessionGrantStore.grant(`) fuera de `Sources/ClaudeMenuBarBuddy/CardDecision.swift`.
 - **No descargues archivos** (`curl` y `wget` están negados).
 
 **No cambies decisiones de diseño.** Si una tarea no se puede hacer como dice el plan, no improvises una alternativa:
@@ -16,7 +18,7 @@ Sigue el plan vigente, tarea por tarea y en orden. Hoy es `docs/superpowers/plan
 
 ## Dónde puedes trabajar
 
-- Solo dentro de esta carpeta (el worktree `claude-menubar-buddy-sonidos`).
+- Solo dentro de esta carpeta (el worktree `claude-menubar-buddy-auto-sesion`).
 - **Nunca** toques, leas ni compiles en:
   - `~/Desktop/repos/claude-menubar-buddy` (la carpeta principal: de ahí corre el buddy que el usuario usa a diario);
   - `~/.config/claude-menubar-buddy/`;
@@ -33,7 +35,8 @@ Sigue el plan vigente, tarea por tarea y en orden. Hoy es `docs/superpowers/plan
   `swift test` solo no reconstruye el ejecutable `buddy-rule` que usan los tests del hook. Sin `swift build` antes, esos tests corren contra un binario viejo.
 - Un solo grupo de tests: `swift build && swift test --filter NombreDeLaSuite`.
 - Hooks de shell: `shellcheck hook.sh notify-done.sh` (debe salir sin avisos).
-- El punto de partida de la entrega 3 está en verde: 225 tests pasan. Lo que imprime la terminal como `Terminated: 15` durante los tests del hook es normal.
+- El punto de partida de la entrega 5 está en verde: 289 tests pasan. Lo que imprime la terminal como `Terminated: 15` durante los tests del hook es normal.
+- Los tests del hook y de `notify-done.sh` crean un `HOME` temporal. Nunca los apuntes al `HOME` real.
 
 ## Cómo escribir el código
 
