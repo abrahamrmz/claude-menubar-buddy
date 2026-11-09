@@ -4508,7 +4508,7 @@ public static let sessionGrantDelay: TimeInterval = 1.5
 public static func sessionGrantMayFire(shownAt: Date?, now: Date) -> Bool      // nil → false
 ```
 
-- [ ] **Paso 1: escribir los tests**
+- [x] **Paso 1: escribir los tests**
 
 Crea `Tests/ClaudeMenuBarBuddyTests/SessionGrantUITests.swift`:
 
@@ -4725,12 +4725,12 @@ En `Tests/ClaudeMenuBarBuddyTests/CardSafetyTests.swift`, agrega estos tres test
     }
 ```
 
-- [ ] **Paso 2: verificar que fallan**
+- [x] **Paso 2: verificar que fallan**
 
 Corre: `swift build && swift test --filter "SessionGrantUITests|CardSafetyTests"`
 Esperado: no compila (`cannot find 'SessionGrantCard' in scope`, `cannot find type 'GrantSweepItem' in scope`, `type 'CardSafety' has no member 'sessionGrantDelay'`).
 
-- [ ] **Paso 3: implementar**
+- [x] **Paso 3: implementar**
 
 **`Sources/BuddyCore/CardSafety.swift`:** dentro de `enum CardSafety`, antes de `batchAllowable`, la constante y la función del bloque Interfaces. `sessionGrantMayFire` devuelve `false` con `shownAt == nil`, y si no, `now.timeIntervalSince(shownAt) >= sessionGrantDelay` (un reloj que retrocedió da negativo y por tanto `false`). A diferencia de `hotKeyMayApprove`, no mira si la petición es crítica: la espera vale para toda tarjeta (spec 9.1).
 
@@ -4746,12 +4746,12 @@ Esperado: no compila (`cannot find 'SessionGrantCard' in scope`, `cannot find ty
 - `sweptEntry`: `hint` recortado a 200 caracteres, `category ?? "desconocido"`, `grant: "session"`, `session` el recibido, `ts = now.timeIntervalSince1970`.
 - `sweep`: para cada elemento, en orden, se queda solo si `agent == "claude"` y `offersGrant(agent:session:coverable:hasChoices:)` es verdadero. La coincidencia es la primera concesión con `grant.agent == "claude"` y `grant.sessionID == session`. Nada amplía la búsqueda: ni carpeta, ni proyecto, ni otro agente. Las peticiones de opencode nunca coinciden aquí: las barre el puente.
 
-- [ ] **Paso 4: correr todo**
+- [x] **Paso 4: correr todo**
 
 Corre: `swift build && swift test`
 Esperado: todo en verde, con 25 tests más que antes de esta tarea (22 de `SessionGrantUITests` y 3 de `CardSafetyTests`).
 
-- [ ] **Paso 5: commit**
+- [x] **Paso 5: commit**
 
 ```bash
 git add Sources/BuddyCore/SessionGrantUI.swift Sources/BuddyCore/CardSafety.swift Tests/ClaudeMenuBarBuddyTests/SessionGrantUITests.swift Tests/ClaudeMenuBarBuddyTests/CardSafetyTests.swift
