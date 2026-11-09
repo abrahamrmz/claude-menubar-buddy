@@ -69,6 +69,15 @@ public struct PathPolicy {
     public let probe: FileProbe
     private let pathDirs: [String]
     private let tempDirs: [String]
+    // Built once here, not on every question: the rule asks for each word of
+    // each command, and one line can hold thousands of commands.
+    private let protectedPatterns: [String]
+    private let sensitivePatterns: [String]
+    /// Secret folders pinned to one place (`~/.aws`): that folder wherever it is named.
+    private let pinnedSecretFolders: [String]
+    /// Secret folders known only by name (`*/credenciales`): also just a word,
+    /// so they count only where a folder called so really exists.
+    private let secretFoldersByName: [String]
 
     public init(home: String, pathDirs: [String], tempDirs: [String], probe: FileProbe) {
         self.probe = probe
@@ -83,6 +92,14 @@ public struct PathPolicy {
         }
         self.pathDirs = dirs
         self.tempDirs = tempDirs.map { $0.count > 1 && $0.hasSuffix("/") ? String($0.dropLast()) : $0 }
+
+        let inside = Self.expand(Self.protectedList, home: canonicalHome) + dirs.map { "\($0)/*" }
+        self.protectedPatterns = inside + Self.foldersThemselves(inside)
+        let secrets = Self.expand(Self.sensitiveList, home: canonicalHome)
+        self.sensitivePatterns = secrets
+        let secretFolders = Self.foldersThemselves(secrets)
+        self.pinnedSecretFolders = secretFolders.filter { !$0.hasPrefix("*") }
+        self.secretFoldersByName = secretFolders.filter { $0.hasPrefix("*") }
     }
 
     public static func fromEnvironment(_ env: [String: String], probe: FileProbe) -> PathPolicy {
@@ -220,7 +237,7 @@ public struct PathPolicy {
     /// The spelling that makes `absolutePath` protected — the path itself, or
     /// what a link leads to — or nil when nothing it reaches is protected.
     public func protectedSpelling(_ absolutePath: String) -> String? {
-        spellings(absolutePath).first { matches($0, protectedPatterns) }
+        spellings(absolutePath).first { Self.matches(Self.foldedLikeTheVolume($0), protectedPatterns) }
     }
 
     public func isSensitive(_ absolutePath: String) -> Bool {
@@ -229,18 +246,12 @@ public struct PathPolicy {
 
     /// The spelling that makes `absolutePath` a secret, or nil.
     public func sensitiveSpelling(_ absolutePath: String) -> String? {
-        let folders = Self.foldersThemselves(sensitivePatterns)
-        // A folder pinned to one place (`~/.aws`) is that folder wherever it
-        // is named. One known only by its name (`*/credenciales`) is also
-        // just a word — an argument to echo, a search term — so it counts
-        // only where a folder called so really exists.
-        let pinned = folders.filter { !$0.hasPrefix("*") }
-        let byName = folders.filter { $0.hasPrefix("*") }
-        return spellings(absolutePath).first { spelled in
+        spellings(absolutePath).first { spelled in
+            let folded = Self.foldedLikeTheVolume(spelled)
             // A sample file is documentation, not a secret.
-            if spelled.lowercased().hasSuffix(".env.example") { return false }
-            if matches(spelled, sensitivePatterns) || matches(spelled, pinned) { return true }
-            return probe.isDirectory(spelled) && matches(spelled, byName)
+            if folded.lowercased().hasSuffix(".env.example") { return false }
+            if Self.matches(folded, sensitivePatterns) || Self.matches(folded, pinnedSecretFolders) { return true }
+            return Self.matches(folded, secretFoldersByName) && probe.isDirectory(spelled)
         }
     }
 
@@ -264,41 +275,36 @@ public struct PathPolicy {
 
     // MARK: - Patterns
 
-    private var protectedPatterns: [String] {
-        let inside = expandPatterns([
-            "*/.ssh/*", "*/.gnupg/*", "*/Library/LaunchAgents/*", "*/Library/LaunchDaemons/*",
-            "*/.git", "*/.git/*", "*.git/*", "*/.claude/*", "~/.claude.json", "*/.mcp.json",
-            "~/.config/claude-menubar-buddy/*", "~/Library/Application Support/Claude/*",
-            "*/.zshrc", "*/.zshenv", "*/.zprofile", "*/.zlogin", "*/.bashrc", "*/.bash_profile",
-            "*/.bash_login", "*/.profile",
-            "*/.zlogout", "*/.bash_logout", "*/.oh-my-zsh/*", "*/.config/fish/*", "*/.envrc",
-            "~/.gitconfig", "*/.vscode/*", "*/.config/git/*",
-            "~/Library/Application Support/Code/User/*", "~/Library/Application Support/Cursor/User/*",
-            "/etc/*", "/private/etc/*", "/usr/*", "/bin/*", "/sbin/*", "/Library/*",
-            "~/.config/opencode/*", "*/opencode.json", "*/opencode.jsonc", "*/.opencode/*",
-            "*/.husky/*", "*/.githooks/*", "*/.pre-commit-config.yaml", "*/lefthook.yml",
-            "*/claude-menubar-buddy*/.build/*",
-            // /.vol/<device>/<inode> opens a file by number: no name to judge.
-            "/.vol/*",
-        ]) + pathDirs.map { "\($0)/*" }
-        return inside + Self.foldersThemselves(inside)
-    }
+    private static let protectedList = [
+        "*/.ssh/*", "*/.gnupg/*", "*/Library/LaunchAgents/*", "*/Library/LaunchDaemons/*",
+        "*/.git", "*/.git/*", "*.git/*", "*/.claude/*", "~/.claude.json", "*/.mcp.json",
+        "~/.config/claude-menubar-buddy/*", "~/Library/Application Support/Claude/*",
+        "*/.zshrc", "*/.zshenv", "*/.zprofile", "*/.zlogin", "*/.bashrc", "*/.bash_profile",
+        "*/.bash_login", "*/.profile",
+        "*/.zlogout", "*/.bash_logout", "*/.oh-my-zsh/*", "*/.config/fish/*", "*/.envrc",
+        "~/.gitconfig", "*/.vscode/*", "*/.config/git/*",
+        "~/Library/Application Support/Code/User/*", "~/Library/Application Support/Cursor/User/*",
+        "/etc/*", "/private/etc/*", "/usr/*", "/bin/*", "/sbin/*", "/Library/*",
+        "~/.config/opencode/*", "*/opencode.json", "*/opencode.jsonc", "*/.opencode/*",
+        "*/.husky/*", "*/.githooks/*", "*/.pre-commit-config.yaml", "*/lefthook.yml",
+        "*/claude-menubar-buddy*/.build/*",
+        // /.vol/<device>/<inode> opens a file by number: no name to judge.
+        "/.vol/*",
+    ]
 
-    private var sensitivePatterns: [String] {
-        expandPatterns([
-            "*/.env", "*/.env.*", "*.pem", "*.key", "*.p12", "*/id_rsa*", "*/id_ed25519*", "*/id_ecdsa*",
-            "*/id_dsa*", "*/.netrc",
-            "*/.pgpass", "*/.npmrc", "*/.pypirc",
-            "*/credenciales/*", "*/secrets.json", "*service_account*.json", "*/google_sa*.json",
-            "*cookies*.json",
-            "~/.local/state/opencode/service*.json", "~/.claude.json", "*/.claude/settings*.json",
-            "~/.aws/*", "~/.kube/*", "~/.config/gh/*", "~/.docker/config.json", "~/.cline/data/*",
-            "~/Library/Keychains/*",
-            "/.vol/*",
-        ])
-    }
+    private static let sensitiveList = [
+        "*/.env", "*/.env.*", "*.pem", "*.key", "*.p12", "*/id_rsa*", "*/id_ed25519*", "*/id_ecdsa*",
+        "*/id_dsa*", "*/.netrc",
+        "*/.pgpass", "*/.npmrc", "*/.pypirc",
+        "*/credenciales/*", "*/secrets.json", "*service_account*.json", "*/google_sa*.json",
+        "*cookies*.json",
+        "~/.local/state/opencode/service*.json", "~/.claude.json", "*/.claude/settings*.json",
+        "~/.aws/*", "~/.kube/*", "~/.config/gh/*", "~/.docker/config.json", "~/.cline/data/*",
+        "~/Library/Keychains/*",
+        "/.vol/*",
+    ]
 
-    private func expandPatterns(_ patterns: [String]) -> [String] {
+    private static func expand(_ patterns: [String], home: String) -> [String] {
         patterns.map { $0.replacingOccurrences(of: "~", with: home) }
     }
 
@@ -320,22 +326,25 @@ public struct PathPolicy {
 
     /// fnmatch without FNM_PATHNAME, so `*` crosses `/` exactly like `case`
     /// in bash — the behaviour the patterns above were written against.
-    private func matches(_ path: String, _ patterns: [String]) -> Bool {
-        let folded = Self.foldedLikeTheVolume(path)
-        return patterns.contains { fnmatch($0, folded, FNM_CASEFOLD) == 0 }
+    /// `folded` comes from `foldedLikeTheVolume`.
+    private static func matches(_ folded: String, _ patterns: [String]) -> Bool {
+        patterns.contains { fnmatch($0, folded, FNM_CASEFOLD) == 0 }
     }
+
+    private static let ignoredByTheVolume: Set<Unicode.Scalar> = [
+        "\u{200C}", "\u{200D}", "\u{200E}", "\u{200F}", "\u{202A}", "\u{202B}", "\u{202C}", "\u{202D}",
+        "\u{202E}", "\u{206A}", "\u{206B}", "\u{206C}", "\u{206D}", "\u{206E}", "\u{206F}", "\u{FEFF}",
+    ]
 
     /// FNM_CASEFOLD only knows ASCII, and the volume folds more: on APFS the
     /// long s (U+017F) opens the same file as `s`, the Kelvin sign as `k`.
     /// HFS+ also ignores zero-width characters outright, the trick git had to
     /// learn about `.g<U+200C>it`. Fold both here, the way the volume would.
     private static func foldedLikeTheVolume(_ path: String) -> String {
-        let ignored: Set<Unicode.Scalar> = [
-            "\u{200C}", "\u{200D}", "\u{200E}", "\u{200F}", "\u{202A}", "\u{202B}", "\u{202C}", "\u{202D}",
-            "\u{202E}", "\u{206A}", "\u{206B}", "\u{206C}", "\u{206D}", "\u{206E}", "\u{206F}", "\u{FEFF}",
-        ]
+        // Plain ASCII has nothing to fold that FNM_CASEFOLD doesn't already.
+        if path.utf8.allSatisfy({ $0 < 0x80 }) { return path }
         var kept = String.UnicodeScalarView()
-        for scalar in path.unicodeScalars where !ignored.contains(scalar) { kept.append(scalar) }
+        for scalar in path.unicodeScalars where !ignoredByTheVolume.contains(scalar) { kept.append(scalar) }
         return String(kept).folding(options: .caseInsensitive, locale: nil)
     }
 }
