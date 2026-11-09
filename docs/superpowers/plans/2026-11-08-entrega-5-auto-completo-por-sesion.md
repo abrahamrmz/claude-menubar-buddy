@@ -2635,7 +2635,7 @@ public enum HookRuleCLI {
 
 **Dos tests dependen del bloque 1 más allá de las firmas:** `aHeldRequestWithAGrantCardsWithTheHold` usa `rm -rf build; git push` (la mezcla de la tarea 1), y `theAgentsWebPassesUnderAGrant` usa que `sessionGrantCovers` cubra la web. Si alguno falla y el resto pasa, el problema está en el bloque 1: detente y avisa, no cambies el test.
 
-- [ ] **Paso 1: escribir los tests**
+- [x] **Paso 1: escribir los tests**
 
 Crea `Tests/ClaudeMenuBarBuddyTests/Support/ClaudeHookFixtures.swift`:
 
@@ -2909,12 +2909,12 @@ Y agrega al final de la suite, después de `rotatesAtTheLimit`:
     }
 ```
 
-- [ ] **Paso 2: verificar que falla**
+- [x] **Paso 2: verificar que falla**
 
 Corre: `swift build && swift test --filter HookRuleCLITests`
 Esperado: no compila: `type 'HookRuleCLI' has no member 'sessionEnd'`, `type 'HookRuleCLI' has no member 'asksOnTimeout'` y `type 'AutoModePolicy' has no member 'sessionGrantReason'`.
 
-- [ ] **Paso 3: implementar `HookRuleCLI`**
+- [x] **Paso 3: implementar `HookRuleCLI`**
 
 En `Sources/BuddyCore/Rule/AutoModePolicy.swift`, dentro de `enum AutoModePolicy`, agrega `sessionGrantReason(category:)`, que devuelve exactamente `"Auto completo de esta sesión (\(category.rawValue)) vía Claude Menu Bar Buddy"`, con un comentario en inglés: el motivo de lo que pasa por concesión, en un solo lugar porque `buddy-rule` y el barrido de la app lo dicen igual.
 
@@ -2960,12 +2960,12 @@ exit(0)
 
 Cualquier otro argumento sigue el camino de hoy (`run`).
 
-- [ ] **Paso 4: verificar que pasa**
+- [x] **Paso 4: verificar que pasa**
 
 Corre: `swift build && swift test`
 Esperado: todo en verde, con 16 tests más que al empezar la tarea. `HookTests` sigue en verde sin cambios: `hook.sh` todavía no lee las llaves nuevas, y nada en `Sources/` crea concesiones.
 
-- [ ] **Paso 5: commit**
+- [x] **Paso 5: commit**
 
 ```bash
 git add Sources/BuddyCore/HookRuleCLI.swift Sources/BuddyCore/Rule/AutoModePolicy.swift Sources/BuddyRule/main.swift Tests/ClaudeMenuBarBuddyTests/HookRuleCLITests.swift Tests/ClaudeMenuBarBuddyTests/Support/ClaudeHookFixtures.swift

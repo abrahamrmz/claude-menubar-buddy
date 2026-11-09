@@ -68,6 +68,12 @@ public enum AutoModePolicy {
         return RuleDecision(verdict: .card, assessment: assessment)
     }
 
+    /// The reason for what a session grant covers, in one place: `buddy-rule`
+    /// and the app's queue sweep (block 4) say the same thing, from here.
+    public static func sessionGrantReason(category: RuleCategory) -> String {
+        "Auto completo de esta sesión (\(category.rawValue)) vía Claude Menu Bar Buddy"
+    }
+
     /// The only place that decides what a session grant covers (spec 5.1).
     /// The web passes although it is `.sale`: the user chose so. Anything
     /// else with a hold (`effectiveHold`) never passes on a grant.
