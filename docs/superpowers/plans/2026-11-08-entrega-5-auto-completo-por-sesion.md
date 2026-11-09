@@ -136,7 +136,7 @@ public struct Assessment: Equatable {
 }
 ```
 
-- [ ] **Paso 1: escribir el test del invariante**
+- [x] **Paso 1: escribir el test del invariante**
 
 Crea `Tests/ClaudeMenuBarBuddyTests/RuleInvariantTests.swift` con este contenido exacto. Cada fila (comando, categoría, motivo) se comprobó contra el código de este checkout antes del bloque; sale de las tablas de `ShellRuleTests.swift`, `ShellRuleCommandsTests.swift` y `PathPolicyLinkTests.swift`.
 
@@ -542,12 +542,12 @@ import BuddyCore
 }
 ```
 
-- [ ] **Paso 2: ver que el invariante ya pasa**
+- [x] **Paso 2: ver que el invariante ya pasa**
 
 Corre: `swift build && swift test --filter RuleInvariantTests`
 Esperado: PASA (4 tests). Es la red del bloque: tiene que pasar ahora y seguir pasando al final de cada tarea. Si algo falla aquí, no sigas: el checkout no es el esperado.
 
-- [ ] **Paso 3: escribir los tests de la marca**
+- [x] **Paso 3: escribir los tests de la marca**
 
 Crea `Tests/ClaudeMenuBarBuddyTests/AssessmentHoldTests.swift`:
 
@@ -641,12 +641,12 @@ import BuddyCore
 }
 ```
 
-- [ ] **Paso 4: verificar que falla**
+- [x] **Paso 4: verificar que falla**
 
 Corre: `swift build && swift test --filter AssessmentHoldTests`
 Esperado: no compila (`extra argument 'sessionHold' in call`, `value of type 'Assessment' has no member 'effectiveHold'`).
 
-- [ ] **Paso 5: implementar**
+- [x] **Paso 5: implementar**
 
 En `RuleTypes.swift`, `Assessment` queda así (el `init` aplica la regla de oro; `worse` conserva el ganador de hoy):
 
@@ -708,12 +708,12 @@ En `OpenCodeRule.assess`, el bucle mezcla con la misma semántica y conserva el 
         }
 ```
 
-- [ ] **Paso 6: verificar que pasa**
+- [x] **Paso 6: verificar que pasa**
 
 Corre: `swift build && swift test`
 Esperado: todo en verde, 300 tests. `RuleInvariantTests` sigue en verde.
 
-- [ ] **Paso 7: commit**
+- [x] **Paso 7: commit**
 
 ```bash
 git add Sources/BuddyCore/Rule/RuleTypes.swift Sources/BuddyCore/Rule/ShellRule.swift Sources/BuddyCore/OpenCode/OpenCodeRule.swift Tests/ClaudeMenuBarBuddyTests/RuleInvariantTests.swift Tests/ClaudeMenuBarBuddyTests/AssessmentHoldTests.swift

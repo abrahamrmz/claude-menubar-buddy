@@ -737,9 +737,7 @@ public enum ShellRule {
     // MARK: - Helpers
 
     static func worse(_ a: Assessment?, _ b: Assessment?) -> Assessment? {
-        guard let a else { return b }
-        guard let b else { return a }
-        return b.category.severity > a.category.severity ? b : a
+        Assessment.worse(a, b)
     }
 
     static func short(_ text: String) -> String {

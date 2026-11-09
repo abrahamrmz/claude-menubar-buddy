@@ -46,13 +46,41 @@ public enum RuleCategory: String, Codable, CaseIterable {
 public struct Assessment: Equatable {
     public let category: RuleCategory
     public let reason: String
+    /// Why a session grant does not cover this. Auto mode and "always allow" never read it.
+    /// Never stored for `.sale` or `.rutaProtegida`: there the reason already is the hold.
+    public let sessionHold: String?
 
-    public init(_ category: RuleCategory, _ reason: String) {
+    public init(_ category: RuleCategory, _ reason: String, sessionHold: String? = nil) {
         self.category = category
         self.reason = reason
+        self.sessionHold = Self.holdsByItself(category) ? nil : sessionHold
     }
 
     public var critical: Bool { category.isCritical }
+
+    /// sessionHold, or the reason itself when the category is .sale or .rutaProtegida.
+    public var effectiveHold: String? {
+        Self.holdsByItself(category) ? reason : sessionHold
+    }
+
+    /// The same assessment with sessionHold set; an existing sessionHold is kept.
+    public func holding(_ why: String) -> Assessment {
+        effectiveHold != nil ? self : Assessment(category, reason, sessionHold: why)
+    }
+
+    /// Same winner as today's ShellRule.worse (higher severity; on a tie the first wins).
+    /// The winner keeps its own sessionHold, or inherits the loser's effectiveHold.
+    public static func worse(_ a: Assessment?, _ b: Assessment?) -> Assessment? {
+        guard let a else { return b }
+        guard let b else { return a }
+        let (winner, loser) = b.category.severity > a.category.severity ? (b, a) : (a, b)
+        guard let inherited = loser.effectiveHold else { return winner }
+        return winner.holding(inherited)
+    }
+
+    private static func holdsByItself(_ category: RuleCategory) -> Bool {
+        category == .sale || category == .rutaProtegida
+    }
 }
 
 public struct RuleContext {
