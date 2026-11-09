@@ -1,7 +1,9 @@
 import Darwin
 import Foundation
 
-/// One auto-mode decision, as recorded for the history view.
+/// One auto-mode decision, as recorded for the history view. It also carries
+/// the lifecycle of a session grant: turn-on and turn-off lines are logged
+/// with category "concesion".
 public struct AutoLogEntry: Codable, Equatable {
     public let ts: Double
     public let agent: String
@@ -10,9 +12,13 @@ public struct AutoLogEntry: Codable, Equatable {
     public let tool: String
     public let hint: String
     public let category: String
+    /// "auto" | "session" | "concesion"; nil on lines written before grants.
+    public let grant: String?
+    public let session: String?
 
     public init(ts: Double, agent: String, project: String, cwd: String,
-                tool: String, hint: String, category: String) {
+                tool: String, hint: String, category: String,
+                grant: String? = nil, session: String? = nil) {
         self.ts = ts
         self.agent = agent
         self.project = project
@@ -20,6 +26,32 @@ public struct AutoLogEntry: Codable, Equatable {
         self.tool = tool
         self.hint = hint
         self.category = category
+        self.grant = grant
+        self.session = session
+    }
+}
+
+/// Why a session grant ended, as the history line says it.
+public enum GrantEnd: String {
+    case sessionEnded = "fin de sesión"
+    case menu = "menú"
+    case idle = "8 h sin actividad"
+    case all = "todas"
+}
+
+extension AutoLogEntry {
+    public static func grantStarted(_ grant: SessionGrant, ts: Double) -> AutoLogEntry {
+        grantEvent(grant, hint: "encendida: \(grant.trigger)", ts: ts)
+    }
+
+    public static func grantEnded(_ grant: SessionGrant, cause: GrantEnd, ts: Double) -> AutoLogEntry {
+        grantEvent(grant, hint: "apagada: \(cause.rawValue)", ts: ts)
+    }
+
+    private static func grantEvent(_ grant: SessionGrant, hint: String, ts: Double) -> AutoLogEntry {
+        AutoLogEntry(ts: ts, agent: grant.agent, project: grant.project, cwd: grant.cwd,
+                     tool: "sesión", hint: hint, category: "concesion",
+                     grant: "concesion", session: grant.sessionID)
     }
 }
 

@@ -2434,7 +2434,7 @@ extension DecisionHistory {
 
 **Ningún test existente cambia.** `parsesBothShapesAndSkipsJunk` espera `HistoryLine(…, isAuto: true)` sin `grant` para una línea automática vieja: por eso `parse` guarda el campo tal cual viene (`nil` si falta) y es `glyph(for:)` quien trata ese `nil` como "auto", que es lo que el contrato pide de una línea vieja.
 
-- [ ] **Paso 1: escribir los tests**
+- [x] **Paso 1: escribir los tests**
 
 Crea `Tests/ClaudeMenuBarBuddyTests/AutoLogEntryTests.swift`:
 
@@ -2564,12 +2564,12 @@ En `Tests/ClaudeMenuBarBuddyTests/DecisionHistoryTests.swift`, agrega estos cuat
     }
 ```
 
-- [ ] **Paso 2: verificar que falla**
+- [x] **Paso 2: verificar que falla**
 
 Corre: `swift build && swift test --filter "AutoLogEntryTests|DecisionHistoryTests"`
 Esperado: no compila: `value of type 'AutoLogEntry' has no member 'grant'`, `extra arguments at positions #8, #9 in call`, `cannot find 'GrantEnd' in scope`, `type 'DecisionHistory' has no member 'glyph'`.
 
-- [ ] **Paso 3: implementar**
+- [x] **Paso 3: implementar**
 
 En `Sources/BuddyCore/AutoLog.swift`:
 - `AutoLogEntry` suma `grant` y `session` como `String?` y el `init` los recibe al final con `= nil`. Deja el `Codable` sintetizado: decodifica con `decodeIfPresent` (una línea vieja se lee igual) y codifica con `encodeIfPresent` (un `nil` no se escribe; el test `absentFieldsAreNotWritten` lo vigila). No escribas `init(from:)` ni `encode(to:)` a mano. Cambia el comentario de la estructura: ahora también anota el ciclo de vida de una concesión.
@@ -2586,12 +2586,12 @@ En `Sources/BuddyCore/DecisionHistory.swift`:
   - `"concesion"` → `"\u{25E6}"` (◦);
   - cualquier otro valor, también `nil` y `"auto"` → `"\u{26A1}\u{FE0E}"` (⚡︎, el mismo que dibuja hoy `Menus.swift`).
 
-- [ ] **Paso 4: verificar que pasa**
+- [x] **Paso 4: verificar que pasa**
 
 Corre: `swift build && swift test`
 Esperado: todo en verde, con 10 tests más que al empezar la tarea.
 
-- [ ] **Paso 5: commit**
+- [x] **Paso 5: commit**
 
 ```bash
 git add Sources/BuddyCore/AutoLog.swift Sources/BuddyCore/DecisionHistory.swift Tests/ClaudeMenuBarBuddyTests/AutoLogEntryTests.swift Tests/ClaudeMenuBarBuddyTests/DecisionHistoryTests.swift
