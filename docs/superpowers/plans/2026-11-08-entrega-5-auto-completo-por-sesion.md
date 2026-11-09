@@ -3554,7 +3554,6 @@ Esperado: todo pasa, con 5 tests más que al terminar la tarea 8.
 git add Sources/BuddyCore/OpenCode/OpenCodeEvent.swift Sources/BuddyCore/OpenCode/OpenCodeBridgeCore.swift Tests/ClaudeMenuBarBuddyTests/Support/OpenCodeFixtures.swift Tests/ClaudeMenuBarBuddyTests/OpenCodeEventTests.swift
 git commit -m "BuddyCore entiende el padre de una sesión de opencode, su fin y lo que responde la API sobre ella"
 ```
-(con la línea `Co-Authored-By` de siempre al final del mensaje).
 
 ---
 
@@ -4212,7 +4211,6 @@ Esperado: todo pasa, con 25 tests más que al terminar la tarea 9.
 git add Sources/BuddyCore/OpenCode/OpenCodeBridgeCore.swift Sources/ClaudeMenuBarBuddy/OpenCodeBridge.swift Tests/ClaudeMenuBarBuddyTests/OpenCodeBridgeCoreTests.swift
 git commit -m "El puente de opencode deja pasar lo que cubre la concesión de la sesión o de un ancestro, y nada con linaje desconocido"
 ```
-(con la línea `Co-Authored-By` de siempre al final del mensaje).
 
 ---
 
@@ -4419,7 +4417,6 @@ Corre cada una y compara con lo esperado:
 git add Sources/ClaudeMenuBarBuddy/OpenCodeBridge.swift
 git commit -m "La app lleva las concesiones de opencode al puente, pide el linaje que falta y revoca las de sesiones que terminaron"
 ```
-(con la línea `Co-Authored-By` de siempre al final del mensaje).
 
 **Lo que este bloque deja para el bloque 4:**
 - En la acción del botón (`allowAndGrantSession`, tarea 14), para una petición de opencode: la concesión se escribe para `openCodeBridge?.grantSessionID(for: sesión) ?? sesión`; después `openCodeBridge?.sweepCoveredCards(excluding: <id de la tarjeta actual>)`; y al final se aprueba la tarjeta actual como siempre (`writeDecision` → `answer`).

@@ -52,3 +52,4 @@ Sigue el plan vigente, tarea por tarea y en orden. Hoy es `docs/superpowers/plan
 - Un commit por tarea, al terminarla y con todos los tests en verde.
 - Mensaje en español, una frase que diga qué cambia en el comportamiento, como los del historial (`git log --oneline`). Por ejemplo: `La regla clasifica los comandos de git por subcomando`.
 - **Nunca** `git push`, ni `git commit --amend` sobre commits de otra tarea, ni `git reset --hard`.
+- **Sin líneas `Co-Authored-By`.** Los commits de las tareas son tuyos: no agregues la línea de Claude que aparece en otros commits del historial, ni ninguna otra.
