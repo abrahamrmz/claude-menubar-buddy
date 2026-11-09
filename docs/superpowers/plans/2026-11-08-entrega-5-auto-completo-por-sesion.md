@@ -1680,7 +1680,222 @@ git add Sources/BuddyCore/Rule/AutoModePolicy.swift Sources/BuddyCore/HookRuleCL
 git commit -m "La política sabe qué cubre una concesión de sesión y la consulta después del modo auto y de siempre permitir"
 ```
 
-**Fin del bloque 1.** Detente y avisa en el chat con: los cuatro commits, el número de tests (334), los tiempos de `hugeCommandStaysFast` de las tareas 2, 3 y 4, y cualquier nota que hayas escrito en `NOTAS-EJECUCION.md`.
+**Fin del bloque 1.** Detente y avisa en el chat con: los cuatro commits, el número de tests (336), los tiempos de `hugeCommandStaysFast` de las tareas 2, 3 y 4, y cualquier nota que hayas escrito en `NOTAS-EJECUCION.md`.
+
+---
+
+### Tarea 1b: lo que la revisión del bloque 1 encontró pasando con concesión
+
+La revisión pasó 184 líneas tramposas por la regla del bloque 1. Se comporta igual que la versión validada del plan, pero dos promesas de la spec tienen huecos:
+
+- **Matar al buddy (spec 5.3, punto 13).** Solo se detenía el nombre exacto. `pkill` y `killall -m` reciben una expresión regular, así que `pkill -f Buddy`, `pkill -f claude`, `killall -m '.*Buddy'` y `kill -9 $(pgrep -f Buddy)` pasaban con concesión. También `kill -9 -1`, que manda la señal a todos tus procesos, el buddy incluido.
+- **Herramientas que publican y la regla no conocía:** `glab` (GitLab), `tea` (Gitea) y `tailscale` (`funnel` y `serve` publican un puerto local).
+
+Nada de esto cambia una categoría: solo suma retenciones. `RuleInvariantTests` debe seguir en verde sin tocarlo.
+
+**Archivos:**
+- Crear: `Tests/ClaudeMenuBarBuddyTests/SessionHoldReviewTests.swift`
+- Modificar: `Sources/BuddyCore/Rule/ShellRule+Commands.swift` (la línea de `commandHold` que llama a `namesTheBuddy`, y funciones nuevas justo antes de `namesTheBuddy`)
+- Modificar: `Sources/BuddyCore/Rule/CommandCatalog.swift` (`sessionHeld`)
+
+**Interfaces:**
+- Consume: `ShellScript.parse(_:)` y su `commands` (una sustitución trae sus comandos antes que el comando que la contiene), `namesTheBuddy(_:)`, `state.context.paths.home`.
+- Produce: nada público. Funciones privadas nuevas en `ShellRule` (`ShellRule+Commands.swift`): `stopsTheBuddy(_:arguments:home:)`, `buddyProcessTexts(home:)`, `patternReaches(_:_:)`, `searchReaches(_:_:)`, `signalsEveryProcess(_:)` y la constante `processSearchers`.
+
+- [ ] **Paso 1: escribir los tests**
+
+Crea `Tests/ClaudeMenuBarBuddyTests/SessionHoldReviewTests.swift`:
+
+```swift
+import Testing
+import BuddyCore
+
+/// Task 1b: what the review of block 1 found still passing on a grant.
+@Suite struct SessionHoldReviewTests {
+    /// pkill's pattern (and killall -m's) is a regular expression searched in
+    /// the process name, or in its whole command line with -f. Any that
+    /// reaches the buddy stops it, not only its exact name. ruleContext's home
+    /// is /Users/u, so the buddy runs as
+    /// /Users/u/Desktop/repos/claude-menubar-buddy/.build/debug/ClaudeMenuBarBuddy.
+    @Test(arguments: [
+        "pkill -f ClaudeMenu", "pkill -f Buddy", "pkill -f MenuBar", "pkill -f claude", "pkill -if BUDDY",
+        "pkill 'Claude.*'", "pkill -9 -f '.'", "pkill -f Desktop/repos", "killall -m '.*Buddy'",
+        "killall -m Claude", "pkill -f \"$PATRON\"", "pkill -f '['",
+    ])
+    func aPatternThatReachesTheBuddyStopsIt(command: String) {
+        #expect(holdOf(command) == "puede detener al buddy", "\(command)")
+    }
+
+    /// `kill $(…)` takes its PIDs from a search: the search's pattern decides.
+    @Test(arguments: [
+        "kill -9 $(pgrep -f Buddy)", "kill `pgrep -f claude`", "kill $(pidof ClaudeMenuBarBuddy)",
+        "kill $(ps aux | grep Buddy | awk '{print $2}')", "kill -TERM $(pgrep -if menubar)",
+    ])
+    func aSearchThatFindsTheBuddyStopsIt(command: String) {
+        #expect(holdOf(command) == "puede detener al buddy", "\(command)")
+    }
+
+    /// `kill -9 -1` signals every process you own, the buddy among them.
+    /// A first `-1` is a signal (SIGHUP), not a PID.
+    @Test(arguments: ["kill -9 -1", "kill -- -1", "kill -s KILL -1", "kill -HUP -1", "kill -9 1234 -1"])
+    func signallingEveryProcessStopsIt(command: String) {
+        #expect(holdOf(command) == "puede detener al buddy", "\(command)")
+    }
+
+    @Test(arguments: [
+        "pkill -f runserver", "pkill node", "pkill -f 'manage.py runserver'", "killall Dock",
+        "killall -m '^node$'", "pkill -u abraham node", "kill 1234", "kill -1 1234", "kill -9 $(lsof -ti:8000)",
+        "kill $(cat servidor.pid)", "kill $(pgrep -f celery)", "kill -s HUP 1234",
+    ])
+    func otherSignalsDoNotStopIt(command: String) {
+        #expect(holdOf(command) == nil, "\(command)")
+    }
+
+    /// Stopping the buddy is a hold, never a new category.
+    @Test func theCategoryStaysIrreversible() {
+        #expect(category("pkill -f Buddy") == .irreversible)
+        #expect(category("kill -9 -1") == .irreversible)
+    }
+
+    @Test(arguments: [
+        ("glab mr create", "glab"), ("tea pr create", "tea"), ("tailscale funnel 80", "tailscale"),
+        ("tailscale serve 80", "tailscale"),
+    ])
+    func publishingToolsTheRuleDidNotKnow(command: String, name: String) {
+        #expect(holdOf(command) == "queda fuera del auto completo: \(name)", "\(command)")
+    }
+}
+```
+
+- [ ] **Paso 2: verificar que fallan**
+
+Corre: `swift build && swift test --filter SessionHoldReviewTests`
+Esperado: `Test run with 6 tests failed` con 25 fallos. Pasan desde ya `otherSignalsDoNotStopIt`, `theCategoryStaysIrreversible` y el caso `kill $(pidof ClaudeMenuBarBuddy)`, que nombra al buddy tal cual.
+
+- [ ] **Paso 3: implementar**
+
+**`Sources/BuddyCore/Rule/CommandCatalog.swift`:** en `sessionHeld`, agrega `"glab", "tea", "tailscale",` en una línea nueva justo después de la de `"ngrok", "cloudflared", …, "lftp",`.
+
+**`Sources/BuddyCore/Rule/ShellRule+Commands.swift`:** en `commandHold`, reemplaza
+
+```swift
+        if ["kill", "pkill", "killall"].contains(name), arguments.contains(where: namesTheBuddy) {
+```
+
+por
+
+```swift
+        if ["kill", "pkill", "killall"].contains(name),
+           stopsTheBuddy(name, arguments: arguments, home: state.context.paths.home) {
+```
+
+Después, justo antes del comentario de `namesTheBuddy` (`/// \`kill $(pgrep ClaudeMenuBarBuddy)\` and \`kill 1234\` look alike…`), agrega estas funciones. Es el código validado; el algoritmo de `signalsEveryProcess` no lo fijan los tests por sí solos, así que cópialo tal cual:
+
+```swift
+    /// Whether this kill, pkill or killall can reach the buddy (spec 5.3
+    /// point 13): by its name, by a pattern that matches it, by a search
+    /// that finds it, or by signalling every process at once.
+    private static func stopsTheBuddy(_ name: String, arguments: [ShellWord], home: String) -> Bool {
+        if arguments.contains(where: namesTheBuddy) { return true }
+        let buddy = buddyProcessTexts(home: home)
+        switch name {
+        case "pkill", "killall":
+            // pkill's pattern, and killall -m's, is a regular expression
+            // searched in the process name (or the whole command line with
+            // -f). Every word that isn't a flag is tried: a user name or a
+            // process that isn't the buddy won't match.
+            return arguments.contains { word in
+                !word.text.hasPrefix("-")
+                    && (word.expands || word.substitutes || patternReaches(word.text, buddy))
+            }
+        case "kill":
+            if signalsEveryProcess(arguments) { return true }
+            // `kill $(pgrep -f Buddy)`: the PIDs come from a search, and the
+            // search's pattern decides.
+            return arguments.contains { $0.substitutes && searchReaches($0.text, buddy) }
+        default:
+            return false
+        }
+    }
+
+    /// What a process search can see of the buddy: its name, and the command
+    /// line the LaunchAgent starts it with.
+    private static func buddyProcessTexts(home: String) -> [String] {
+        ["ClaudeMenuBarBuddy", home + "/Desktop/repos/claude-menubar-buddy/.build/debug/ClaudeMenuBarBuddy"]
+    }
+
+    /// An unanchored, case-insensitive search, as pkill -i does it. A pattern
+    /// the rule can't read is treated as one that matches.
+    private static func patternReaches(_ pattern: String, _ texts: [String]) -> Bool {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return true }
+        return texts.contains { text in
+            regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil
+        }
+    }
+
+    /// The commands inside `$(…)` or backticks that pick processes by a
+    /// pattern: pgrep, pidof and a grep over a listing.
+    private static let processSearchers: Set<String> = ["pgrep", "pidof", "grep", "egrep", "rg"]
+
+    private static func searchReaches(_ text: String, _ texts: [String]) -> Bool {
+        let inner = ShellScript.parse(text)
+        if inner.unparseable { return true }
+        return inner.commands.contains { command in
+            guard let head = command.words.first,
+                  processSearchers.contains((head.text as NSString).lastPathComponent) else { return false }
+            return command.words.dropFirst().contains { word in
+                !word.text.hasPrefix("-")
+                    && (word.expands || word.substitutes || patternReaches(word.text, texts))
+            }
+        }
+    }
+
+    /// `kill -9 -1`, `kill -- -1`, `kill -s KILL -1`: a PID of -1 means every
+    /// process you own. A `-1` in the signal's place (`kill -1 1234`) is SIGHUP.
+    private static func signalsEveryProcess(_ arguments: [ShellWord]) -> Bool {
+        var index = 0
+        var signalSeen = false
+        var optionsOver = false
+        while index < arguments.count {
+            let text = arguments[index].text
+            if !optionsOver && text == "--" {
+                optionsOver = true
+            } else if !optionsOver && !signalSeen && text.hasPrefix("-") {
+                signalSeen = true
+                if text == "-s" || text == "-n" { index += 1 }
+            } else if text == "-1" {
+                return true
+            } else {
+                optionsOver = true
+            }
+            index += 1
+        }
+        return false
+    }
+
+```
+
+Decisiones que este código fija:
+- **Búsqueda sin anclas y sin distinguir mayúsculas,** como `pkill -i`. Así `pkill -f build` o `pkill -f Desktop` también piden tarjeta, porque la línea de comando del buddy contiene esas palabras. Es el lado seguro.
+- **Un patrón que la regla no puede leer** (regex inválida, variable, sustitución) cuenta como uno que alcanza al buddy.
+- **Dentro de `kill $(…)`** solo cuentan los patrones de `pgrep`, `pidof`, `grep`, `egrep` y `rg`. `kill $(cat servidor.pid)` y `kill $(lsof -ti:8000)` siguen pasando: no se sabe qué PID traen, y detenerlos sería tarjeta en cada servidor de desarrollo.
+- **Un `kill` con un número de proceso conocido** (`kill 1234`) sigue pasando, como decía la spec.
+
+- [ ] **Paso 4: correr todo**
+
+Corre: `swift build && swift test`
+Esperado: todo en verde, 342 tests. `RuleInvariantTests`, `SessionHoldRecommendedTests` y `SessionHoldTests` sin cambios.
+
+Corre también `swift test --filter hugeCommandStaysFast` tres veces y anota los tiempos. Esperado: alrededor de 0.16 s.
+
+- [ ] **Paso 5: commit**
+
+```bash
+git add Tests/ClaudeMenuBarBuddyTests/SessionHoldReviewTests.swift Sources/BuddyCore/Rule/ShellRule+Commands.swift Sources/BuddyCore/Rule/CommandCatalog.swift docs/superpowers/plans/2026-11-08-entrega-5-auto-completo-por-sesion.md
+git commit -m "La regla detiene a quien busca al buddy por patrón o señala a todos los procesos, y retiene glab, tea y tailscale"
+```
+
+**Fin de la tarea 1b.** Detente y avisa en el chat con el commit, el número de tests (342) y los tiempos de `hugeCommandStaysFast`. El bloque 2 empieza después; su punto de partida ahora es 342.
 
 ---
 
@@ -5391,7 +5606,7 @@ Al terminar la tarea 16, detente y avisa en el chat.
 - [ ] **Paso 1: todo en verde desde cero**
 
 Corre: `swift build && swift test 2>&1 | tail -5 && shellcheck hook.sh notify-done.sh`
-Esperado: `Test run with 460 tests passed` (el número que dio la validación del plan completo; si difiere, que sea porque agregaste tests, nunca porque faltan), ningún fallo, y `shellcheck` sin salida.
+Esperado: `Test run with 466 tests passed` (el número que dio la validación del plan completo; si difiere, que sea porque agregaste tests, nunca porque faltan), ningún fallo, y `shellcheck` sin salida.
 
 - [ ] **Paso 2: la concesión solo nace en un lugar**
 
