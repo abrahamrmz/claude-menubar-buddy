@@ -1985,7 +1985,7 @@ public struct SessionGrantStore {
 
 Este archivo es la frontera de seguridad del auto completo: un archivo aquí significa "esta sesión ejecuta todo salvo publicar". Los tests no dependen del reloj: pasan `now:` y fijan fechas de modificación con `FileManager.setAttributes`. El único que usa el reloj real es el del enlace simbólico, y dice por qué.
 
-- [ ] **Paso 1: escribir los tests**
+- [x] **Paso 1: escribir los tests**
 
 Crea `Tests/ClaudeMenuBarBuddyTests/SessionGrantStoreTests.swift`:
 
@@ -2334,12 +2334,12 @@ import BuddyCore
 }
 ```
 
-- [ ] **Paso 2: verificar que falla**
+- [x] **Paso 2: verificar que falla**
 
 Corre: `swift build && swift test --filter SessionGrantStoreTests`
 Esperado: no compila, con `error: cannot find type 'SessionGrantStore' in scope` (y lo mismo para `SessionGrant`).
 
-- [ ] **Paso 3: implementar `Sources/BuddyCore/SessionGrantStore.swift`**
+- [x] **Paso 3: implementar `Sources/BuddyCore/SessionGrantStore.swift`**
 
 `import Darwin` e `import Foundation`. `SessionGrant` usa el `Codable` sintetizado: las llaves del archivo son exactamente `agent`, `sessionID`, `cwd`, `project`, `grantedAt` y `trigger`. La carpeta es `configDirectory/session_auto`; guárdala en una propiedad privada.
 
@@ -2376,12 +2376,12 @@ Esperado: no compila, con `error: cannot find type 'SessionGrantStore' in scope`
 
 Comentarios en inglés: arriba de `SessionGrantStore`, que es la frontera de seguridad y por qué consultar no borra y renovar no crea.
 
-- [ ] **Paso 4: verificar que pasa**
+- [x] **Paso 4: verificar que pasa**
 
 Corre: `swift build && swift test`
 Esperado: todo en verde, con 24 tests más que al empezar la tarea (Swift Testing cuenta cada test con argumentos como uno).
 
-- [ ] **Paso 5: commit**
+- [x] **Paso 5: commit**
 
 ```bash
 git add Sources/BuddyCore/SessionGrantStore.swift Tests/ClaudeMenuBarBuddyTests/SessionGrantStoreTests.swift
