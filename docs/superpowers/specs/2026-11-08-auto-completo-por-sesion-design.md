@@ -293,7 +293,7 @@ Una función pura, `sessionGrantCovers(subject:assessment:)`, es la única que d
 
 - **Dónde:** el worktree `~/Desktop/repos/claude-menubar-buddy-auto-sesion`, rama `auto-completo-sesion`.
 - **El plan:** se escribe con *superpowers:writing-plans* en `docs/superpowers/plans/2026-11-08-entrega-5-auto-completo-por-sesion.md`, en tareas pequeñas con archivos, código esperado, test y comando de verificación. `AGENTS.md` apunta a ese plan.
-- **Base del plan:** `personal` con la corrección de rutas ya mergeada; esta rama se rebasa sobre ella antes de escribirlo. Esa corrección cambia interfaces que el bloque 1 usa: `FileProbe` gana `symlinkDestination(_:)`; `PathPolicy` gana `protectedSpelling(_:)`, `sensitiveSpelling(_:)` y `label(_:landingOn:)`, y juzga una ruta por su nombre y por cada salto de un enlace; una carpeta que guarda rutas protegidas o secretos cuenta ella misma; `StubProbe` gana `links`.
+- **Base del plan:** `personal` con la corrección de rutas ya mergeada; esta rama se rebasa sobre ella antes de escribirlo. Esa corrección cambia interfaces que el bloque 1 usa: `FileProbe` gana `symlinkDestination(_:)`; `PathPolicy` gana `protectedSpelling(_:)`, `sensitiveSpelling(_:)` y `label(_:landingOn:)`, y juzga una ruta por su nombre y por cada salto de un enlace; una carpeta que guarda rutas protegidas o secretos cuenta ella misma; `ShellRule` recuerda los enlaces que la línea va a crear (`madeLinks`, `pendingLinks`) y juzga cada ruta también a través de ellos (`reaches`), juzga `ln` por a dónde apunta (`reviewLinkSources`) y el archivo que cae en una carpeta destino; `StubProbe` gana `links` y `aliases`. Las retenciones 5 y 7 deben usar `reaches`, no `canonicalize` a secas.
 - **Antes del plan,** Claude captura lo que falta de la sección 14 y lo deja como fixtures saneadas en `Tests/ClaudeMenuBarBuddyTests/Support/`:
   - el `session_id` que recibe un hook `PreToolUse` dentro de un subagente de Claude;
   - `session.created` de una sesión hija de opencode, con su `parentID`;
@@ -330,6 +330,7 @@ No queda al constructor: qué cubre la concesión (5.1), el orden de la polític
 - **`pgrep` acepta cualquier proceso con el nombre de la app,** por ejemplo una instancia de prueba con otra carpeta de configuración. Existe hoy y no cambia.
 - **Matar al buddy por número de proceso pasa.** `kill 1234` no dice de quién es el proceso. Con la app muerta no hay concesiones ni tarjetas para nadie, y deciden el modo y las reglas nativas de cada agente.
 - **El analizador de shell sigue siendo la pieza de mayor riesgo.** El sesgo es el mismo: lo que no se entiende queda retenido.
+- **La regla evalúa la línea antes de que corra.** Lo que un comando crea y otro usa en la misma línea no está en disco al evaluar. La corrección de rutas lo resuelve para `ln`; un `cd` a una carpeta inexistente sigue dejando a la regla con un directorio equivocado (`cd /nonexistent; echo x >> ../.gitconfig`) y eso también rodea las retenciones de esta spec que dependen de la ruta. Tiene su propia tarea pendiente y conviene que entre antes del bloque 1.
 - **opencode v2 cambia cada semana.** El puente falla cerrado.
 
 ## 14. Hechos verificados (2026-11-08)
