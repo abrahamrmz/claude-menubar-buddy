@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# UserPromptSubmit + Stop + PreCompact hook — notifies when a turn that took a while
+# UserPromptSubmit + Stop + PreCompact + SessionEnd hook — notifies when a turn that took a while
 # (not every turn — quick back-and-forth doesn't need a notification,
 # you're already watching) finishes. No approve/deny decision needed here,
 # so unlike hook.sh this never routes through the menu bar app or waits on
@@ -76,6 +76,16 @@ case "$EVENT" in
     # there is no "compact finished" event to hang the end on.
     jq -n --arg project "$PROJECT_NAME" \
       '{project: $project, ts: now}' > "$DIR/compact_${SESSION_ID}.json"
+    ;;
+  SessionEnd)
+    # The session closed: revoke its "auto completo" grant, if it has one.
+    # buddy-rule validates the id and builds the path; this script never
+    # does. It runs with the app closed too, and all it can do is revoke.
+    # No binary: nothing to do, and the grant dies after 8 h idle.
+    RULE_BIN="${BUDDY_RULE:-$DIR/buddy-rule}"
+    if [ -x "$RULE_BIN" ]; then
+      printf '%s' "$INPUT" | "$RULE_BIN" session-end >/dev/null 2>&1 || true
+    fi
     ;;
 esac
 

@@ -2994,7 +2994,7 @@ git commit -m "buddy-rule deja pasar lo que cubre la concesión de la sesión y 
 
 **La petición retenida y no crítica.** Con las tareas 1 y 4, `buddy-rule` solo retiene lo que ya es crítico (`sale`, `ruta_protegida`); lo retenido no crítico llega con las tareas 2 y 3 (`C="git push"; $C`, por ejemplo), y estos tests no deben depender de cómo quedaron esas listas. Por eso `timeoutFollowsAskOnTimeout` usa un `buddy-rule` falso vía `BUDDY_RULE` que imprime una respuesta fija: el hook solo lee la respuesta, y la regla que calcula `ask_on_timeout` con y sin concesión ya está probada en la tarea 7 (`askOnTimeoutIsCriticalOrHeldUnderAGrant`).
 
-- [ ] **Paso 1: escribir los tests**
+- [x] **Paso 1: escribir los tests**
 
 En `Tests/ClaudeMenuBarBuddyTests/HookTests.swift`:
 
@@ -3293,7 +3293,7 @@ struct NotifyHookTests {
 }
 ```
 
-- [ ] **Paso 2: verificar que falla**
+- [x] **Paso 2: verificar que falla**
 
 Corre: `swift build && swift test --filter "HookTests|NotifyHookTests"`
 Esperado: compila, y fallan exactamente estos:
@@ -3304,7 +3304,7 @@ Esperado: compila, y fallan exactamente estos:
 
 Los demás nuevos ya pasan, porque la tarea 7 está hecha: `noAppMeansNativePromptEvenWithASessionGrant`, `aSessionGrantPassesWithoutACard`, `anotherSessionsGrantDoesNotApply`, `unansweredPushUnderAGrantGoesBackToThePrompt`, los otros cuatro argumentos de `timeoutFollowsAskOnTimeout`, `aSessionIDWithDotsAndSlashesDeletesNothing`, `withoutBuddyRuleItDoesNothingAndDoesNotFail` y `otherEventsDoNotCallBuddyRule`. Es lo esperado: vigilan que esto no se rompa.
 
-- [ ] **Paso 3: implementar `hook.sh`**
+- [x] **Paso 3: implementar `hook.sh`**
 
 Cinco cambios; nada más del script se mueve (el corte por `pgrep`, el `case "$VERDICT"`, las pistas, el sondeo y las respuestas quedan iguales):
 
@@ -3326,7 +3326,7 @@ Cinco cambios; nada más del script se mueve (el corte por `pgrep`, el `case "$V
    Y el `jq -n` que escribe `request_<id>.json` suma `--arg session "$SESSION" --arg coverable "$RULE_COVERABLE"` y, en el objeto, `session: $session, session_coverable: ($coverable == "true")` justo antes de `ts: now`.
 5. Al agotarse el tiempo, la condición pasa de `[ "$RULE_CRITICAL" = "true" ]` a `[ "$RULE_ASK_ON_TIMEOUT" = "true" ]`, y su comentario dice "crítico, o retenido por la concesión de esta sesión". El texto del motivo no cambia: `Claude Menu Bar Buddy no recibió respuesta a tiempo (${RULE_REASON:-crítico}). Confirma aquí si quieres que se ejecute.` (con concesión, `RULE_REASON` ya es el de la retención).
 
-- [ ] **Paso 4: implementar `notify-done.sh`**
+- [x] **Paso 4: implementar `notify-done.sh`**
 
 1. La primera línea de comentario nombra también `SessionEnd`: `# UserPromptSubmit + Stop + PreCompact + SessionEnd hook — …`.
 2. Un caso nuevo al final del `case "$EVENT" in`, después de `PreCompact`:
@@ -3346,7 +3346,7 @@ Cinco cambios; nada más del script se mueve (el corte por `pgrep`, el `case "$V
 
 **Presupuesto de `SessionEnd`:** Claude Code le da 1.5 s si `settings.json` no dice otra cosa (la entrada que documenta la tarea 16 pone `timeout: 5`). Medido en la copia de validación, el caso completo (bash, tres `jq` y `buddy-rule session-end`) tarda entre 35 y 40 ms; `sessionEndFitsWellInsideItsBudget` exige menos de 1 s.
 
-- [ ] **Paso 5: verificar que pasa**
+- [x] **Paso 5: verificar que pasa**
 
 Corre: `swift build && swift test`
 Esperado: todo en verde, con 13 tests más que al empezar la tarea (8 en `HookTests` y 5 en `NotifyHookTests`).
@@ -3356,7 +3356,7 @@ Esperado: sin avisos.
 
 Si en `HookTests` aparecen varios `hook.sh did not exit within 15s` a la vez, también en tests viejos como `projectGrantDoesNotPrefixMatch`, y en la siguiente corrida pasan todos, es carga de la máquina (los tests del hook arrancan muchos procesos en paralelo), no el cambio: vuelve a correr `swift build && swift test`. Si un test nuevo falla igual dos veces seguidas, es el cambio.
 
-- [ ] **Paso 6: commit**
+- [x] **Paso 6: commit**
 
 ```bash
 git add hook.sh notify-done.sh Tests/ClaudeMenuBarBuddyTests/HookTests.swift Tests/ClaudeMenuBarBuddyTests/NotifyHookTests.swift

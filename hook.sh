@@ -5,9 +5,10 @@
 # the response written by the menu bar app, and emits the hookSpecificOutput
 # decision.
 # On timeout with no one at the menu bar app, a non-critical call falls back to
-# Claude Code's normal permission flow; a critical one goes back to Claude
-# Code's own prompt with "ask", which waits for the user and which no
-# permission mode (auto included) can approve silently.
+# Claude Code's normal permission flow; a critical one — or one the session's
+# grant is holding back — goes back to Claude Code's own prompt with "ask",
+# which waits for the user and which no permission mode (auto included) can
+# approve silently. buddy-rule says which one it is with "ask_on_timeout".
 
 set -euo pipefail
 
@@ -48,12 +49,18 @@ if [ -x "$RULE_BIN" ]; then
 fi
 VERDICT="$(printf '%s' "$RULE_OUT" | jq -r '.verdict // empty' 2>/dev/null || true)"
 if [ -z "$VERDICT" ]; then
-  RULE_OUT='{"verdict":"card","category":"desconocido","critical":true,"reason":"no se pudo evaluar la regla","grant":null}'
+  RULE_OUT='{"verdict":"card","category":"desconocido","critical":true,"reason":"no se pudo evaluar la regla","grant":null,"session_coverable":false,"ask_on_timeout":true}'
   VERDICT="card"
 fi
 RULE_REASON="$(printf '%s' "$RULE_OUT" | jq -r '.reason // ""')"
 RULE_CATEGORY="$(printf '%s' "$RULE_OUT" | jq -r '.category // "desconocido"')"
 RULE_CRITICAL="$(printf '%s' "$RULE_OUT" | jq -r 'if .critical == true then "true" else "false" end')"
+# What a live session grant would cover here (the card shows it). An old
+# buddy-rule without the key is never coverable.
+RULE_COVERABLE="$(printf '%s' "$RULE_OUT" | jq -r 'if .session_coverable == true then "true" else "false" end')"
+# Whether an unanswered call must come back as "ask": critical, or held back by
+# this session's grant. Falls back to critical when the rule is old.
+RULE_ASK_ON_TIMEOUT="$(printf '%s' "$RULE_OUT" | jq -r 'if .ask_on_timeout == true or .critical == true then "true" else "false" end')"
 case "$VERDICT" in
   pass)
     jq -n --arg r "$RULE_REASON" \
@@ -71,6 +78,10 @@ CWD="$(echo "$INPUT" | jq -r '.cwd // empty' 2>/dev/null || echo "")"
 [ -z "$CWD" ] && CWD="$PWD"
 PROJECT_NAME=""
 [ -n "$CWD" ] && PROJECT_NAME="$(basename "$CWD")"
+
+# The session's id, only when it is a string. The hook never builds a path
+# with it — it rides along for the card; the app validates it before use.
+SESSION="$(echo "$INPUT" | jq -r 'if (.session_id | type) == "string" then .session_id else "" end' 2>/dev/null || echo "")"
 
 # AskUserQuestion isn't a permission decision — it's Claude asking the user
 # something with named options. The card can present those and answer with
@@ -141,11 +152,12 @@ REQUEST_FILE="$DIR/request_${ID}.json"
 jq -n --arg id "$ID" --arg tool "$TOOL" --arg hint "$HINT" --arg project "$PROJECT_NAME" \
   --arg cwd "$CWD" --arg host_bundle "$HOST_BUNDLE" --arg term_program "$TERM_PROG" \
   --arg category "$RULE_CATEGORY" --arg reason "$RULE_REASON" --arg critical "$RULE_CRITICAL" \
+  --arg session "$SESSION" --arg coverable "$RULE_COVERABLE" \
   --argjson choices "$CHOICES" --argjson hidden "$HIDDEN" \
   '{id: $id, tool: $tool, hint: $hint, project: $project, cwd: $cwd,
     host_bundle: $host_bundle, term_program: $term_program, choices: $choices,
     hidden: $hidden, agent: "claude", category: $category, critical: ($critical == "true"),
-    reason: $reason, ts: now}' > "$REQUEST_FILE"
+    reason: $reason, session: $session, session_coverable: ($coverable == "true"), ts: now}' > "$REQUEST_FILE"
 
 RESPONSE_FILE="$DIR/response_${ID}.json"
 
@@ -198,11 +210,12 @@ done
 # Timeout: no decision made at the menu bar in time. Clean up and fall back to
 # the normal interactive prompt for routine work.
 rm -f "$REQUEST_FILE"
-# Critical and unanswered: it must not run, and the session must not be cut
-# either. "ask" puts the decision back in Claude Code's own prompt, which waits
-# for the user with no time limit; plain silence would let the agent's own
-# permission mode (Claude's auto mode, an allow rule) decide it unattended.
-if [ "$RULE_CRITICAL" = "true" ]; then
+# Critical, or held back by this session's grant, and unanswered: it must not
+# run, and the session must not be cut either. "ask" puts the decision back in
+# Claude Code's own prompt, which waits for the user with no time limit; plain
+# silence would let the agent's own permission mode (Claude's auto mode, an
+# allow rule) decide it unattended.
+if [ "$RULE_ASK_ON_TIMEOUT" = "true" ]; then
   jq -n --arg r "Claude Menu Bar Buddy no recibió respuesta a tiempo (${RULE_REASON:-crítico}). Confirma aquí si quieres que se ejecute." \
     '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}'
   exit 0
