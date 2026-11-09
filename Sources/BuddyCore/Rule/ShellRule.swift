@@ -183,6 +183,7 @@ public enum ShellRule {
         if CommandCatalog.localChange.contains(name) {
             collectLocalChangeTargets(name, arguments: arguments,
                                       targets: &targets, protectedOnly: &protectedOnly)
+            if name == "ln", let linked = reviewLinkSources(arguments, state: state) { return linked }
             return Assessment(.cambioLocal, "cambio local")
         }
         return Assessment(.desconocido, "la regla no reconoce: \(short(original))")
@@ -281,12 +282,14 @@ public enum ShellRule {
                 continue
             }
             let path = state.context.paths.canonicalize(absolute)
-            if state.context.paths.isProtected(path) {
-                worst = worse(worst, Assessment(.rutaProtegida, "escribe en una ruta protegida: \(path)"))
+            if let reached = state.context.paths.protectedSpelling(path) {
+                worst = worse(worst, Assessment(.rutaProtegida,
+                                                "escribe en una ruta protegida: \(PathPolicy.label(path, landingOn: reached))"))
                 continue
             }
-            if state.context.paths.isSensitive(path) {
-                worst = worse(worst, Assessment(.sensible, "toca un archivo sensible: \(path)"))
+            if let reached = state.context.paths.sensitiveSpelling(path) {
+                worst = worse(worst, Assessment(.sensible,
+                                                "toca un archivo sensible: \(PathPolicy.label(path, landingOn: reached))"))
                 continue
             }
             if target.overwrites, state.context.paths.overwriteIsUnrecoverable(path) {
@@ -317,8 +320,69 @@ public enum ShellRule {
             guard !word.expands, !word.substitutes,
                   let absolute = resolve(word.text, state: state) else { continue }
             let path = state.context.paths.canonicalize(absolute)
-            if state.context.paths.isProtected(path) {
-                worst = worse(worst, Assessment(.rutaProtegida, "escribe en una ruta protegida: \(path)"))
+            if let reached = state.context.paths.protectedSpelling(path) {
+                worst = worse(worst, Assessment(.rutaProtegida,
+                                                "escribe en una ruta protegida: \(PathPolicy.label(path, landingOn: reached))"))
+            }
+        }
+        return worst
+    }
+
+    /// A link is a second name for what it points at: once it exists, writing
+    /// to the new name writes there, and reading it reads there. The path
+    /// policy follows links that are already on disk, but the rule runs
+    /// before the command does — in `ln -s ~/.zshrc x && echo y >> x` there
+    /// is no `x` yet to follow. So the link is judged here, when it is made,
+    /// by what it will point at. That covers hard links too, which leave
+    /// nothing to follow afterwards.
+    static func reviewLinkSources(_ arguments: [ShellWord], state: RuleState) -> Assessment? {
+        let nonFlags = nonFlagArguments(arguments)
+        let symbolic = arguments.contains { flag in
+            flag.text == "--symbolic" || (flag.text.hasPrefix("-") && !flag.text.hasPrefix("--") && flag.text.contains("s"))
+        }
+        // `ln a b`: b is the link. `ln a b dir/`: the links land in dir. With
+        // one name alone the link lands here, so there is no other folder to
+        // read its text from. GNU's `-t dir` puts the folder first instead;
+        // rather than guess which word is which, every one is judged.
+        let namesItsFolder = arguments.contains { flag in
+            flag.text.hasPrefix("--target-directory")
+                || (flag.text.hasPrefix("-") && !flag.text.hasPrefix("--") && flag.text.contains("t"))
+        }
+        let sources = namesItsFolder || nonFlags.count < 2 ? nonFlags : Array(nonFlags.dropLast())
+        let destination = namesItsFolder || nonFlags.count < 2 ? nil : nonFlags.last
+        let paths = state.context.paths
+
+        var worst: Assessment?
+        for source in sources {
+            if source.expands || source.substitutes {
+                worst = worse(worst, Assessment(.desconocido, "no se puede saber a dónde apunta el enlace"))
+                continue
+            }
+            var candidates: [String] = []
+            if let fromHere = resolve(source.text, state: state) { candidates.append(fromHere) }
+            // The text of a symbolic link is read from the folder the link
+            // lives in, not from here: `ln -s ../../.gitconfig sub/g` points
+            // two folders above `sub`. The destination may be the link or the
+            // folder that receives it, so both are tried.
+            let relative = !source.text.hasPrefix("/") && source.text != "~" && !source.text.hasPrefix("~/")
+            if symbolic, relative, let destination, !destination.expands, !destination.substitutes,
+               let landing = resolve(destination.text, state: state) {
+                candidates.append(landing + "/" + source.text)
+                candidates.append((landing as NSString).deletingLastPathComponent + "/" + source.text)
+            }
+            if candidates.isEmpty {
+                worst = worse(worst, Assessment(.desconocido, "no se puede saber a dónde apunta el enlace"))
+                continue
+            }
+            for candidate in candidates {
+                let path = paths.canonicalize(candidate)
+                if let reached = paths.protectedSpelling(path) {
+                    worst = worse(worst, Assessment(.rutaProtegida,
+                                                    "enlaza una ruta protegida: \(PathPolicy.label(path, landingOn: reached))"))
+                } else if let reached = paths.sensitiveSpelling(path) {
+                    worst = worse(worst, Assessment(.sensible,
+                                                    "enlaza un archivo sensible: \(PathPolicy.label(path, landingOn: reached))"))
+                }
             }
         }
         return worst
@@ -346,8 +410,8 @@ public enum ShellRule {
         for candidate in candidates {
             guard !candidate.expands, !candidate.substitutes else { continue }
             let path = state.context.paths.canonicalize(resolveForRead(candidate.text, state: state))
-            if state.context.paths.isSensitive(path) {
-                return Assessment(.sensible, "toca un archivo sensible: \(path)")
+            if let reached = state.context.paths.sensitiveSpelling(path) {
+                return Assessment(.sensible, "toca un archivo sensible: \(PathPolicy.label(path, landingOn: reached))")
             }
         }
         return nil

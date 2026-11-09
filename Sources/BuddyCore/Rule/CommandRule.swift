@@ -56,11 +56,12 @@ public enum CommandRule {
             return Assessment(.desconocido, "no se puede saber dónde cae: \(path)")
         }
         let canonical = context.paths.canonicalize(path)
-        if context.paths.isProtected(canonical) {
-            return Assessment(.rutaProtegida, "escribe en una ruta protegida: \(canonical)")
+        if let reached = context.paths.protectedSpelling(canonical) {
+            return Assessment(.rutaProtegida,
+                              "escribe en una ruta protegida: \(PathPolicy.label(canonical, landingOn: reached))")
         }
-        if context.paths.isSensitive(canonical) {
-            return Assessment(.sensible, "toca un archivo sensible: \(canonical)")
+        if let reached = context.paths.sensitiveSpelling(canonical) {
+            return Assessment(.sensible, "toca un archivo sensible: \(PathPolicy.label(canonical, landingOn: reached))")
         }
         return Assessment(.edicion, "edición de archivo")
     }
@@ -73,8 +74,8 @@ public enum CommandRule {
             return Assessment(.desconocido, "no se puede saber qué lee: \(path)")
         }
         let canonical = context.paths.canonicalize(path)
-        if context.paths.isSensitive(canonical) {
-            return Assessment(.sensible, "toca un archivo sensible: \(canonical)")
+        if let reached = context.paths.sensitiveSpelling(canonical) {
+            return Assessment(.sensible, "toca un archivo sensible: \(PathPolicy.label(canonical, landingOn: reached))")
         }
         return Assessment(.lectura, "solo lee")
     }

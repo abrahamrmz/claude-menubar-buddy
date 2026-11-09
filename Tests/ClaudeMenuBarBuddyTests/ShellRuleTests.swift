@@ -56,6 +56,44 @@ func category(_ command: String) -> RuleCategory {
     @Test(arguments: ["cat .env", "grep TOKEN .env.production", "cat ~/.aws/credentials", "cp .env /tmp/x", "cat < .env", "head --file=.env"])
     func sensitive(command: String) { #expect(category(command) == .sensible, "\(command)") }
 
+    // The folder named as the destination, not the file that lands in it.
+    @Test(arguments: [
+        "cp jq /opt/homebrew/bin", "mv tool /opt/homebrew/bin", "cp -t /opt/homebrew/bin tool", "cp x /etc",
+        "cp x /Library", "cp -r payload /usr",
+    ])
+    func protectedFolderAsDestination(command: String) { #expect(category(command) == .rutaProtegida, "\(command)") }
+
+    @Test(arguments: ["cp -r ~/.aws /tmp/a", "cp -R ~/.kube /tmp/k", "cp -r ~/.config/gh /tmp/g"])
+    func copyingAFolderOfSecrets(command: String) { #expect(category(command) == .sensible, "\(command)") }
+
+    // A word that happens to be the name of a guarded folder is still a word.
+    @Test(arguments: ["echo credenciales", "grep -rn credenciales src", "ls credenciales-viejas"])
+    func aWordIsNotAFolderOfSecrets(command: String) { #expect(category(command) == .lectura, "\(command)") }
+
+    @Test(arguments: ["mkdir repo.git", "touch notes.git", "cp a.txt copia.git"])
+    func aNameEndingInDotGitIsNotABareRepo(command: String) { #expect(category(command) == .cambioLocal, "\(command)") }
+
+    // A link is a second name for what it points at. The rule reads the disk
+    // before the command runs, so a link made and used in the same line is
+    // not there yet to be followed: it has to be judged when it is made.
+    @Test(arguments: [
+        "ln -s ~/.zshrc x", "ln -s ~/.zshrc x && echo y >> x", "ln ~/.gitconfig duro && echo y >> duro",
+        "ln -sf /etc/hosts h", "ln -s ~/.ssh llaves", "ln -s ../../.gitconfig sub/g", "ln -s ../.gitconfig g",
+        "ln -s ~/.zshrc ~/.gitconfig destino/", "ln -sfn ~/.config/claude-menubar-buddy cfg",
+        "ln -s -t destino ~/.gitconfig", "ln -st destino ~/.gitconfig",
+    ])
+    func linkingAProtectedPath(command: String) { #expect(category(command) == .rutaProtegida, "\(command)") }
+
+    @Test(arguments: ["ln -s ~/.aws aw", "ln -s ~/.aws aw && cat aw/credentials", "ln -s .env e", "ln ~/.netrc n",
+                      "ln -s ../../.aws/credentials sub/c"])
+    func linkingASecret(command: String) { #expect(category(command) == .sensible, "\(command)") }
+
+    @Test(arguments: ["ln -s $DESTINO x", "ln -s \"$HOME/.zshrc\" x", "ln -s $(pwd)/a b"])
+    func linkingSomethingThatCannotBeRead(command: String) { #expect(category(command) == .desconocido, "\(command)") }
+
+    @Test(arguments: ["ln -s a.txt alias.txt", "ln -sf build/out actual", "ln -s ../Documents/a.txt doc", "ln b.txt copia"])
+    func ordinaryLinks(command: String) { #expect(category(command) == .cambioLocal, "\(command)") }
+
     @Test(arguments: ["echo x > ~/Documents/a.txt", "cp b.txt ~/Documents/a.txt", "tee ~/Documents/a.txt < b.txt"])
     func unrecoverableOverwrite(command: String) { #expect(category(command) == .sobrescribe, "\(command)") }
 
