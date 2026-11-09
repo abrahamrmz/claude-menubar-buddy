@@ -1175,7 +1175,7 @@ private static func namesTheBuddy(_ word: ShellWord) -> Bool
 ```
 - Cambia de comportamiento (sin cambiar la forma pública): `SimpleCommand.heredocBody` queda en el comando que abrió `<<`, no en el último de la línea; dos heredocs del mismo comando se unen con `\n`.
 
-- [ ] **Paso 1: escribir los tests**
+- [x] **Paso 1: escribir los tests**
 
 En `Tests/ClaudeMenuBarBuddyTests/ShellScriptTests.swift`, agrega este test justo antes de `malformedInputIsUnparseable` (los demás no cambian):
 
@@ -1347,12 +1347,12 @@ import BuddyCore
 }
 ```
 
-- [ ] **Paso 2: verificar que falla**
+- [x] **Paso 2: verificar que falla**
 
 Corre: `swift build && swift test --filter "SessionHoldRecommendedTests|ShellScriptTests"`
 Esperado: compila y FALLA. `aHeredocBelongsToTheCommandThatOpenedIt` da `[nil, Optional("git push")]` (hoy el cuerpo cae en `cat`); fallan también los de shells en línea, palabras que publican, nombres, detener al buddy y `aHoldSurvivesWhereverItSits` con `npm publish`, `kubectl …` y `pkill -f ClaudeMenuBarBuddy`.
 
-- [ ] **Paso 3: el heredoc va al comando que lo abrió (`ShellScript.swift`)**
+- [x] **Paso 3: el heredoc va al comando que lo abrió (`ShellScript.swift`)**
 
 Hoy `readHeredocBodies(into:)` pega cada cuerpo al último comando cerrado por el salto de línea: en `bash <<EOF | cat` el cuerpo queda en `cat` y la regla nunca vería que `bash` lo ejecuta. Cambios en el `Parser`:
 - `heredocs` pasa a `[(delimiter: String, stripTabs: Bool, owner: Int?)]`, con un contador nuevo `private var claimedHeredocs = 0` (cuántos ya conocen su comando). `flushWord` agrega `(w.text, stripTabs, nil)`.
@@ -1362,14 +1362,14 @@ Hoy `readHeredocBodies(into:)` pega cada cuerpo al último comando cerrado por e
 
 `heredocBodyIsDataNotCommands` y los demás tests de `ShellScriptTests` siguen igual.
 
-- [ ] **Paso 4: el cuerpo, la profundidad y la categoría de la cabeza llegan a `commandHold` (`ShellRule.swift`)**
+- [x] **Paso 4: el cuerpo, la profundidad y la categoría de la cabeza llegan a `commandHold` (`ShellRule.swift`)**
 
 - `CommandInput` suma `var heredocBody: String? = nil` (con valor por defecto, así `assessFind` y `assessXargs` no cambian). En el bucle de `assess`, `heredocBody: simple.heredocBody`.
 - `RuleState` suma `var depth = 0` después de `pendingLinks`.
 - El `assess` público queda `assess(command, context: context, depth: 0, links: [:])`, y su cuerpo de hoy pasa a `static func assess(_ command: String, context: RuleContext, depth: Int, links: [String: String]) -> Assessment`, que crea el estado con `RuleState(dir: context.cwd, dirKnown: !context.cwd.isEmpty, context: context, madeLinks: links, depth: depth)`. Encima, `static let inlineShellDepthLimit = 3`.
 - En `evaluate`, justo después del `if let head = words.first { result = assessHead(...) }`: `let headCategory = result.category` (lo que el comando es antes de mirar sus rutas), y la llamada del paso 7 de la tarea 2 pasa a `commandHold(words, input: input, headCategory: headCategory, state: state)`.
 
-- [ ] **Paso 5: las listas (`CommandCatalog.swift`)**
+- [x] **Paso 5: las listas (`CommandCatalog.swift`)**
 
 ```swift
     /// Commands a session grant never covers, whatever their category: they
@@ -1391,7 +1391,7 @@ Hoy `readHeredocBodies(into:)` pega cada cuerpo al último comando cerrado por e
 
 `defaults` no va en la lista: se retiene en `commandHold` solo cuando su primer argumento no es `read`.
 
-- [ ] **Paso 6: `commandHold` completo, en este orden** (el primero que retiene da el texto):
+- [x] **Paso 6: `commandHold` completo, en este orden** (el primero que retiene da el texto):
 
 ```swift
     static func commandHold(_ words: [ShellWord], input: CommandInput, headCategory: RuleCategory,
@@ -1426,7 +1426,7 @@ Hoy `readHeredocBodies(into:)` pega cada cuerpo al último comando cerrado por e
 
 `namesTheBuddy(_:)`: el texto de la palabra en minúsculas contiene `claudemenubarbuddy`, `claude-menubar-buddy` o `buddy-rule`. Como `ShellWord.text` guarda `$(…)` tal cual, cubre `kill $(pgrep ClaudeMenuBarBuddy)`; `kill 1234` no.
 
-- [ ] **Paso 7: `publishHold` (punto 11)**
+- [x] **Paso 7: `publishHold` (punto 11)**
 
 Para cada argumento, en orden:
 1. En minúsculas es `--push` o empieza con `--push=`: `puede publicar: --push`.
@@ -1435,7 +1435,7 @@ Para cada argumento, en orden:
 
 Partir en palabras es lo que atrapa `watch 'git push'`, `trap 'git push' EXIT` o `git rebase -x 'git push origin HEAD'`, que llegan como un solo argumento. Solo corre con `headCategory` `.ejecuta` o `.desconocido`: `git commit -m "deploy fix"` (`cambio_local`) y `echo deploy` (`lectura`) pasan.
 
-- [ ] **Paso 8: shells en línea (punto 10)**
+- [x] **Paso 8: shells en línea (punto 10)**
 
 `inlineShellHold` devuelve nil cuando el comando no ejecuta una línea de shell propia (entonces `commandHold` sigue con los demás puntos), o un `InlineShell` con la retención de esa línea (que puede ser nil: la línea solo trabaja aquí). Con `unreadable = "ejecuta un shell en línea que no se puede leer"`:
 
@@ -1454,12 +1454,12 @@ Partir en palabras es lo que atrapa `watch 'git push'`, `trap 'git push' EXIT` o
 
 `ShellWord.text` ya llega sin comillas: en `bash -c 'git push'` el operando es `git push`.
 
-- [ ] **Paso 9: verificar que pasa**
+- [x] **Paso 9: verificar que pasa**
 
 Corre: `swift build && swift test`
 Esperado: todo en verde, 324 tests. Después: `swift test --filter hugeCommandStaysFast` y anota el tiempo.
 
-- [ ] **Paso 10: commit**
+- [x] **Paso 10: commit**
 
 ```bash
 git add Sources/BuddyCore/Rule/ShellScript.swift Sources/BuddyCore/Rule/ShellRule.swift Sources/BuddyCore/Rule/ShellRule+Commands.swift Sources/BuddyCore/Rule/CommandCatalog.swift Tests/ClaudeMenuBarBuddyTests/ShellScriptTests.swift Tests/ClaudeMenuBarBuddyTests/SessionHoldRecommendedTests.swift

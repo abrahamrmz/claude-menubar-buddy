@@ -4,6 +4,15 @@ import Foundation
 /// segment, and where it writes.
 public enum ShellRule {
     public static func assess(_ command: String, context: RuleContext) -> Assessment {
+        assess(command, context: context, depth: 0, links: [:])
+    }
+
+    /// How deep one line of shell may sit inside another before the rule stops
+    /// reading it (spec 5.3 point 10).
+    static let inlineShellDepthLimit = 3
+
+    static func assess(_ command: String, context: RuleContext, depth: Int,
+                       links: [String: String]) -> Assessment {
         // Nothing to approve blindly.
         guard !command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return Assessment(.desconocido, "la regla no reconoce: ", sessionHold: "comando vacío")
@@ -18,12 +27,14 @@ public enum ShellRule {
                               sessionHold: "define funciones de shell")
         }
 
-        var state = RuleState(dir: context.cwd, dirKnown: !context.cwd.isEmpty, context: context)
+        var state = RuleState(dir: context.cwd, dirKnown: !context.cwd.isEmpty, context: context,
+                              madeLinks: links, depth: depth)
         var worst: Assessment?
         for simple in script.commands {
             let input = CommandInput(words: simple.words,
                                      redirects: simple.redirects,
-                                     subshellDepth: simple.subshellDepth)
+                                     subshellDepth: simple.subshellDepth,
+                                     heredocBody: simple.heredocBody)
             worst = worse(worst, evaluate(input, state: &state))
         }
         return worst ?? Assessment(.lectura, "solo lee")
@@ -44,12 +55,15 @@ public enum ShellRule {
         /// The links of the command being judged right now. They count from
         /// the next command on: making a link does not write through it.
         var pendingLinks: [String: String] = [:]
+        /// How many lines of shell already sit above this one.
+        var depth = 0
     }
 
     struct CommandInput {
         var words: [ShellWord]
         var redirects: [ShellRedirect]
         var subshellDepth: Int
+        var heredocBody: String? = nil
     }
 
     struct WriteTarget {
@@ -88,6 +102,9 @@ public enum ShellRule {
                                 subshellDepth: input.subshellDepth, state: &state,
                                 targets: &targets, protectedOnly: &protectedOnly)
         }
+        // What the command is before its paths are looked at. The publishing
+        // words only apply to a command that runs code (spec 5.3 point 11).
+        let headCategory = result.category
 
         for redirect in input.redirects {
             guard redirect.kind == .write || redirect.kind == .append,
@@ -111,7 +128,7 @@ public enum ShellRule {
         if !leadingAssignments.isEmpty, hadCommandWord, !result.critical {
             result = worse(result, Assessment(.desconocido, "asignación de entorno antes del comando"))!
         }
-        if let hold = commandHold(words, state: state) {
+        if let hold = commandHold(words, input: input, headCategory: headCategory, state: state) {
             result = result.holding(hold)
         }
         return result

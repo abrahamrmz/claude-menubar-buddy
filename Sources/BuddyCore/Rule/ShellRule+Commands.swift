@@ -738,17 +738,181 @@ extension ShellRule {
     }
 
     /// The holds that hang on a command's name and arguments rather than on
-    /// its category. nil when a session grant may cover it.
-    static func commandHold(_ words: [ShellWord], state: RuleState) -> String? {
+    /// its category. nil when a session grant may cover it. The first rule
+    /// that holds wins (spec 5.3 points 10 to 13).
+    static func commandHold(_ words: [ShellWord], input: CommandInput, headCategory: RuleCategory,
+                            state: RuleState) -> String? {
         guard let head = words.first, !head.expands, !head.substitutes else { return nil }
         let name = (head.text as NSString).lastPathComponent
         let arguments = Array(words.dropFirst())
         if name == "sudo" || name == "doas" { return "usa \(name)" }
         if name == "alias" { return "define un alias" }
+        // A line of shell inside this one is judged by what it says; its
+        // arguments are that line, so the publishing words don't apply.
+        if let inline = inlineShellHold(name, arguments: arguments, input: input, state: state) {
+            return inline.hold
+        }
+        if CommandCatalog.sessionHeld.contains(name) || (name == "defaults" && arguments.first?.text != "read") {
+            return "queda fuera del auto completo: \(name)"
+        }
+        if ["kill", "pkill", "killall"].contains(name), arguments.contains(where: namesTheBuddy) {
+            return "puede detener al buddy"
+        }
         if deleters.contains(name) || name == "dd",
            let why = deletionHold(deletionOperands(name, arguments: arguments), state: state) {
             return why
         }
-        return landingHold(name, arguments: arguments, state: state)
+        if let why = landingHold(name, arguments: arguments, state: state) { return why }
+        if headCategory == .ejecuta || headCategory == .desconocido {
+            return publishHold(arguments)
+        }
+        return nil
+    }
+
+    /// The first argument that names something that publishes, or a command
+    /// that can take the line off the machine (spec 5.3 point 11).
+    static func publishHold(_ arguments: [ShellWord]) -> String? {
+        for argument in arguments {
+            let lowered = argument.text.lowercased()
+            if lowered == "--push" || lowered.hasPrefix("--push=") {
+                return "puede publicar: --push"
+            }
+            if lowered.contains("deploy") || lowered.contains("publish") {
+                return "puede publicar: \(argument.text)"
+            }
+            // A whole line can ride inside one argument (`watch 'git push'`);
+            // splitting it is what makes those words visible.
+            for token in lowered.split(whereSeparator: { " \t\n;|&()<>`'\"".contains($0) }) {
+                guard !token.hasPrefix("-") else { continue }
+                let word = String(token)
+                if CommandCatalog.publishWords.contains(word) {
+                    return "puede publicar: \(word)"
+                }
+                if CommandCatalog.external.contains(word) {
+                    return "puede salir de tu máquina: \(word)"
+                }
+            }
+        }
+        return nil
+    }
+
+    // MARK: - Inline shells
+
+    /// The interpreters whose arguments the rule reads as a line of shell.
+    static let shells: Set<String> = ["bash", "sh", "zsh", "dash", "ksh", "fish", "csh", "tcsh"]
+
+    /// A line of shell the command runs itself, and the hold that line carries
+    /// (nil when the line only works here).
+    struct InlineShell {
+        var hold: String?
+    }
+
+    private static let unreadableInlineShell = "ejecuta un shell en línea que no se puede leer"
+
+    /// nil when the command does not run a line of shell of its own; otherwise
+    /// the hold of that line (possibly nil). `eval`, `exec` and the interpreters
+    /// of `shells` carry one (spec 5.3 point 10).
+    static func inlineShellHold(_ name: String, arguments: [ShellWord], input: CommandInput,
+                                state: RuleState) -> InlineShell? {
+        if name == "eval" {
+            if arguments.contains(where: { $0.expands || $0.substitutes }) {
+                return InlineShell(hold: unreadableInlineShell)
+            }
+            return InlineShell(hold: nestedHold(arguments.map(\.text).joined(separator: " "), state: state))
+        }
+        if name == "exec" {
+            var rest = arguments
+            while let first = rest.first, first.text.hasPrefix("-") {
+                let flag = rest.removeFirst().text
+                if flag == "-a", !rest.isEmpty { rest.removeFirst() }
+            }
+            if rest.isEmpty { return InlineShell(hold: nil) }
+            var nestedState = state
+            let result = evaluate(CommandInput(words: rest, redirects: input.redirects,
+                                               subshellDepth: input.subshellDepth,
+                                               heredocBody: input.heredocBody),
+                                  state: &nestedState)
+            return InlineShell(hold: result.effectiveHold)
+        }
+        guard shells.contains(name) else { return nil }
+
+        var index = 0
+        var executesText = false
+        var readsInput = false
+        var operand: ShellWord?
+        while index < arguments.count {
+            let word = arguments[index]
+            let text = word.text
+            if text == "--" {
+                if index + 1 < arguments.count { operand = arguments[index + 1] }
+                break
+            }
+            if text.hasPrefix("--") {
+                if text == "--command" {
+                    executesText = true
+                    if index + 1 < arguments.count { operand = arguments[index + 1] }
+                    break
+                }
+                if text.hasPrefix("--command=") {
+                    executesText = true
+                    operand = ShellWord(text: String(text.dropFirst("--command=".count)),
+                                        expands: word.expands, substitutes: word.substitutes,
+                                        quoted: word.quoted)
+                    break
+                }
+                if text == "--rcfile" || text == "--init-file" {
+                    index += 2
+                    continue
+                }
+                index += 1
+                continue
+            }
+            if (text.hasPrefix("-") || text.hasPrefix("+")) && text.count > 1 {
+                let letters = text.dropFirst()
+                if letters.contains("c") { executesText = true }
+                if letters.contains("s") { readsInput = true }
+                index += letters.contains("o") || letters.contains("O") ? 2 : 1
+                continue
+            }
+            operand = word
+            break
+        }
+
+        if executesText {
+            guard let operand else { return InlineShell(hold: unreadableInlineShell) }
+            if operand.expands || operand.substitutes || operand.text.contains("{}") {
+                return InlineShell(hold: unreadableInlineShell)
+            }
+            return InlineShell(hold: nestedHold(operand.text, state: state))
+        }
+        // A script file is not a line of shell: the publishing words still apply.
+        if operand != nil, !readsInput { return nil }
+        if let body = input.heredocBody {
+            return InlineShell(hold: nestedHold(body, state: state))
+        }
+        if let here = input.redirects.last(where: { $0.kind == .herestring }), let target = here.target {
+            if target.expands || target.substitutes {
+                return InlineShell(hold: unreadableInlineShell)
+            }
+            return InlineShell(hold: nestedHold(target.text, state: state))
+        }
+        return InlineShell(hold: "ejecuta un shell que lee comandos de la entrada")
+    }
+
+    /// Judges a nested line of shell as if it stood where this one does, links
+    /// included. Its hold is inherited verbatim; only a depth limit stops it.
+    private static func nestedHold(_ text: String, state: RuleState) -> String? {
+        if state.depth >= inlineShellDepthLimit { return "demasiados shells en línea anidados" }
+        let context = RuleContext(cwd: state.dirKnown ? state.dir : "", paths: state.context.paths)
+        return assess(text, context: context, depth: state.depth + 1, links: state.madeLinks).effectiveHold
+    }
+
+    /// `kill $(pgrep ClaudeMenuBarBuddy)` and `kill 1234` look alike; only the
+    /// first names the buddy (spec 5.3 point 13).
+    private static func namesTheBuddy(_ word: ShellWord) -> Bool {
+        let text = word.text.lowercased()
+        return text.contains("claudemenubarbuddy")
+            || text.contains("claude-menubar-buddy")
+            || text.contains("buddy-rule")
     }
 }

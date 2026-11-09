@@ -75,7 +75,9 @@ private struct Parser {
     private var word = WordAccumulator()
 
     private var pending: [SimpleCommand] = []
-    private var heredocs: [(delimiter: String, stripTabs: Bool)] = []
+    private var heredocs: [(delimiter: String, stripTabs: Bool, owner: Int?)] = []
+    /// How many heredocs already know which command opened them.
+    private var claimedHeredocs = 0
     private var pendingHeredoc: Bool?
     private var pendingTarget: Int?
     /// Which `>&` / `<&` opened the pending redirect, when one did. Bash
@@ -115,8 +117,8 @@ private struct Parser {
                 i += 1
             case "\n":
                 i += 1
-                let completed = closeCommand()
-                if !heredocs.isEmpty { readHeredocBodies(into: completed) }
+                closeCommand()
+                if !heredocs.isEmpty { readHeredocBodies() }
             case "#":
                 if !word.started {
                     while i < src.count && src[i] != "\n" { i += 1 }
@@ -207,7 +209,7 @@ private struct Parser {
         if let stripTabs = pendingHeredoc {
             pendingHeredoc = nil
             pendingDuplicateFrom = nil
-            heredocs.append((w.text, stripTabs))
+            heredocs.append((w.text, stripTabs, nil))
         } else if let index = pendingTarget {
             pendingTarget = nil
             // `>&word` and `<&word` duplicate a descriptor only when the word
@@ -590,9 +592,10 @@ private struct Parser {
 
     // MARK: - Heredocs
 
-    private mutating func readHeredocBodies(into completedIndex: Int?) {
+    private mutating func readHeredocBodies() {
         let pendingBodies = heredocs
         heredocs = []
+        claimedHeredocs = 0
         for heredoc in pendingBodies {
             let (body, next, closed) = readHeredoc(from: i,
                                                    delimiter: heredoc.delimiter,
@@ -602,8 +605,9 @@ private struct Parser {
                 i = src.count
                 return
             }
-            if let index = completedIndex {
-                commands[index].heredocBody = body
+            if let owner = heredoc.owner {
+                let existing = commands[owner].heredocBody
+                commands[owner].heredocBody = existing.map { $0 + "\n" + body } ?? body
             }
             i = next
         }
@@ -633,6 +637,7 @@ private struct Parser {
         "if", "then", "else", "elif", "fi", "do", "done", "while", "until", "!", "{", "}",
     ]
 
+    @discardableResult
     private mutating func closeCommand() -> Int? {
         flushWord()
         // A redirect that never got its target (`> ;`, `cat << |`) is not a
@@ -657,18 +662,25 @@ private struct Parser {
         }
 
         let head = command.words.first.flatMap { $0.quoted ? nil : $0.text }
+        var closed: Int?
         if head == "for" || head == "select" {
             commands.append(contentsOf: pending)
             pending = []
-            return nil
-        }
-        if head == "case" { hasCaseStatement = true }
-        if head == "function" { definesFunction = true }
+        } else {
+            if head == "case" { hasCaseStatement = true }
+            if head == "function" { definesFunction = true }
 
-        commands.append(contentsOf: pending)
-        pending = []
-        if command.words.isEmpty && command.redirects.isEmpty { return nil }
-        commands.append(command)
-        return commands.count - 1
+            commands.append(contentsOf: pending)
+            pending = []
+            if !command.words.isEmpty || !command.redirects.isEmpty {
+                commands.append(command)
+                closed = commands.count - 1
+            }
+        }
+        // The heredocs opened by this command are the ones parsed since the
+        // last time it was closed; they go to the command just added.
+        for k in claimedHeredocs..<heredocs.count { heredocs[k].owner = closed }
+        claimedHeredocs = heredocs.count
+        return closed
     }
 }

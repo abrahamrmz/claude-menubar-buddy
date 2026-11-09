@@ -50,6 +50,22 @@ enum CommandCatalog {
         "/bin", "/usr/bin", "/usr/local/bin", "/opt/homebrew/bin", "/sbin", "/usr/sbin",
     ]
 
+    /// Commands a session grant never covers, whatever their category: they
+    /// reach infrastructure, a database over the network, a tunnel or mail,
+    /// other apps, what runs later, or the system (spec 5.3 point 12).
+    static let sessionHeld: Set<String> = [
+        "kubectl", "helm", "terraform", "pulumi", "ansible", "ansible-playbook",
+        "psql", "pg_dump", "createdb", "dropdb", "mysql", "mysqldump", "mongo", "mongosh", "redis-cli",
+        "ngrok", "cloudflared", "mail", "mailx", "sendmail", "msmtp", "mutt", "sshpass", "mosh", "lftp",
+        "osascript", "open", "shortcuts", "automator",
+        "launchctl", "crontab", "at", "batch", "su",
+        "security", "tccutil", "csrutil", "spctl", "nvram", "systemsetup", "networksetup", "scutil",
+        "softwareupdate", "installer",
+    ]
+
+    /// Arguments that say a command publishes (spec 5.3 point 11).
+    static let publishWords: Set<String> = ["publish", "push", "deploy", "upload"]
+
     /// `python`, `python3`, `python3.12`… every spelling is the same promise.
     static func isPython(_ name: String) -> Bool {
         name.range(of: "^python[0-9.]*$", options: .regularExpression) != nil
