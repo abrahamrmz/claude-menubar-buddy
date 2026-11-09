@@ -117,6 +117,7 @@ func category(_ command: String) -> RuleCategory {
         "ln -s ~ h; cd sub; echo X >> ../h/.gitconfig", "ln -s ~ h && cd h && echo X >> .gitconfig",
         "ln -s ~ a && ln -s a b && echo X >> b/.gitconfig", "ln -s ~ && echo X >> u/.gitconfig",
         "ln -s ~ ~/Documents && echo X >> ~/Documents/u/.gitconfig", "ln -s ~ h && cp nuevo h/.gitconfig",
+        "ln -st enlaces ~ && echo X >> enlaces/u/.gitconfig", "ln -s -t enlaces ~ && echo X >> enlaces/u/.gitconfig",
     ])
     func writingThroughALinkMadeOnTheSameLine(command: String) {
         #expect(atHome(command) == .rutaProtegida, "\(command)")
@@ -139,11 +140,26 @@ func category(_ command: String) -> RuleCategory {
     @Test(arguments: [
         "cp tmp/.gitconfig ~", "mv tmp/.gitconfig ~/", "install tmp/.gitconfig ~", "ln -f tmp/.gitconfig ~",
         "cp nuevo/.zshrc ~/Documents/", "cp a tmp/.gitconfig b ~",
+        // GNU's -t names the folder first.
+        "cp -t ~ tmp/.gitconfig", "cp -rt ~ tmp/.gitconfig", "mv -t ~ tmp/.gitconfig", "install -t ~ tmp/.gitconfig",
+        "cp --target-directory=/Users/u tmp/.gitconfig", "cp --target-directory /Users/u tmp/.gitconfig",
+        "cp -t ~ a.txt tmp/.gitconfig",
     ])
     func theFileThatLandsInAFolder(command: String) { #expect(atHome(command) == .rutaProtegida, "\(command)") }
 
+    // With -t first, everything after the folder is a source: moving one of
+    // them out of a protected place is a write there.
+    @Test(arguments: ["mv -t /tmp ~/.zshrc", "mv -t /tmp a.txt ~/.zshrc", "mv --target-directory=/tmp ~/.zshrc"])
+    func movingAProtectedFileOutNamingTheFolderFirst(command: String) {
+        #expect(atHome(command) == .rutaProtegida, "\(command)")
+    }
+
+    @Test(arguments: ["cp -t build a.txt b.txt", "mv -t ~/Documents notas.txt", "cp -rt dist src"])
+    func ordinaryCopiesNamingTheFolderFirst(command: String) { #expect(atHome(command) == .cambioLocal, "\(command)") }
+
     @Test func aFileThatLandsOnTopOfAnotherIsAnOverwrite() {
         #expect(atHome("cp otra/a.txt ~/Documents") == .sobrescribe)   // ~/Documents/a.txt exists, outside git
+        #expect(atHome("cp -t ~/Documents otra/a.txt") == .sobrescribe)
         #expect(atHome("cp b.txt ~/Documents") == .cambioLocal)        // nothing there called b.txt
         #expect(atHome("cp a.txt copia") == .cambioLocal)              // `copia` is not a folder
     }

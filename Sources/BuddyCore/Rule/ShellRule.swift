@@ -256,16 +256,14 @@ public enum ShellRule {
         let nonFlags = nonFlagArguments(arguments)
         switch name {
         case "cp", "mv", "ln", "install":
-            if let index = arguments.firstIndex(where: { $0.text == "-t" }) {
-                let next = arguments.index(after: index)
-                if next < arguments.endIndex {
-                    targets.append(WriteTarget(word: arguments[next], overwrites: true))
-                }
+            // Moving a file out of a protected place is also a write there.
+            if let (folder, folderIndex) = targetFolder(arguments) {
+                targets.append(WriteTarget(word: folder, overwrites: true))
+                if name == "mv" { protectedOnly.append(contentsOf: sourceWords(arguments, skipping: folderIndex)) }
             } else if let destination = nonFlags.last {
                 targets.append(WriteTarget(word: destination, overwrites: true))
+                if name == "mv" { protectedOnly.append(contentsOf: nonFlags.dropLast()) }
             }
-            // Moving a file out of a protected place is also a write there.
-            if name == "mv" { protectedOnly.append(contentsOf: nonFlags.dropLast()) }
         case "tee":
             let appends = arguments.contains { $0.text == "-a" }
             for argument in nonFlags {
@@ -400,6 +398,36 @@ public enum ShellRule {
         }
     }
 
+    /// GNU's `-t DIR`, `--target-directory DIR` or `--target-directory=DIR`:
+    /// the folder that receives every other word. `index` is its position
+    /// in `arguments` when it is a word of its own, nil when it rides inside
+    /// the `=` form. A short cluster that ends in `t` (`-rt`, `-st`) takes
+    /// the next word too.
+    static func targetFolder(_ arguments: [ShellWord]) -> (word: ShellWord, index: Int?)? {
+        let long = "--target-directory"
+        for (index, word) in arguments.enumerated() {
+            let text = word.text
+            if text.hasPrefix(long + "=") {
+                let value = String(text.dropFirst(long.count + 1))
+                return (ShellWord(text: value, expands: word.expands, substitutes: word.substitutes,
+                                  quoted: word.quoted), nil)
+            }
+            let takesNext = text == long || (text.hasPrefix("-") && !text.hasPrefix("--") && text.hasSuffix("t"))
+            if takesNext {
+                let next = index + 1
+                return next < arguments.count ? (arguments[next], next) : nil
+            }
+        }
+        return nil
+    }
+
+    /// The words that are not flags, leaving out the one at `skipping`.
+    private static func sourceWords(_ arguments: [ShellWord], skipping: Int?) -> [ShellWord] {
+        arguments.indices
+            .filter { $0 != skipping && !arguments[$0].text.hasPrefix("-") }
+            .map { arguments[$0] }
+    }
+
     /// GNU's `-t dir` puts the receiving folder first instead of last.
     private static func namesItsFolderFirst(_ arguments: [ShellWord]) -> Bool {
         arguments.contains { flag in
@@ -430,21 +458,28 @@ public enum ShellRule {
     /// read as if the link were already there (`throughMadeLinks`).
     private static func noteMadeLinks(_ arguments: [ShellWord], state: inout RuleState) {
         let nonFlags = nonFlagArguments(arguments)
-        guard !nonFlags.isEmpty, !namesItsFolderFirst(arguments),
+        guard !nonFlags.isEmpty,
               !nonFlags.contains(where: { $0.expands || $0.substitutes }) else { return }
         let symbolic = makesSymbolicLinks(arguments)
-        let sources = nonFlags.count >= 2 ? Array(nonFlags.dropLast()) : nonFlags
 
         // Where the links land: inside a folder, under their own names, or
         // as the one name given. With a single word they land right here.
         var folder: String?
         var single: String?
-        if nonFlags.count >= 2, let destination = nonFlags.last {
+        let sources: [ShellWord]
+        if let (target, targetIndex) = targetFolder(arguments) {
+            guard !target.expands, !target.substitutes,
+                  let absolute = resolve(target.text, state: state) else { return }
+            folder = absolute
+            sources = sourceWords(arguments, skipping: targetIndex)
+        } else if nonFlags.count >= 2, let destination = nonFlags.last {
             guard let absolute = resolve(destination.text, state: state) else { return }
             if isFolder(destination, among: nonFlags.count, state: state) { folder = absolute } else { single = absolute }
+            sources = Array(nonFlags.dropLast())
         } else {
             guard state.dirKnown else { return }
             folder = state.dir.isEmpty ? "/" : state.dir
+            sources = nonFlags
         }
 
         for source in sources {
@@ -469,13 +504,22 @@ public enum ShellRule {
     /// `cp tmp/.gitconfig ~` replaces `~/.gitconfig`.
     private static func appendLandingTargets(_ arguments: [ShellWord], state: RuleState,
                                              targets: inout [WriteTarget]) {
-        let nonFlags = nonFlagArguments(arguments)
-        guard nonFlags.count >= 2, !namesItsFolderFirst(arguments), let destination = nonFlags.last,
-              !destination.expands, !destination.substitutes,
-              isFolder(destination, among: nonFlags.count, state: state) else { return }
+        let destination: ShellWord
+        let sources: [ShellWord]
+        if let (target, targetIndex) = targetFolder(arguments) {
+            guard !target.expands, !target.substitutes else { return }
+            destination = target
+            sources = sourceWords(arguments, skipping: targetIndex)
+        } else {
+            let nonFlags = nonFlagArguments(arguments)
+            guard nonFlags.count >= 2, let last = nonFlags.last, !last.expands, !last.substitutes,
+                  isFolder(last, among: nonFlags.count, state: state) else { return }
+            destination = last
+            sources = Array(nonFlags.dropLast())
+        }
         var folder = destination.text
         while folder.count > 1 && folder.hasSuffix("/") { folder.removeLast() }
-        for source in nonFlags.dropLast() where !source.expands && !source.substitutes {
+        for source in sources where !source.expands && !source.substitutes {
             guard let name = landingName(source, state: state) else { continue }
             let landed = ShellWord(text: folder == "/" ? "/" + name : folder + "/" + name,
                                    expands: false, substitutes: false, quoted: destination.quoted)
