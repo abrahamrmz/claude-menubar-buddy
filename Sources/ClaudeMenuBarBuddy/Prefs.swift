@@ -187,6 +187,10 @@ extension AppDelegate {
     var autoModeFlagURL: URL { dirURL.appendingPathComponent("auto_mode") }
     var autoModeEnabled: Bool { FileManager.default.fileExists(atPath: autoModeFlagURL.path) }
 
+    // Session grants (auto completo por sesión): one file per session under
+    // session_auto/. Only the card's button creates one (CardDecision.swift).
+    var sessionGrantStore: SessionGrantStore { SessionGrantStore(configDirectory: dirURL) }
+
     func readAlwaysAllow() -> AlwaysAllow {
         AlwaysAllow.read(from: alwaysAllowURL)
     }

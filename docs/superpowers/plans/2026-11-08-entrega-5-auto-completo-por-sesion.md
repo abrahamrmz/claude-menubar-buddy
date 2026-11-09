@@ -4792,7 +4792,7 @@ func refreshSessionGrantViews()
 
 La app no tiene tests. La verificación es que compile, que todo siga en verde y la lista de revisión del final.
 
-- [ ] **Paso 1: `PendingRequest` (`main.swift`)**
+- [x] **Paso 1: `PendingRequest` (`main.swift`)**
 
 Después de `let reason: String?`, agrega:
 
@@ -4808,7 +4808,7 @@ Junto a `var isCritical: Bool { critical == true }`, agrega `var sessionCoverabl
 
 **`sessionCoverableFlag` tiene que ser `Bool?`, no `Bool`.** Con `Bool` el decodificador sintetizado falla en todo archivo sin la llave (un `hook.sh` viejo, la respuesta de emergencia), y `scanRequests` descarta esa petición en silencio: la tarjeta nunca aparecería.
 
-- [ ] **Paso 2: propiedades de `AppDelegate` (`main.swift`)**
+- [x] **Paso 2: propiedades de `AppDelegate` (`main.swift`)**
 
 Después de `var openCodeBridge: OpenCodeBridge?`:
 
@@ -4822,7 +4822,7 @@ Después de `var openCodeBridge: OpenCodeBridge?`:
     var sessionGrantTicks = 0
 ```
 
-- [ ] **Paso 3: el almacén (`Prefs.swift`)**
+- [x] **Paso 3: el almacén (`Prefs.swift`)**
 
 Debajo de `var autoModeEnabled: Bool { … }`:
 
@@ -4832,7 +4832,7 @@ Debajo de `var autoModeEnabled: Bool { … }`:
     var sessionGrantStore: SessionGrantStore { SessionGrantStore(configDirectory: dirURL) }
 ```
 
-- [ ] **Paso 4: crear `Sources/ClaudeMenuBarBuddy/SessionGrants.swift`**
+- [x] **Paso 4: crear `Sources/ClaudeMenuBarBuddy/SessionGrants.swift`**
 
 Este archivo no lo fija ningún test, así que va completo:
 
@@ -4945,7 +4945,7 @@ Por qué así, para no "mejorarlo":
 - **El `live(...)` antes de aprobar** es el que impide aprobar con una concesión que ya pasó sus 8 horas pero sigue en la caché (la caché se recarga cuando cambia la carpeta, y renovar un archivo no cambia la fecha de la carpeta).
 - **La ventana de 60 s** de las peticiones de Claude no se vuelve a mirar aquí: `scanRequests()`, que corre en el mismo tick (o justo antes, en el clic de la tarea 15), ya borró las vencidas.
 
-- [ ] **Paso 5: conectar en `main.swift`**
+- [x] **Paso 5: conectar en `main.swift`**
 
 - **`applicationDidFinishLaunching`:** entre `statusItem = NSStatusBar.system.statusItem(…)` y `buildIdleMenu()`:
   ```swift
@@ -4973,12 +4973,12 @@ Por qué así, para no "mejorarlo":
   La llamada al puente va **antes** de `orderedRequests()`: los `request_<id>.json` que el puente borra al aprobar ya no se leen en este tick.
   El resto de `poll()` no cambia. Si el barrido se lleva la tarjeta que está en pantalla, el código de hoy ya hace lo correcto: sale la siguiente (`first.id != currentRequestId`), o la tarjeta se retira con el fundido neutro si la cola quedó vacía.
 
-- [ ] **Paso 6: correr todo**
+- [x] **Paso 6: correr todo**
 
 Corre: `swift build && swift test`
 Esperado: compila sin errores ni avisos nuevos y todo en verde, con el mismo número de tests que al terminar la tarea 12.
 
-- [ ] **Paso 7: revisar el diff**
+- [x] **Paso 7: revisar el diff**
 
 - `git grep -n "SessionGrantStore(" Sources/ClaudeMenuBarBuddy` aparece solo en `Prefs.swift`.
 - `git grep -n "sweepExpired\|grantEnded" Sources/ClaudeMenuBarBuddy` aparece solo en `SessionGrants.swift` (la tarea 14 sumará `Menus.swift`).
@@ -4988,7 +4988,7 @@ Esperado: compila sin errores ni avisos nuevos y todo en verde, con el mismo nú
 - `sessionCoverableFlag` es `Bool?` y `session` es `String?`.
 - `tickSessionGrants()` queda después de `if isDismissing { return }`.
 
-- [ ] **Paso 8: commit**
+- [x] **Paso 8: commit**
 
 ```bash
 git add Sources/ClaudeMenuBarBuddy/main.swift Sources/ClaudeMenuBarBuddy/Prefs.swift Sources/ClaudeMenuBarBuddy/SessionGrants.swift

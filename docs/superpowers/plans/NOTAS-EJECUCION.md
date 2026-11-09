@@ -42,3 +42,19 @@ Los dos primeros porque `sed` y `find` no están en ningún `CommandCatalog`, y 
 2. El paso 1 pide «una `URLSession` propia con delegado». En Foundation, `URLSession.delegate` es de solo lectura: solo se fija al construir la sesión con `init(configuration:delegate:delegateQueue:)`. Como `self` todavía no existe antes de `super.init()`, no se puede asignar el delegado después.
 
 **Qué se hizo (sin cambiar el diseño):** `OpenCodeService.load(from: OpenCodeService.defaultFile)`, que es lo que el plan quiere decir; y la sesión del stream se declaró `lazy` con `delegate: self`, en lugar de asignar el delegado tras `init`. Los endpoints, el ciclo de reconexión y la recuperación son los del plan, y el delegado sigue recibiendo solo los eventos del stream porque las demás llamadas van por una `URLSession` aparte.
+
+---
+
+## Tarea 13 (entrega 5): tres comprobaciones de lectura del paso 7 chocan con el propio plan
+
+**Paso:** paso 7 («revisar el diff»).
+
+**Qué pasó:** tres de las comprobaciones del paso 7 no se cumplen tal cual, pero no porque falte nada en el código — el código es exactamente el bloque que da el propio plan — sino porque sus expectativas contradicen instrucciones anteriores del mismo plan:
+
+1. «`git grep -n "SessionGrantStore(" Sources/ClaudeMenuBarBuddy` aparece solo en `Prefs.swift`». Aparece también en `OpenCodeBridge.swift`, que es lo que el bloque 3 manda explícitamente: la línea 4248 del plan dice «`Prefs.sessionGrantStore` llega en la tarea 13; el puente tiene el suyo, sobre la misma carpeta», y la tarea 11 (paso 1) escribe `self.grantStore = SessionGrantStore(configDirectory: configDir)`.
+2. «`git grep -n "sweepExpired\|grantEnded" Sources/ClaudeMenuBarBuddy` aparece solo en `SessionGrants.swift` (la tarea 14 sumará `Menus.swift`)». Aparece también en `OpenCodeBridge.swift` (bloque 3, tarea 11): al recibir `sessionEnded` el puente llama a `AutoLog.append(.grantEnded(…, cause: .sessionEnded, …))`.
+3. «`git grep -n "decisions.jsonl\|writeDecision\|openCodeBridge" Sources/ClaudeMenuBarBuddy/SessionGrants.swift` no encuentra nada». Encuentra dos coincidencias, ambas en el comentario que el propio plan manda copiar textualmente (líneas 4920–4921: «never in `decisions.jsonl`, which is what you answered»). Ninguna línea de código escribe en ese archivo ni toca el puente.
+
+**Qué se hizo:** nada en el código: se copió el bloque de `SessionGrants.swift` tal cual (verbatim), y el objetivo real de las tres comprobaciones se cumple — el barrido de la app no escribe en `decisions.jsonl`, no pasa por `writeDecision` ni por el puente de opencode, y no crea concesiones. Las expectativas de los greps quedaron desactualizadas respecto al bloque 3 y respecto al propio comentario verbatim del plan. Se deja anotado para que quien revise lo confirme; no se cambió ninguna decisión de diseño.
+
+**Comprobaciones del paso 7 que sí se cumplen:** `openCodeBridge?.sweepCoveredCards()` va antes de `var requests = orderedRequests()`; `\.grant(` no aparece en `Sources/ClaudeMenuBarBuddy`; `sessionCoverableFlag` es `Bool?` y `session` es `String?`; `tickSessionGrants()` queda después de `if isDismissing { return }`.
