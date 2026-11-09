@@ -199,6 +199,11 @@ final class OpenCodeBridge: NSObject, URLSessionDataDelegate {
 
         case .turnFinished(let sessionID, let elapsed):
             confirmTurn(sessionID: sessionID, elapsed: elapsed)
+
+        case .resolveLineage, .touchSessionGrant, .revokeSessionGrant:
+            // Task 11 wires these. Nothing emits them yet: this bridge passes
+            // no grants, never feeds .sessionInfo and never sweeps.
+            break
         }
     }
 

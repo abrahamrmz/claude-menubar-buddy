@@ -3616,7 +3616,7 @@ public struct OpenCodeBridgeCore {
 }
 ```
 
-- [ ] **Paso 1: escribir los tests**
+- [x] **Paso 1: escribir los tests**
 
 Agrega al final de `Tests/ClaudeMenuBarBuddyTests/OpenCodeBridgeCoreTests.swift`, después del `}` que cierra `struct OpenCodeBridgeCoreTests`:
 
@@ -4006,12 +4006,12 @@ Notas sobre estos tests:
 - La web pasa con concesión aunque su categoría sea `sale`: depende de que `sessionGrantCovers` devuelva verdadero para `.web` (tabla 5.1 del contrato). Si `webPassesWithAGrantAndOnlyThen` falla por eso, el error está en el bloque 1, no aquí: anótalo en `NOTAS-EJECUCION.md` y detente.
 - Ningún test existente cambia. Los que cuentan acciones (`sameRequestTwiceIsOneCard`, `autoModePassesAReadAndLogsIt`) siguen igual porque sin concesiones `handle` no agrega ninguna acción.
 
-- [ ] **Paso 2: verificar que falla**
+- [x] **Paso 2: verificar que falla**
 
 Corre: `swift build && swift test --filter OpenCodeBridgeSessionGrantTests`
 Esperado: no compila: `extra argument 'sessionGrants' in call`, y no existen `resolveLineage`, `touchSessionGrant`, `revokeSessionGrant` ni `lineageWait`.
 
-- [ ] **Paso 3: implementar en `OpenCodeBridgeCore.swift`**
+- [x] **Paso 3: implementar en `OpenCodeBridgeCore.swift`**
 
 **`OpenCodeCardRequest`:** el campo y el parámetro de **Interfaces** (último, con `false` por defecto, así `OpenCodeAPITests` sigue compilando). En `requestFileJSON`, dos llaves más en el diccionario: `"session": sessionID` y `"session_coverable": sessionCoverable`; actualiza la lista de llaves del comentario de la función.
 
@@ -4190,7 +4190,7 @@ Ningún otro caso cambia. `.sessionCreated` no revisa lo guardado: el linaje que
    - `.root`, `.broken`: nada.
 4. Nunca toca formularios ni lo guardado en `held`.
 
-- [ ] **Paso 4: que la app siga compilando**
+- [x] **Paso 4: que la app siga compilando**
 
 En `Sources/ClaudeMenuBarBuddy/OpenCodeBridge.swift`, al final del `switch action` de `perform(_:)`, agrega:
 ```swift
@@ -4201,12 +4201,12 @@ En `Sources/ClaudeMenuBarBuddy/OpenCodeBridge.swift`, al final del `switch actio
 ```
 Es seguro: en este commit la app arma `Settings` sin concesiones, así que el núcleo nunca emite esas acciones.
 
-- [ ] **Paso 5: verificar que pasa**
+- [x] **Paso 5: verificar que pasa**
 
 Corre: `swift build && swift test`
 Esperado: todo pasa, con 25 tests más que al terminar la tarea 9.
 
-- [ ] **Paso 6: commit**
+- [x] **Paso 6: commit**
 
 ```bash
 git add Sources/BuddyCore/OpenCode/OpenCodeBridgeCore.swift Sources/ClaudeMenuBarBuddy/OpenCodeBridge.swift Tests/ClaudeMenuBarBuddyTests/OpenCodeBridgeCoreTests.swift
