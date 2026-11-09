@@ -5600,27 +5600,27 @@ Al terminar la tarea 16, detente y avisa en el chat.
 
 ### Tarea 17: verificación final
 
-- [ ] **Paso 1: todo en verde desde cero**
+- [x] **Paso 1: todo en verde desde cero**
 
 Corre: `swift build && swift test 2>&1 | tail -5 && shellcheck hook.sh notify-done.sh`
 Esperado: `Test run with 466 tests passed` (el número que dio la validación del plan completo; si difiere, que sea porque agregaste tests, nunca porque faltan), ningún fallo, y `shellcheck` sin salida.
 
-- [ ] **Paso 2: la concesión solo nace en un lugar**
+- [x] **Paso 2: la concesión solo nace en un lugar**
 
 Corre: `grep -rn "SessionGrantStore" Sources --include='*.swift' | grep "\.grant("`
 Esperado: una sola línea, en `Sources/ClaudeMenuBarBuddy/CardDecision.swift`.
 
-- [ ] **Paso 3: el corte por app cerrada sigue primero**
+- [x] **Paso 3: el corte por app cerrada sigue primero**
 
 Corre: `grep -n "pgrep\|RULE_BIN=" hook.sh`
 Esperado: la línea de `pgrep` aparece antes que la de `RULE_BIN=`.
 
-- [ ] **Paso 4: nada pendiente**
+- [x] **Paso 4: nada pendiente**
 
 Corre: `git status --short && git log --oneline origin/personal..HEAD`
 Esperado: `git status` vacío y un commit por tarea (1 a 16), más los de la spec y el plan.
 
-- [ ] **Paso 5: avisar y detenerse**
+- [x] **Paso 5: avisar y detenerse**
 
 Escribe en el chat:
 - que la entrega 5 está lista;
