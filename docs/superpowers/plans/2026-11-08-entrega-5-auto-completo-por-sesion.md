@@ -5395,7 +5395,7 @@ public static func eventWired(settingsJSON: Data, event: String,
                               hookMarker: String = "claude-menubar-buddy/notify-done.sh") -> Bool
 ```
 
-- [ ] **Paso 1: escribir los tests**
+- [x] **Paso 1: escribir los tests**
 
 En `Tests/ClaudeMenuBarBuddyTests/HealthPolicyTests.swift`, agrega este bloque justo antes de `// MARK: - Transcript shape` (usa el ayudante `settings(_:)` que ya existe en la suite):
 
@@ -5443,21 +5443,21 @@ En `Tests/ClaudeMenuBarBuddyTests/HealthPolicyTests.swift`, agrega este bloque j
     }
 ```
 
-- [ ] **Paso 2: verificar que fallan**
+- [x] **Paso 2: verificar que fallan**
 
 Corre: `swift build && swift test --filter HealthPolicyTests`
 Esperado: no compila (`type 'HealthPolicy' has no member 'eventWired'`).
 
-- [ ] **Paso 3: implementar `eventWired`**
+- [x] **Paso 3: implementar `eventWired`**
 
 En `HealthPolicy`, antes de `// MARK: - Transcript shape`. Lee `root["hooks"][event]` como `[[String: Any]]`; si el JSON no es un objeto, no hay `hooks`, o el evento no es una lista de objetos, `false`. Si no, verdadero cuando alguna entrada tiene en su lista `hooks` un objeto cuyo `command` (String) contiene `hookMarker`. A diferencia de `wiring`, no mira `matcher`: estos eventos no lo llevan.
 
-- [ ] **Paso 4: verificar que pasan**
+- [x] **Paso 4: verificar que pasan**
 
 Corre: `swift build && swift test --filter HealthPolicyTests`
 Esperado: PASA.
 
-- [ ] **Paso 5: los dos chequeos (`Health.swift`)**
+- [x] **Paso 5: los dos chequeos (`Health.swift`)**
 
 En `inspect`, después de `notifyCheck(),`:
 
@@ -5512,7 +5512,7 @@ Y antes de `// MARK: - Surviving Claude Code updates`, las dos funciones. **Las 
 
 La app no edita `settings.json`, como nunca lo ha hecho: el remedio es texto.
 
-- [ ] **Paso 6: `SKILL.md`**
+- [x] **Paso 6: `SKILL.md`**
 
 1. En el paso 3, el párrafo
    > `buddy-rule` is the rule the hook consults for every event, and it is copied
@@ -5546,7 +5546,7 @@ La app no edita `settings.json`, como nunca lo ha hecho: el remedio es texto.
    and seldom send `SessionEnd`, so there the 8-hour limit is what acts.
    ```
 
-- [ ] **Paso 7: `README.md`**
+- [x] **Paso 7: `README.md`**
 
 1. En "The card", el final de la viñeta **Standing grants**, `Both are covered in detail under [the two standing grants](#the-two-standing-grants).`, pasa a:
    ```markdown
@@ -5574,18 +5574,18 @@ La app no edita `settings.json`, como nunca lo ha hecho: el remedio es texto.
    ```
 4. En "Project layout", `notify-done.sh                # UserPromptSubmit/Stop/PreCompact hook` pasa a `notify-done.sh                # UserPromptSubmit/Stop/PreCompact/SessionEnd hook`.
 
-- [ ] **Paso 8: correr todo**
+- [x] **Paso 8: correr todo**
 
 Corre: `swift build && swift test && shellcheck hook.sh notify-done.sh`
 Esperado: todo en verde, con 6 tests más que al terminar la tarea 15, y `shellcheck` sin salida (esta tarea no toca los scripts).
 
-- [ ] **Paso 9: revisar el diff**
+- [x] **Paso 9: revisar el diff**
 
 - Las cinco salidas de `notifyFreshnessCheck` y `sessionEndCheck` llevan `optional: true`.
 - `git grep -n "settings.json" Sources/ClaudeMenuBarBuddy/Health.swift`: ninguna línea nueva escribe el archivo; solo se lee con `Data(contentsOf:)`.
 - El JSON del paso 4b de `SKILL.md` sigue siendo válido (comas entre `PreCompact` y `SessionEnd`).
 
-- [ ] **Paso 10: commit**
+- [x] **Paso 10: commit**
 
 ```bash
 git add Sources/BuddyCore/HealthPolicy.swift Sources/ClaudeMenuBarBuddy/Health.swift Tests/ClaudeMenuBarBuddyTests/HealthPolicyTests.swift README.md SKILL.md

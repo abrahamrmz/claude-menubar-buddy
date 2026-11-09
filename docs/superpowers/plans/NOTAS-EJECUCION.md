@@ -58,3 +58,15 @@ Los dos primeros porque `sed` y `find` no están en ningún `CommandCatalog`, y 
 **Qué se hizo:** nada en el código: se copió el bloque de `SessionGrants.swift` tal cual (verbatim), y el objetivo real de las tres comprobaciones se cumple — el barrido de la app no escribe en `decisions.jsonl`, no pasa por `writeDecision` ni por el puente de opencode, y no crea concesiones. Las expectativas de los greps quedaron desactualizadas respecto al bloque 3 y respecto al propio comentario verbatim del plan. Se deja anotado para que quien revise lo confirme; no se cambió ninguna decisión de diseño.
 
 **Comprobaciones del paso 7 que sí se cumplen:** `openCodeBridge?.sweepCoveredCards()` va antes de `var requests = orderedRequests()`; `\.grant(` no aparece en `Sources/ClaudeMenuBarBuddy`; `sessionCoverableFlag` es `Bool?` y `session` es `String?`; `tickSessionGrants()` queda después de `if isDismissing { return }`.
+
+---
+
+## Tarea 16 (entrega 5): el paso 9 dice «cinco salidas» y el propio bloque del plan tiene seis
+
+**Paso:** paso 9 («revisar el diff»), primera comprobación.
+
+**Qué pasó:** dice «Las cinco salidas de `notifyFreshnessCheck` y `sessionEndCheck` llevan `optional: true`», pero el bloque verbatim que el propio plan manda copiar tiene seis salidas (`return Check`): tres en `notifyFreshnessCheck` (omitido, igual, distinto) y tres en `sessionEndCheck` (omitido, conectado, no conectado). Las seis llevan `optional: true`.
+
+**Qué se hizo:** nada en el código: se copió el bloque tal cual. La intención de la comprobación —«las dos son opcionales en todas sus salidas», para que nunca enciendan el aviso del menú— se cumple con las seis. Se deja anotado para que quien revise lo confirme; no se cambió nada.
+
+**Las otras dos comprobaciones del paso 9 sí se cumplen:** `Health.swift` sólo lee `settings.json` con `Data(contentsOf:)` (ninguna escritura), y el JSON del paso 4b de `SKILL.md` es válido (con `SessionEnd` junto a `UserPromptSubmit`, `Stop` y `PreCompact`).

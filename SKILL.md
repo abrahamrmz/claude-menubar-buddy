@@ -89,8 +89,12 @@ cp .build/debug/buddy-rule ~/.config/claude-menubar-buddy/buddy-rule
 chmod +x ~/.config/claude-menubar-buddy/hook.sh ~/.config/claude-menubar-buddy/notify-done.sh ~/.config/claude-menubar-buddy/buddy-rule
 ```
 
-`buddy-rule` is the rule the hook consults for every event, and it is copied
-again after every `swift build` — the installed copy is a snapshot, not a link.
+`buddy-rule` is the rule the hook consults for every event. All three
+installed files are snapshots, not links: after every `swift build`, copy
+`hook.sh`, `notify-done.sh` and `buddy-rule` again with the three `cp` lines
+above. A stale copy fails on the safe side — the card stops offering session
+auto mode, or a session's grant outlives the session until its 8 idle hours
+run out — but it fails.
 
 `notify-done.sh` is separate from `hook.sh` on purpose: it powers the
 turn-finished notification (see step 4b) and never needs a permission
@@ -146,7 +150,7 @@ during development; don't assume `~` expansion without re-testing it.
 
 ### 4b. Wire the turn-finished notification (optional but recommended)
 
-Add `UserPromptSubmit`, `Stop` and `PreCompact` entries alongside the
+Add `UserPromptSubmit`, `Stop`, `PreCompact` and `SessionEnd` entries alongside the
 `PreToolUse` block above — same file, no `matcher` field needed for these
 events:
 
@@ -160,6 +164,9 @@ events:
       { "hooks": [{ "type": "command", "command": "ABSOLUTE_HOME/.config/claude-menubar-buddy/notify-done.sh", "timeout": 5 }] }
     ],
     "PreCompact": [
+      { "hooks": [{ "type": "command", "command": "ABSOLUTE_HOME/.config/claude-menubar-buddy/notify-done.sh", "timeout": 5 }] }
+    ],
+    "SessionEnd": [
       { "hooks": [{ "type": "command", "command": "ABSOLUTE_HOME/.config/claude-menubar-buddy/notify-done.sh", "timeout": 5 }] }
     ]
   }
@@ -175,6 +182,14 @@ it calls `osascript` directly.
 or automatic): the script drops a marker file and the pet meditates through
 the compaction. Purely cosmetic — with the app closed the marker is simply
 ignored — but without this entry the meditate mood never triggers.
+
+`SessionEnd` fires when a Claude Code session closes: the script hands it to
+`buddy-rule session-end`, which switches off that session's auto mode (the
+grant the card's "Permitir y dejar esta sesión en auto completo" row
+creates) and logs it. It runs with the app closed too, and all it can do is
+revoke. Without this entry a grant only ends after 8 idle hours or from the
+menu. The desktop app and VS Code keep a session's process alive for days
+and seldom send `SessionEnd`, so there the 8-hour limit is what acts.
 
 Validate after writing:
 ```bash

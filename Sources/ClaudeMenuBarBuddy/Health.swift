@@ -64,6 +64,8 @@ struct BuddyHealth {
             jqCheck(),
             hookFreshnessCheck(),
             notifyCheck(),
+            notifyFreshnessCheck(),
+            sessionEndCheck(settingsURL: claudeSettings ?? claudeSettingsURL),
             claudeVersionCheck(),
             transcriptShapeCheck(),
             ungatedToolsCheck(),
@@ -270,6 +272,46 @@ struct BuddyHealth {
                          optional: true)
         }
         return Check(title: title, ok: true, detail: notifyURL.path, remedy: nil)
+    }
+
+    /// notify-done.sh is a snapshot like hook.sh: an old copy has no
+    /// SessionEnd case, and then a session's grant outlives the session.
+    private static func notifyFreshnessCheck() -> Check {
+        let title = "notify-done.sh instalado es el del repo"
+        guard let repoNotify = repoFileURL(named: "notify-done.sh"),
+              let installed = try? Data(contentsOf: notifyURL),
+              let source = try? Data(contentsOf: repoNotify) else {
+            return Check(title: title, ok: true,
+                         detail: "Omitido: no hay copia del repo o no está instalado",
+                         remedy: nil, optional: true)
+        }
+        guard source != installed else {
+            return Check(title: title, ok: true, detail: "Igual a \(repoNotify.path)", remedy: nil, optional: true)
+        }
+        return Check(title: title, ok: false,
+                     detail: "Distinto de \(repoNotify.path): las concesiones pueden no apagarse al cerrar la sesión",
+                     remedy: "cp \(repoNotify.path) \(notifyURL.path)",
+                     optional: true)
+    }
+
+    /// Without SessionEnd a session's grant only dies after 8 idle hours or
+    /// from the menu. Optional: approvals work the same either way.
+    private static func sessionEndCheck(settingsURL: URL) -> Check {
+        let title = "El auto completo se apaga al cerrar la sesión"
+        guard let data = try? Data(contentsOf: settingsURL) else {
+            return Check(title: title, ok: true,
+                         detail: "Omitido: no se pudo leer \(settingsURL.path)",
+                         remedy: nil, optional: true)
+        }
+        if HealthPolicy.eventWired(settingsJSON: data, event: "SessionEnd") {
+            return Check(title: title, ok: true, detail: "SessionEnd llama a notify-done.sh",
+                         remedy: nil, optional: true)
+        }
+        return Check(title: title, ok: false,
+                     detail: "SessionEnd no está conectado: una sesión en auto completo lo conserva hasta 8 h sin actividad o hasta apagarla en el menú",
+                     remedy: "Agrega a \(settingsURL.path) la entrada SessionEnd del paso 4b de SKILL.md: "
+                           + "notify-done.sh con \"timeout\": 5.",
+                     optional: true)
     }
 
     // MARK: - Surviving Claude Code updates
