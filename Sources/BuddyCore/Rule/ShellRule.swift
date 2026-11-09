@@ -36,6 +36,12 @@ public enum ShellRule {
         var dir: String
         var dirKnown: Bool
         let context: RuleContext
+        /// Links an earlier `ln` on this line is about to create: where the
+        /// link will be (canonical spelling) → what it will point at.
+        var madeLinks: [String: String] = [:]
+        /// The links of the command being judged right now. They count from
+        /// the next command on: making a link does not write through it.
+        var pendingLinks: [String: String] = [:]
     }
 
     struct CommandInput {
@@ -50,6 +56,10 @@ public enum ShellRule {
     }
 
     static func evaluate(_ input: CommandInput, state: inout RuleState) -> Assessment {
+        if !state.pendingLinks.isEmpty {
+            state.madeLinks.merge(state.pendingLinks) { _, newer in newer }
+            state.pendingLinks.removeAll()
+        }
         var words = input.words
 
         var leadingAssignments: [String] = []
@@ -183,6 +193,14 @@ public enum ShellRule {
         if CommandCatalog.localChange.contains(name) {
             collectLocalChangeTargets(name, arguments: arguments,
                                       targets: &targets, protectedOnly: &protectedOnly)
+            if ["cp", "mv", "ln", "install"].contains(name) {
+                appendLandingTargets(arguments, state: state, targets: &targets)
+            }
+            if name == "ln" {
+                let linked = reviewLinkSources(arguments, state: state)
+                noteMadeLinks(arguments, state: &state)
+                if let linked { return linked }
+            }
             return Assessment(.cambioLocal, "cambio local")
         }
         return Assessment(.desconocido, "la regla no reconoce: \(short(original))")
@@ -238,16 +256,14 @@ public enum ShellRule {
         let nonFlags = nonFlagArguments(arguments)
         switch name {
         case "cp", "mv", "ln", "install":
-            if let index = arguments.firstIndex(where: { $0.text == "-t" }) {
-                let next = arguments.index(after: index)
-                if next < arguments.endIndex {
-                    targets.append(WriteTarget(word: arguments[next], overwrites: true))
-                }
+            // Moving a file out of a protected place is also a write there.
+            if let (folder, folderIndex) = targetFolder(arguments) {
+                targets.append(WriteTarget(word: folder, overwrites: true))
+                if name == "mv" { protectedOnly.append(contentsOf: sourceWords(arguments, skipping: folderIndex)) }
             } else if let destination = nonFlags.last {
                 targets.append(WriteTarget(word: destination, overwrites: true))
+                if name == "mv" { protectedOnly.append(contentsOf: nonFlags.dropLast()) }
             }
-            // Moving a file out of a protected place is also a write there.
-            if name == "mv" { protectedOnly.append(contentsOf: nonFlags.dropLast()) }
         case "tee":
             let appends = arguments.contains { $0.text == "-a" }
             for argument in nonFlags {
@@ -280,17 +296,20 @@ public enum ShellRule {
                 worst = worse(worst, Assessment(.desconocido, "no se puede saber dónde escribe"))
                 continue
             }
-            let path = state.context.paths.canonicalize(absolute)
-            if state.context.paths.isProtected(path) {
-                worst = worse(worst, Assessment(.rutaProtegida, "escribe en una ruta protegida: \(path)"))
+            let paths = state.context.paths
+            let reached = reaches(absolute, state: state)
+            if let hit = reached.lazy.compactMap(paths.protectedSpelling).first {
+                worst = worse(worst, Assessment(.rutaProtegida,
+                                                "escribe en una ruta protegida: \(PathPolicy.label(reached[0], landingOn: hit))"))
                 continue
             }
-            if state.context.paths.isSensitive(path) {
-                worst = worse(worst, Assessment(.sensible, "toca un archivo sensible: \(path)"))
+            if let hit = reached.lazy.compactMap(paths.sensitiveSpelling).first {
+                worst = worse(worst, Assessment(.sensible,
+                                                "toca un archivo sensible: \(PathPolicy.label(reached[0], landingOn: hit))"))
                 continue
             }
-            if target.overwrites, state.context.paths.overwriteIsUnrecoverable(path) {
-                worst = worse(worst, Assessment(.sobrescribe, "sobrescribe un archivo fuera de git: \(path)"))
+            if target.overwrites, let lost = reached.first(where: paths.overwriteIsUnrecoverable) {
+                worst = worse(worst, Assessment(.sobrescribe, "sobrescribe un archivo fuera de git: \(lost)"))
                 continue
             }
             worst = worse(worst, Assessment(.cambioLocal, "cambio local"))
@@ -316,9 +335,247 @@ public enum ShellRule {
         for word in words {
             guard !word.expands, !word.substitutes,
                   let absolute = resolve(word.text, state: state) else { continue }
-            let path = state.context.paths.canonicalize(absolute)
-            if state.context.paths.isProtected(path) {
-                worst = worse(worst, Assessment(.rutaProtegida, "escribe en una ruta protegida: \(path)"))
+            let reached = reaches(absolute, state: state)
+            if let hit = reached.lazy.compactMap(state.context.paths.protectedSpelling).first {
+                worst = worse(worst, Assessment(.rutaProtegida,
+                                                "escribe en una ruta protegida: \(PathPolicy.label(reached[0], landingOn: hit))"))
+            }
+        }
+        return worst
+    }
+
+    // MARK: - Links made on this line
+
+    /// The spellings to judge for `absolute`: the path as written and, when an
+    /// earlier `ln` on this line turns part of it into a link, where that
+    /// leads. Never empty; the first is always the path as written.
+    static func reaches(_ absolute: String, state: RuleState) -> [String] {
+        let paths = state.context.paths
+        var found = [paths.canonicalize(absolute)]
+        if let through = throughMadeLinks(absolute, state: state) {
+            let other = paths.canonicalize(through)
+            if other != found[0] { found.append(other) }
+        }
+        return found
+    }
+
+    /// Reads `absolute` as if the links this line has already made were on
+    /// disk; nil when none of them is on the way.
+    ///
+    /// The path policy follows links by asking the disk, and the rule runs
+    /// before the command does. `ln -s ~ h && echo x >> h/.gitconfig` names
+    /// nothing protected until `h` exists — so each component is checked
+    /// against what the line itself is about to create, before any `..` is
+    /// collapsed: `d/../x` leaves through wherever `d` points.
+    static func throughMadeLinks(_ absolute: String, state: RuleState) -> String? {
+        guard !state.madeLinks.isEmpty else { return nil }
+        let paths = state.context.paths
+        var pending = absolute.split(separator: "/").map(String.init)
+        var walked = ""
+        var index = 0
+        var hops = 0
+        var changed = false
+        while index < pending.count {
+            let next = walked + "/" + pending[index]
+            if hops < 16, let target = state.madeLinks[paths.canonicalize(next)] {
+                pending = target.split(separator: "/").map(String.init) + pending[(index + 1)...]
+                walked = ""
+                index = 0
+                hops += 1
+                changed = true
+                continue
+            }
+            walked = next
+            index += 1
+        }
+        guard changed else { return nil }
+        return walked.isEmpty ? "/" : walked
+    }
+
+    private static func makesSymbolicLinks(_ arguments: [ShellWord]) -> Bool {
+        arguments.contains { flag in
+            flag.text == "--symbolic" || (flag.text.hasPrefix("-") && !flag.text.hasPrefix("--") && flag.text.contains("s"))
+        }
+    }
+
+    /// GNU's `-t DIR`, `--target-directory DIR` or `--target-directory=DIR`:
+    /// the folder that receives every other word. `index` is its position
+    /// in `arguments` when it is a word of its own, nil when it rides inside
+    /// the `=` form. A short cluster that ends in `t` (`-rt`, `-st`) takes
+    /// the next word too.
+    static func targetFolder(_ arguments: [ShellWord]) -> (word: ShellWord, index: Int?)? {
+        let long = "--target-directory"
+        for (index, word) in arguments.enumerated() {
+            let text = word.text
+            if text.hasPrefix(long + "=") {
+                let value = String(text.dropFirst(long.count + 1))
+                return (ShellWord(text: value, expands: word.expands, substitutes: word.substitutes,
+                                  quoted: word.quoted), nil)
+            }
+            let takesNext = text == long || (text.hasPrefix("-") && !text.hasPrefix("--") && text.hasSuffix("t"))
+            if takesNext {
+                let next = index + 1
+                return next < arguments.count ? (arguments[next], next) : nil
+            }
+        }
+        return nil
+    }
+
+    /// The words that are not flags, leaving out the one at `skipping`.
+    private static func sourceWords(_ arguments: [ShellWord], skipping: Int?) -> [ShellWord] {
+        arguments.indices
+            .filter { $0 != skipping && !arguments[$0].text.hasPrefix("-") }
+            .map { arguments[$0] }
+    }
+
+    /// GNU's `-t dir` puts the receiving folder first instead of last.
+    private static func namesItsFolderFirst(_ arguments: [ShellWord]) -> Bool {
+        arguments.contains { flag in
+            flag.text.hasPrefix("--target-directory")
+                || (flag.text.hasPrefix("-") && !flag.text.hasPrefix("--") && flag.text.contains("t"))
+        }
+    }
+
+    private static func isRelative(_ text: String) -> Bool {
+        !text.hasPrefix("/") && text != "~" && !text.hasPrefix("~/")
+    }
+
+    /// The last name of what a word points at: `~` is the home folder's name.
+    private static func landingName(_ word: ShellWord, state: RuleState) -> String? {
+        let spelled = isRelative(word.text) ? word.text : (resolve(word.text, state: state) ?? word.text)
+        let name = (spelled as NSString).lastPathComponent
+        return name.isEmpty || name == "/" || name == "." || name == ".." ? nil : name
+    }
+
+    /// Whether `destination` receives files rather than being replaced by one.
+    private static func isFolder(_ destination: ShellWord, among count: Int, state: RuleState) -> Bool {
+        if destination.text.hasSuffix("/") || count > 2 { return true }
+        guard let absolute = resolve(destination.text, state: state) else { return false }
+        return reaches(absolute, state: state).contains(where: state.context.paths.probe.isDirectory)
+    }
+
+    /// Remembers what `ln` is about to create, so the rest of the line is
+    /// read as if the link were already there (`throughMadeLinks`).
+    private static func noteMadeLinks(_ arguments: [ShellWord], state: inout RuleState) {
+        let nonFlags = nonFlagArguments(arguments)
+        guard !nonFlags.isEmpty,
+              !nonFlags.contains(where: { $0.expands || $0.substitutes }) else { return }
+        let symbolic = makesSymbolicLinks(arguments)
+
+        // Where the links land: inside a folder, under their own names, or
+        // as the one name given. With a single word they land right here.
+        var folder: String?
+        var single: String?
+        let sources: [ShellWord]
+        if let (target, targetIndex) = targetFolder(arguments) {
+            guard !target.expands, !target.substitutes,
+                  let absolute = resolve(target.text, state: state) else { return }
+            folder = absolute
+            sources = sourceWords(arguments, skipping: targetIndex)
+        } else if nonFlags.count >= 2, let destination = nonFlags.last {
+            guard let absolute = resolve(destination.text, state: state) else { return }
+            if isFolder(destination, among: nonFlags.count, state: state) { folder = absolute } else { single = absolute }
+            sources = Array(nonFlags.dropLast())
+        } else {
+            guard state.dirKnown else { return }
+            folder = state.dir.isEmpty ? "/" : state.dir
+            sources = nonFlags
+        }
+
+        for source in sources {
+            let link: String
+            if let single {
+                link = single
+            } else if let folder, let name = landingName(source, state: state) {
+                link = folder + "/" + name
+            } else {
+                continue
+            }
+            // The text of a symbolic link is read from the folder it lives in.
+            let target = symbolic && isRelative(source.text)
+                ? (link as NSString).deletingLastPathComponent + "/" + source.text
+                : resolve(source.text, state: state)
+            if let target { state.pendingLinks[state.context.paths.canonicalize(link)] = target }
+        }
+    }
+
+    /// `cp tool dir` writes `dir/tool`. When the destination is a folder, the
+    /// file that lands in it is what gets written, so it is judged as well:
+    /// `cp tmp/.gitconfig ~` replaces `~/.gitconfig`.
+    private static func appendLandingTargets(_ arguments: [ShellWord], state: RuleState,
+                                             targets: inout [WriteTarget]) {
+        let destination: ShellWord
+        let sources: [ShellWord]
+        if let (target, targetIndex) = targetFolder(arguments) {
+            guard !target.expands, !target.substitutes else { return }
+            destination = target
+            sources = sourceWords(arguments, skipping: targetIndex)
+        } else {
+            let nonFlags = nonFlagArguments(arguments)
+            guard nonFlags.count >= 2, let last = nonFlags.last, !last.expands, !last.substitutes,
+                  isFolder(last, among: nonFlags.count, state: state) else { return }
+            destination = last
+            sources = Array(nonFlags.dropLast())
+        }
+        var folder = destination.text
+        while folder.count > 1 && folder.hasSuffix("/") { folder.removeLast() }
+        for source in sources where !source.expands && !source.substitutes {
+            guard let name = landingName(source, state: state) else { continue }
+            let landed = ShellWord(text: folder == "/" ? "/" + name : folder + "/" + name,
+                                   expands: false, substitutes: false, quoted: destination.quoted)
+            targets.append(WriteTarget(word: landed, overwrites: true))
+        }
+    }
+
+    /// A link is a second name for what it points at: once it exists, writing
+    /// to the new name writes there, and reading it reads there. The path
+    /// policy follows links that are already on disk, but the rule runs
+    /// before the command does — in `ln -s ~/.zshrc x && echo y >> x` there
+    /// is no `x` yet to follow. So the link is judged here, when it is made,
+    /// by what it will point at. That covers hard links too, which leave
+    /// nothing to follow afterwards.
+    static func reviewLinkSources(_ arguments: [ShellWord], state: RuleState) -> Assessment? {
+        let nonFlags = nonFlagArguments(arguments)
+        let symbolic = makesSymbolicLinks(arguments)
+        // `ln a b`: b is the link. `ln a b dir/`: the links land in dir. With
+        // one name alone the link lands here, so there is no other folder to
+        // read its text from. GNU's `-t dir` puts the folder first instead;
+        // rather than guess which word is which, every one is judged.
+        let namesItsFolder = namesItsFolderFirst(arguments)
+        let sources = namesItsFolder || nonFlags.count < 2 ? nonFlags : Array(nonFlags.dropLast())
+        let destination = namesItsFolder || nonFlags.count < 2 ? nil : nonFlags.last
+        let paths = state.context.paths
+
+        var worst: Assessment?
+        for source in sources {
+            if source.expands || source.substitutes {
+                worst = worse(worst, Assessment(.desconocido, "no se puede saber a dónde apunta el enlace"))
+                continue
+            }
+            var candidates: [String] = []
+            if let fromHere = resolve(source.text, state: state) { candidates.append(fromHere) }
+            // The text of a symbolic link is read from the folder the link
+            // lives in, not from here: `ln -s ../../.gitconfig sub/g` points
+            // two folders above `sub`. The destination may be the link or the
+            // folder that receives it, so both are tried.
+            if symbolic, isRelative(source.text), let destination, !destination.expands, !destination.substitutes,
+               let landing = resolve(destination.text, state: state) {
+                candidates.append(landing + "/" + source.text)
+                candidates.append((landing as NSString).deletingLastPathComponent + "/" + source.text)
+            }
+            if candidates.isEmpty {
+                worst = worse(worst, Assessment(.desconocido, "no se puede saber a dónde apunta el enlace"))
+                continue
+            }
+            for candidate in candidates {
+                let reached = reaches(candidate, state: state)
+                if let hit = reached.lazy.compactMap(paths.protectedSpelling).first {
+                    worst = worse(worst, Assessment(.rutaProtegida,
+                                                    "enlaza una ruta protegida: \(PathPolicy.label(reached[0], landingOn: hit))"))
+                } else if let hit = reached.lazy.compactMap(paths.sensitiveSpelling).first {
+                    worst = worse(worst, Assessment(.sensible,
+                                                    "enlaza un archivo sensible: \(PathPolicy.label(reached[0], landingOn: hit))"))
+                }
             }
         }
         return worst
@@ -345,9 +602,9 @@ public enum ShellRule {
 
         for candidate in candidates {
             guard !candidate.expands, !candidate.substitutes else { continue }
-            let path = state.context.paths.canonicalize(resolveForRead(candidate.text, state: state))
-            if state.context.paths.isSensitive(path) {
-                return Assessment(.sensible, "toca un archivo sensible: \(path)")
+            let reached = reaches(resolveForRead(candidate.text, state: state), state: state)
+            if let hit = reached.lazy.compactMap(state.context.paths.sensitiveSpelling).first {
+                return Assessment(.sensible, "toca un archivo sensible: \(PathPolicy.label(reached[0], landingOn: hit))")
             }
         }
         return nil

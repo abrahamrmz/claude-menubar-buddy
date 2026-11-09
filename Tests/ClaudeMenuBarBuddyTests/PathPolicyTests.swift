@@ -99,4 +99,115 @@ import BuddyCore
     func lookAlikesAreNotProtected(path: String) {
         #expect(!policy.isProtected(path))
     }
+
+    // A destination can name the folder instead of the file inside it:
+    // `cp tool /opt/homebrew/bin` writes /opt/homebrew/bin/tool.
+    @Test(arguments: [
+        "/opt/homebrew/bin", "/bin", "/etc", "/private/etc", "/usr", "/sbin", "/Library",
+        "/Users/u/Library/Application Support/Claude", "/Users/u/Library/Application Support/Code/User",
+        "/Users/u/Desktop/repos/claude-menubar-buddy/.build", "/OPT/Homebrew/bin",
+    ])
+    func foldersThatHoldProtectedFilesAreProtected(path: String) {
+        #expect(policy.isProtected(path), "naming the folder already writes inside it: \(path)")
+    }
+
+    @Test(arguments: [
+        "/", "/tmp", "/Users/u", "/Users/u/Library", "/Users/u/.config", "/opt/homebrew", "/opt",
+        "/tmp/proyecto/bin", "/tmp/proyecto/etc", "/Users/u/Library/Application Support",
+        // `*.git/*` guards what a bare repo holds; a file or a new folder called so is just a name.
+        "/tmp/repo.git", "/tmp/p/notes.git",
+    ])
+    func foldersAboveProtectedOnesStayOrdinary(path: String) {
+        #expect(!policy.isProtected(path), "should not be protected: \(path)")
+    }
+
+    // Same for secrets: `cp -r ~/.aws /tmp/a` carries the credentials to a
+    // place where no pattern recognises them any more.
+    @Test(arguments: [
+        "/Users/u/.aws", "/Users/u/.kube", "/Users/u/.config/gh", "/Users/u/.cline/data",
+        "/Users/u/Library/Keychains", "/Users/u/.AWS",
+    ])
+    func foldersThatHoldSecretsAreSensitive(path: String) {
+        #expect(policy.isSensitive(path), "copying the folder copies the secrets: \(path)")
+    }
+
+    @Test(arguments: ["/", "/tmp/p", "/Users/u", "/Users/u/.config", "/Users/u/.cline", "/Users/u/Library", "/tmp/p/credenciales-docs"])
+    func foldersAboveSecretsStayOrdinary(path: String) {
+        #expect(!policy.isSensitive(path), "should not be sensitive: \(path)")
+    }
+
+    /// `credenciales` is also just a word: an argument to echo, a search
+    /// term. It only names secrets where a folder called so really exists.
+    @Test func aSecretsFolderKnownByNameCountsOnlyWhereItExists() {
+        let probe = StubProbe(dirs: ["/", "/tmp/p", "/tmp/p/credenciales"])
+        let withFolder = PathPolicy(home: "/Users/u", pathDirs: [], tempDirs: [], probe: probe)
+        #expect(withFolder.isSensitive("/tmp/p/credenciales"))
+        #expect(!policy.isSensitive("/tmp/p/credenciales"))
+    }
+
+    // The data volume is mounted at /System/Volumes/Data and its folders are
+    // firmlinked into the root: both spellings open the same file, and
+    // realpath(3) leaves the long one alone.
+    @Test(arguments: [
+        "/System/Volumes/Data/Users/u/.gitconfig", "/System/Volumes/Data/Users/u/.config/claude-menubar-buddy/auto_mode",
+        "/system/volumes/data/Users/u/.gitconfig", "/System/Volumes/Data/private/etc/hosts",
+        "/System/Volumes/Data/opt/homebrew/bin/jq", "/System/Volumes/Data/Users/u/.claude.json",
+        // The fold has to come after `..` is settled, or stepping out and back in walks around it.
+        "/System/Volumes/Data/../Data/Users/u/.gitconfig", "/System/Volumes/Data/./../Data/Users/u/.gitconfig",
+        "/System/Volumes/Data/..//Data/Users/u/.gitconfig", "/System/Volumes/Data/x/../Users/u/.gitconfig",
+    ])
+    func theDataVolumeSpellingIsTheSameFile(path: String) {
+        #expect(policy.isProtected(path), "should be protected: \(path)")
+    }
+
+    @Test func theDataVolumeSpellingOfASecretIsSensitive() {
+        #expect(policy.isSensitive("/System/Volumes/Data/Users/u/.aws/credentials"))
+        #expect(policy.isSensitive("/System/Volumes/Data/Users/u/.docker/config.json"))
+    }
+
+    /// A folder link can lead into the data volume too.
+    @Test func aFolderThatResolvesIntoTheDataVolumeIsFolded() {
+        let probe = StubProbe(dirs: ["/"], aliases: ["/tmp/d": "/System/Volumes/Data/Users/u"])
+        let p = PathPolicy(home: "/Users/u", pathDirs: [], tempDirs: [], probe: probe)
+        #expect(p.canonicalize("/tmp/d/.gitconfig") == "/Users/u/.gitconfig")
+        #expect(p.isProtected("/tmp/d/.gitconfig"))
+    }
+
+    /// /.vol/<device>/<inode> opens a file by number, with no name to judge.
+    @Test func aFileOpenedByNumberIsNeverOrdinary() {
+        #expect(policy.isProtected("/.vol/16777220/8675309"))
+        #expect(policy.isSensitive("/.vol/16777220/8675309"))
+    }
+
+    // The volume folds more than ASCII case: the long s (U+017F) is an `s`
+    // and the Kelvin sign (U+212A) is a `k`, and HFS+ ignores zero-width
+    // characters altogether. Each of these opens the protected file.
+    @Test(arguments: [
+        "/Users/u/.z\u{017F}hrc", "/Users/u/.\u{017F}sh/authorized_keys", "/tmp/p/.g\u{200C}it/config",
+        "/tmp/p/.hus\u{212A}y/pre-commit", "/Users/u/.git\u{FEFF}config",
+    ])
+    func lookAlikeLettersTheVolumeFoldsAreFoldedHere(path: String) {
+        #expect(policy.isProtected(path), "should be protected: \(path)")
+    }
+
+    @Test(arguments: ["/Users/u/.ssh/id_ecdsa", "/Users/u/.ssh/id_dsa", "/tmp/p/llaves/id_ecdsa.bak"])
+    func otherPrivateKeyNamesAreSensitive(path: String) {
+        #expect(policy.isSensitive(path), "should be sensitive: \(path)")
+    }
+
+    @Test func lookAlikeLettersInASecretNameAreFolded() {
+        #expect(policy.isSensitive("/tmp/p/.env.\u{017F}taging"))
+        #expect(policy.isSensitive("/tmp/p/\u{017F}ecrets.json"))
+    }
+
+    // What isn't there yet can't be a link, so `..` after it is plain text.
+    @Test func dotDotAfterAMissingFolderIsCollapsed() {
+        let probe = StubProbe(dirs: ["/", "/Users/u/repo"])
+        let p = PathPolicy(home: "/Users/u", pathDirs: [], tempDirs: [], probe: probe)
+        #expect(p.canonicalize("/Users/u/repo/nuevo/../../.gitconfig") == "/Users/u/.gitconfig")
+        #expect(p.canonicalize("/Users/u/repo/nuevo/..") == "/Users/u/repo")
+        #expect(p.canonicalize("/Users/u/repo/a/b/../c.txt") == "/Users/u/repo/a/c.txt")
+        #expect(p.canonicalize("/../..") == "/")
+        #expect(p.isProtected("/Users/u/repo/nuevo/../../.gitconfig"))
+    }
 }

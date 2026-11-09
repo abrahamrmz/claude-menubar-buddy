@@ -56,6 +56,115 @@ func category(_ command: String) -> RuleCategory {
     @Test(arguments: ["cat .env", "grep TOKEN .env.production", "cat ~/.aws/credentials", "cp .env /tmp/x", "cat < .env", "head --file=.env"])
     func sensitive(command: String) { #expect(category(command) == .sensible, "\(command)") }
 
+    // The folder named as the destination, not the file that lands in it.
+    @Test(arguments: [
+        "cp jq /opt/homebrew/bin", "mv tool /opt/homebrew/bin", "cp -t /opt/homebrew/bin tool", "cp x /etc",
+        "cp x /Library", "cp -r payload /usr",
+    ])
+    func protectedFolderAsDestination(command: String) { #expect(category(command) == .rutaProtegida, "\(command)") }
+
+    @Test(arguments: ["cp -r ~/.aws /tmp/a", "cp -R ~/.kube /tmp/k", "cp -r ~/.config/gh /tmp/g"])
+    func copyingAFolderOfSecrets(command: String) { #expect(category(command) == .sensible, "\(command)") }
+
+    // A word that happens to be the name of a guarded folder is still a word.
+    @Test(arguments: ["echo credenciales", "grep -rn credenciales src", "ls credenciales-viejas"])
+    func aWordIsNotAFolderOfSecrets(command: String) { #expect(category(command) == .lectura, "\(command)") }
+
+    @Test(arguments: ["mkdir repo.git", "touch notes.git", "cp a.txt copia.git"])
+    func aNameEndingInDotGitIsNotABareRepo(command: String) { #expect(category(command) == .cambioLocal, "\(command)") }
+
+    // A link is a second name for what it points at. The rule reads the disk
+    // before the command runs, so a link made and used in the same line is
+    // not there yet to be followed: it has to be judged when it is made.
+    @Test(arguments: [
+        "ln -s ~/.zshrc x", "ln -s ~/.zshrc x && echo y >> x", "ln ~/.gitconfig duro && echo y >> duro",
+        "ln -sf /etc/hosts h", "ln -s ~/.ssh llaves", "ln -s ../../.gitconfig sub/g", "ln -s ../.gitconfig g",
+        "ln -s ~/.zshrc ~/.gitconfig destino/", "ln -sfn ~/.config/claude-menubar-buddy cfg",
+        "ln -s -t destino ~/.gitconfig", "ln -st destino ~/.gitconfig",
+    ])
+    func linkingAProtectedPath(command: String) { #expect(category(command) == .rutaProtegida, "\(command)") }
+
+    @Test(arguments: ["ln -s ~/.aws aw", "ln -s ~/.aws aw && cat aw/credentials", "ln -s .env e", "ln ~/.netrc n",
+                      "ln -s ../../.aws/credentials sub/c"])
+    func linkingASecret(command: String) { #expect(category(command) == .sensible, "\(command)") }
+
+    @Test(arguments: ["ln -s $DESTINO x", "ln -s \"$HOME/.zshrc\" x", "ln -s $(pwd)/a b"])
+    func linkingSomethingThatCannotBeRead(command: String) { #expect(category(command) == .desconocido, "\(command)") }
+
+    @Test(arguments: ["ln -s a.txt alias.txt", "ln -sf build/out actual", "ln -s ../Documents/a.txt doc", "ln b.txt copia"])
+    func ordinaryLinks(command: String) { #expect(category(command) == .cambioLocal, "\(command)") }
+
+    /// The home folder exists here, which the shared context leaves out.
+    private static let homeContext = RuleContext(
+        cwd: "/Users/u/repo",
+        paths: PathPolicy(home: "/Users/u",
+                          pathDirs: ["/usr/bin", "/bin", "/opt/homebrew/bin"],
+                          tempDirs: ["/tmp", "/private/tmp"],
+                          probe: StubProbe(dirs: ["/", "/Users/u", "/Users/u/repo", "/Users/u/Documents", "/Users/u/.config"],
+                                           files: ["/Users/u/Documents/a.txt", "/Users/u/repo/b.txt"],
+                                           gitRoots: ["/Users/u/repo"])))
+
+    private func atHome(_ command: String) -> RuleCategory {
+        ShellRule.assess(command, context: Self.homeContext).category
+    }
+
+    // A link to a folder that merely contains something protected is not
+    // protected itself — but the rest of the line can walk through it. The
+    // link isn't on disk yet, so the line is read as if it already were.
+    @Test(arguments: [
+        "ln -s ~ h && echo X >> h/.gitconfig", "ln -s ~/.config c && echo X > c/claude-menubar-buddy/always_allow.json",
+        "ln -s ~/Documents d && echo X >> d/../.gitconfig", "ln -s ~ h && echo X >> ./h/.gitconfig",
+        "ln -s ~ h; cd sub; echo X >> ../h/.gitconfig", "ln -s ~ h && cd h && echo X >> .gitconfig",
+        "ln -s ~ a && ln -s a b && echo X >> b/.gitconfig", "ln -s ~ && echo X >> u/.gitconfig",
+        "ln -s ~ ~/Documents && echo X >> ~/Documents/u/.gitconfig", "ln -s ~ h && cp nuevo h/.gitconfig",
+        "ln -st enlaces ~ && echo X >> enlaces/u/.gitconfig", "ln -s -t enlaces ~ && echo X >> enlaces/u/.gitconfig",
+    ])
+    func writingThroughALinkMadeOnTheSameLine(command: String) {
+        #expect(atHome(command) == .rutaProtegida, "\(command)")
+    }
+
+    @Test(arguments: ["ln -s ~ h && cat h/.aws/credentials", "ln -s ~/.config c && cat c/gh/hosts.yml",
+                      "ln -s ~ h && cat < h/.netrc"])
+    func readingThroughALinkMadeOnTheSameLine(command: String) {
+        #expect(atHome(command) == .sensible, "\(command)")
+    }
+
+    @Test(arguments: ["ln -s build/out actual && echo x > actual/log.txt", "ln -s ../Documents docs && cat docs/a.txt",
+                      "ln -s ~ h && cat h/Documents/a.txt"])
+    func ordinaryUseOfALinkMadeOnTheSameLine(command: String) {
+        #expect(atHome(command) == .cambioLocal, "\(command)")
+    }
+
+    // `cp tool dir` writes dir/tool. When the destination is a folder, what
+    // lands in it is the file that gets written.
+    @Test(arguments: [
+        "cp tmp/.gitconfig ~", "mv tmp/.gitconfig ~/", "install tmp/.gitconfig ~", "ln -f tmp/.gitconfig ~",
+        "cp nuevo/.zshrc ~/Documents/", "cp a tmp/.gitconfig b ~",
+        // GNU's -t names the folder first.
+        "cp -t ~ tmp/.gitconfig", "cp -rt ~ tmp/.gitconfig", "mv -t ~ tmp/.gitconfig", "install -t ~ tmp/.gitconfig",
+        "cp --target-directory=/Users/u tmp/.gitconfig", "cp --target-directory /Users/u tmp/.gitconfig",
+        "cp -t ~ a.txt tmp/.gitconfig",
+    ])
+    func theFileThatLandsInAFolder(command: String) { #expect(atHome(command) == .rutaProtegida, "\(command)") }
+
+    // With -t first, everything after the folder is a source: moving one of
+    // them out of a protected place is a write there.
+    @Test(arguments: ["mv -t /tmp ~/.zshrc", "mv -t /tmp a.txt ~/.zshrc", "mv --target-directory=/tmp ~/.zshrc"])
+    func movingAProtectedFileOutNamingTheFolderFirst(command: String) {
+        #expect(atHome(command) == .rutaProtegida, "\(command)")
+    }
+
+    @Test(arguments: ["cp -t build a.txt b.txt", "mv -t ~/Documents notas.txt", "cp -rt dist src"])
+    func ordinaryCopiesNamingTheFolderFirst(command: String) { #expect(atHome(command) == .cambioLocal, "\(command)") }
+
+    @Test func aFileThatLandsOnTopOfAnotherIsAnOverwrite() {
+        #expect(atHome("cp otra/a.txt ~/Documents") == .sobrescribe)   // ~/Documents/a.txt exists, outside git
+        #expect(atHome("cp -t ~/Documents otra/a.txt") == .sobrescribe)
+        #expect(atHome("cp b.txt ~/Documents") == .cambioLocal)        // nothing there called b.txt
+        #expect(atHome("cp a.txt copia") == .cambioLocal)              // `copia` is not a folder
+    }
+
+
     @Test(arguments: ["echo x > ~/Documents/a.txt", "cp b.txt ~/Documents/a.txt", "tee ~/Documents/a.txt < b.txt"])
     func unrecoverableOverwrite(command: String) { #expect(category(command) == .sobrescribe, "\(command)") }
 
