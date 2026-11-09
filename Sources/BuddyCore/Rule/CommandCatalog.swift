@@ -57,6 +57,7 @@ enum CommandCatalog {
         "kubectl", "helm", "terraform", "pulumi", "ansible", "ansible-playbook",
         "psql", "pg_dump", "createdb", "dropdb", "mysql", "mysqldump", "mongo", "mongosh", "redis-cli",
         "ngrok", "cloudflared", "mail", "mailx", "sendmail", "msmtp", "mutt", "sshpass", "mosh", "lftp",
+        "glab", "tea", "tailscale",
         "osascript", "open", "shortcuts", "automator",
         "launchctl", "crontab", "at", "batch", "su",
         "security", "tccutil", "csrutil", "spctl", "nvram", "systemsetup", "networksetup", "scutil",

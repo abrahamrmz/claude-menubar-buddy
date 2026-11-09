@@ -1702,7 +1702,7 @@ Nada de esto cambia una categoría: solo suma retenciones. `RuleInvariantTests` 
 - Consume: `ShellScript.parse(_:)` y su `commands` (una sustitución trae sus comandos antes que el comando que la contiene), `namesTheBuddy(_:)`, `state.context.paths.home`.
 - Produce: nada público. Funciones privadas nuevas en `ShellRule` (`ShellRule+Commands.swift`): `stopsTheBuddy(_:arguments:home:)`, `buddyProcessTexts(home:)`, `patternReaches(_:_:)`, `searchReaches(_:_:)`, `signalsEveryProcess(_:)` y la constante `processSearchers`.
 
-- [ ] **Paso 1: escribir los tests**
+- [x] **Paso 1: escribir los tests**
 
 Crea `Tests/ClaudeMenuBarBuddyTests/SessionHoldReviewTests.swift`:
 
@@ -1767,12 +1767,12 @@ import BuddyCore
 }
 ```
 
-- [ ] **Paso 2: verificar que fallan**
+- [x] **Paso 2: verificar que fallan**
 
 Corre: `swift build && swift test --filter SessionHoldReviewTests`
 Esperado: `Test run with 6 tests failed` con 25 fallos. Pasan desde ya `otherSignalsDoNotStopIt`, `theCategoryStaysIrreversible` y el caso `kill $(pidof ClaudeMenuBarBuddy)`, que nombra al buddy tal cual.
 
-- [ ] **Paso 3: implementar**
+- [x] **Paso 3: implementar**
 
 **`Sources/BuddyCore/Rule/CommandCatalog.swift`:** en `sessionHeld`, agrega `"glab", "tea", "tailscale",` en una línea nueva justo después de la de `"ngrok", "cloudflared", …, "lftp",`.
 
@@ -1881,14 +1881,14 @@ Decisiones que este código fija:
 - **Dentro de `kill $(…)`** solo cuentan los patrones de `pgrep`, `pidof`, `grep`, `egrep` y `rg`. `kill $(cat servidor.pid)` y `kill $(lsof -ti:8000)` siguen pasando: no se sabe qué PID traen, y detenerlos sería tarjeta en cada servidor de desarrollo.
 - **Un `kill` con un número de proceso conocido** (`kill 1234`) sigue pasando, como decía la spec.
 
-- [ ] **Paso 4: correr todo**
+- [x] **Paso 4: correr todo**
 
 Corre: `swift build && swift test`
 Esperado: todo en verde, 342 tests. `RuleInvariantTests`, `SessionHoldRecommendedTests` y `SessionHoldTests` sin cambios.
 
 Corre también `swift test --filter hugeCommandStaysFast` tres veces y anota los tiempos. Esperado: alrededor de 0.16 s.
 
-- [ ] **Paso 5: commit**
+- [x] **Paso 5: commit**
 
 ```bash
 git add Tests/ClaudeMenuBarBuddyTests/SessionHoldReviewTests.swift Sources/BuddyCore/Rule/ShellRule+Commands.swift Sources/BuddyCore/Rule/CommandCatalog.swift docs/superpowers/plans/2026-11-08-entrega-5-auto-completo-por-sesion.md

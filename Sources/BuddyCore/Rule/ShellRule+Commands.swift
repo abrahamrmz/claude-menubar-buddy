@@ -755,7 +755,8 @@ extension ShellRule {
         if CommandCatalog.sessionHeld.contains(name) || (name == "defaults" && arguments.first?.text != "read") {
             return "queda fuera del auto completo: \(name)"
         }
-        if ["kill", "pkill", "killall"].contains(name), arguments.contains(where: namesTheBuddy) {
+        if ["kill", "pkill", "killall"].contains(name),
+           stopsTheBuddy(name, arguments: arguments, home: state.context.paths.home) {
             return "puede detener al buddy"
         }
         if deleters.contains(name) || name == "dd",
@@ -905,6 +906,87 @@ extension ShellRule {
         if state.depth >= inlineShellDepthLimit { return "demasiados shells en línea anidados" }
         let context = RuleContext(cwd: state.dirKnown ? state.dir : "", paths: state.context.paths)
         return assess(text, context: context, depth: state.depth + 1, links: state.madeLinks).effectiveHold
+    }
+
+    /// Whether this kill, pkill or killall can reach the buddy (spec 5.3
+    /// point 13): by its name, by a pattern that matches it, by a search
+    /// that finds it, or by signalling every process at once.
+    private static func stopsTheBuddy(_ name: String, arguments: [ShellWord], home: String) -> Bool {
+        if arguments.contains(where: namesTheBuddy) { return true }
+        let buddy = buddyProcessTexts(home: home)
+        switch name {
+        case "pkill", "killall":
+            // pkill's pattern, and killall -m's, is a regular expression
+            // searched in the process name (or the whole command line with
+            // -f). Every word that isn't a flag is tried: a user name or a
+            // process that isn't the buddy won't match.
+            return arguments.contains { word in
+                !word.text.hasPrefix("-")
+                    && (word.expands || word.substitutes || patternReaches(word.text, buddy))
+            }
+        case "kill":
+            if signalsEveryProcess(arguments) { return true }
+            // `kill $(pgrep -f Buddy)`: the PIDs come from a search, and the
+            // search's pattern decides.
+            return arguments.contains { $0.substitutes && searchReaches($0.text, buddy) }
+        default:
+            return false
+        }
+    }
+
+    /// What a process search can see of the buddy: its name, and the command
+    /// line the LaunchAgent starts it with.
+    private static func buddyProcessTexts(home: String) -> [String] {
+        ["ClaudeMenuBarBuddy", home + "/Desktop/repos/claude-menubar-buddy/.build/debug/ClaudeMenuBarBuddy"]
+    }
+
+    /// An unanchored, case-insensitive search, as pkill -i does it. A pattern
+    /// the rule can't read is treated as one that matches.
+    private static func patternReaches(_ pattern: String, _ texts: [String]) -> Bool {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return true }
+        return texts.contains { text in
+            regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil
+        }
+    }
+
+    /// The commands inside `$(…)` or backticks that pick processes by a
+    /// pattern: pgrep, pidof and a grep over a listing.
+    private static let processSearchers: Set<String> = ["pgrep", "pidof", "grep", "egrep", "rg"]
+
+    private static func searchReaches(_ text: String, _ texts: [String]) -> Bool {
+        let inner = ShellScript.parse(text)
+        if inner.unparseable { return true }
+        return inner.commands.contains { command in
+            guard let head = command.words.first,
+                  processSearchers.contains((head.text as NSString).lastPathComponent) else { return false }
+            return command.words.dropFirst().contains { word in
+                !word.text.hasPrefix("-")
+                    && (word.expands || word.substitutes || patternReaches(word.text, texts))
+            }
+        }
+    }
+
+    /// `kill -9 -1`, `kill -- -1`, `kill -s KILL -1`: a PID of -1 means every
+    /// process you own. A `-1` in the signal's place (`kill -1 1234`) is SIGHUP.
+    private static func signalsEveryProcess(_ arguments: [ShellWord]) -> Bool {
+        var index = 0
+        var signalSeen = false
+        var optionsOver = false
+        while index < arguments.count {
+            let text = arguments[index].text
+            if !optionsOver && text == "--" {
+                optionsOver = true
+            } else if !optionsOver && !signalSeen && text.hasPrefix("-") {
+                signalSeen = true
+                if text == "-s" || text == "-n" { index += 1 }
+            } else if text == "-1" {
+                return true
+            } else {
+                optionsOver = true
+            }
+            index += 1
+        }
+        return false
     }
 
     /// `kill $(pgrep ClaudeMenuBarBuddy)` and `kill 1234` look alike; only the
