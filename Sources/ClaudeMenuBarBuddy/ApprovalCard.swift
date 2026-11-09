@@ -1,4 +1,5 @@
 import AppKit
+import BuddyCore
 import KeyboardShortcuts
 
 // The approval card's assembly and lifecycle: build it for a request,
@@ -91,6 +92,13 @@ extension AppDelegate {
             && (canAlwaysAllow || ((isEditTool || isPlan) && !autoModeEnabled && !req.isCritical))
         let quietRowHeight: CGFloat = 28
         let alwaysRowHeight: CGFloat = hasQuietRow ? quietRowHeight + gap : 0
+        // The widest grant the app has: offered only where it would cover
+        // this request, stacked above the quiet row, and with no shortcut —
+        // it has to come from a click (spec 9.1).
+        let offersSessionGrant = SessionGrantCard.offersGrant(agent: req.agent, session: req.session,
+                                                              coverable: req.sessionCoverable,
+                                                              hasChoices: req.choices != nil)
+        let sessionRowHeight: CGFloat = offersSessionGrant ? quietRowHeight + gap : 0
 
         // Why the card is here. The routine categories say it themselves
         // ("edición de archivo", "solo lee"), so only the ones that made the
@@ -125,7 +133,7 @@ extension AppDelegate {
         }
         let actionsHeight: CGFloat = question != nil
             ? optionHeights.reduce(0, +) + CGFloat(max(0, optionHeights.count - 1)) * optionGap
-            : buttonRowHeight + alwaysRowHeight
+            : buttonRowHeight + alwaysRowHeight + sessionRowHeight
         // Bottom to top: padding, hint bar, actions, the code well, header,
         // padding. The tail is NOT in here — it is the window's business, and
         // the card's own content lives entirely inside the rounded body.
@@ -421,6 +429,17 @@ extension AppDelegate {
             alwaysButtonRef = quietButton
         } else {
             currentQuietAction = nil
+        }
+
+        if offersSessionGrant {
+            let grantButton = pillButton(title: SessionGrantCard.buttonTitle, shortcut: "",
+                                         style: .quiet, action: #selector(allowAndGrantSession),
+                                         accessibility: SessionGrantCard.buttonAccessibility,
+                                         symbol: "forward.fill")
+            grantButton.toolTip = SessionGrantCard.buttonToolTip
+            grantButton.frame = NSRect(x: contentX, y: buttonsY + buttonRowHeight + gap + alwaysRowHeight,
+                                       width: cardWidth - contentX - pad, height: quietRowHeight)
+            card.addSubview(grantButton)
         }
 
         card.addSubview(hintBar(width: cardWidth, x: contentX, y: pad,

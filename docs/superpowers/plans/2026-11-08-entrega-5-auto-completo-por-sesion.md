@@ -5222,7 +5222,7 @@ func writeDecision(id: String, request: PendingRequest?, decision: String,
 func respond(_ decision: String, reason: String? = nil, sessionGrant: SessionGrant? = nil)
 ```
 
-- [ ] **Paso 1: la fila (`ApprovalCard.swift` → `showStatusBubble`)**
+- [x] **Paso 1: la fila (`ApprovalCard.swift` → `showStatusBubble`)**
 
 - Agrega `import BuddyCore` entre `import AppKit` e `import KeyboardShortcuts`.
 - Después de `let alwaysRowHeight: CGFloat = hasQuietRow ? quietRowHeight + gap : 0`:
@@ -5257,7 +5257,7 @@ Lo que **no** cambia, y por qué:
 - `guard floatingPetVisible, …` al principio de `showStatusBubble` se queda: con la mascota oculta no hay tarjeta ni botón (límite conocido de la spec 9.1).
 - Una tarjeta crítica cubrible (Python, `rm`, `.env`, web) hoy no tiene fila discreta; ahí la fila nueva es la única oferta, y ⌥⌘⏎ sigue siendo "permitir" simple, como hoy.
 
-- [ ] **Paso 2: la acción (`CardDecision.swift`)**
+- [x] **Paso 2: la acción (`CardDecision.swift`)**
 
 **`writeDecision`:** gana el parámetro `sessionGrant: SessionGrant? = nil` (firma del bloque Interfaces). Dentro del `if let req = request { … }`, después de `if let answers = answers { entry["answers"] = answers }`:
 
@@ -5355,12 +5355,12 @@ Por qué así:
 - **El barrido depende del agente.** En opencode lo hace el puente, sin la tarjeta actual (`excluding: id`), porque esa la contesta `respond` y una segunda respuesta sobraría. En Claude, `orderedRequests()` vuelve a leer la carpeta, y con eso `scanRequests` descarta las peticiones que pasaron su ventana antes de barrer.
 - **`decisions.jsonl` guarda `session: grant.sessionID`,** que en opencode es la raíz: la misma llave que llevan las líneas "encendida"/"apagada" de `auto_decisions.jsonl`.
 
-- [ ] **Paso 3: correr todo**
+- [x] **Paso 3: correr todo**
 
 Corre: `swift build && swift test`
 Esperado: compila sin errores y todo en verde, con el mismo número de tests que al terminar la tarea 12.
 
-- [ ] **Paso 4: revisar el diff**
+- [x] **Paso 4: revisar el diff**
 
 - `git grep -n "\.grant(" Sources/ClaudeMenuBarBuddy` aparece una sola vez, en `CardDecision.swift` (`sessionGrantStore.grant(grant, now: now)`): es el único lugar que crea concesiones.
 - `git grep -n "sweepCoveredCards" Sources/ClaudeMenuBarBuddy` aparece en `main.swift` (sin argumento, en `poll()`), en `CardDecision.swift` (con `excluding: id`), en `OpenCodeBridge.swift` (la definición, del bloque 3) y en el comentario de cabecera de `SessionGrants.swift`. Nada más.
@@ -5370,7 +5370,7 @@ Esperado: compila sin errores y todo en verde, con el mismo número de tests que
 - `showStatusBubble` sigue empezando con `guard floatingPetVisible, let petWindow = floatingWindow else { return }`.
 - `respond` sigue pasando por la ventana de 60 s antes de `writeDecision`, ahora a través de `retireIfPastAnswerWindow`.
 
-- [ ] **Paso 5: commit**
+- [x] **Paso 5: commit**
 
 ```bash
 git add Sources/ClaudeMenuBarBuddy/ApprovalCard.swift Sources/ClaudeMenuBarBuddy/CardDecision.swift
