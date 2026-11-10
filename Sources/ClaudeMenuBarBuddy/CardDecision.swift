@@ -295,7 +295,8 @@ extension AppDelegate {
     /// waiting on, the audit line, and clearing the request. Split out from
     /// respond() because a batch does this N times but animates once.
     func writeDecision(id: String, request: PendingRequest?, decision: String,
-                       reason: String? = nil, answers: [String: String]? = nil) {
+                       reason: String? = nil, answers: [String: String]? = nil,
+                       sessionGrant: SessionGrant? = nil) {
         DebugLog.note("decision \(decision) written for \(id)\(request.map { " (\($0.tool))" } ?? "")")
         if request?.agent == "opencode" {
             // opencode has no response file: the answer goes back over HTTP,
@@ -329,6 +330,12 @@ extension AppDelegate {
             // For a question, "answer" alone says nothing — the log needs to
             // record what was actually chosen on the user's behalf.
             if let answers = answers { entry["answers"] = answers }
+            // The approval that switched a session grant on says so, and
+            // names the grant's session: that is where the grant was born.
+            if let sessionGrant {
+                entry["grant"] = "session"
+                entry["session"] = sessionGrant.sessionID
+            }
             // Into the in-memory week as well as onto disk, so the summary in
             // the menu is current without the log being re-read.
             noteDecision(DecisionRecord(ts: entry["ts"] as? Double ?? Date().timeIntervalSince1970,
@@ -372,26 +379,11 @@ extension AppDelegate {
     /// hook as the permissionDecisionReason, so a card that offers a specific
     /// choice ("keep planning") can say which one was taken instead of a
     /// generic "denied".
-    func respond(_ decision: String, reason: String? = nil) {
+    func respond(_ decision: String, reason: String? = nil, sessionGrant: SessionGrant? = nil) {
         guard let id = currentRequestId, !isDismissing else { return }
-        // Nobody is listening past the hook's window: the native prompt owns
-        // the question now, and a response written here would be an orphan
-        // file plus a decisions.jsonl line claiming Claude was told something
-        // it never received. scanRequests already sweeps these once a second;
-        // this covers the sub-second race where the click lands first.
-        // Retiring goes through poll(), which fades the card neutrally (no
-        // ✓/✕ — the buddy decided nothing) or surfaces the next in line.
-        if let ts = currentRequest?.ts,
-           currentRequest?.agent != "opencode",
-           Date().timeIntervalSince1970 - ts > AppDelegate.hookAnswerWindow {
-            DebugLog.note("refused \(decision) for \(id): past the \(Int(AppDelegate.hookAnswerWindow))s answer window — nobody is listening, no log entry written")
-            try? FileManager.default.removeItem(at: dirURL.appendingPathComponent("request_\(id).json"))
-            respondedIds.insert(id)
-            poll()
-            return
-        }
+        if retireIfPastAnswerWindow(id: id, decision: decision) { return }
         writeDecision(id: id, request: currentRequest, decision: decision, reason: reason,
-                      answers: decision == "answer" ? collectedAnswers : nil)
+                      answers: decision == "answer" ? collectedAnswers : nil, sessionGrant: sessionGrant)
         // Verdict animation first — the decision is already on disk, so the
         // hook isn't waiting on this. setIdle + surfacing the next queued
         // request happen when the card finishes leaving, so back-to-back
@@ -407,6 +399,69 @@ extension AppDelegate {
             if decision == "deny" { self.flashMood("sad", for: 3.0) }
             self.poll()
         }
+    }
+
+    /// Nobody is listening past the hook's window: the native prompt owns
+    /// the question now, and a response written here would be an orphan
+    /// file plus a decisions.jsonl line claiming Claude was told something
+    /// it never received. scanRequests already sweeps these once a second;
+    /// this covers the sub-second race where the click lands first.
+    /// Retiring goes through poll(), which fades the card neutrally (no
+    /// ✓/✕ — the buddy decided nothing) or surfaces the next in line.
+    /// True when the card was retired this way.
+    func retireIfPastAnswerWindow(id: String, decision: String) -> Bool {
+        guard let ts = currentRequest?.ts,
+              currentRequest?.agent != "opencode",
+              Date().timeIntervalSince1970 - ts > AppDelegate.hookAnswerWindow else { return false }
+        DebugLog.note("refused \(decision) for \(id): past the \(Int(AppDelegate.hookAnswerWindow))s answer window — nobody is listening, no log entry written")
+        try? FileManager.default.removeItem(at: dirURL.appendingPathComponent("request_\(id).json"))
+        respondedIds.insert(id)
+        poll()
+        return true
+    }
+
+    /// The card's session-grant button (spec 9.1), in this order: the 1.5 s
+    /// guard; a Claude request past its window retires as today and nothing
+    /// is written; the grant is written before anything is answered, so the
+    /// session's next tool already finds it; the queue is swept; and only
+    /// then is this request approved, its decisions.jsonl line carrying the
+    /// grant. A grant that cannot be written leaves the card up and says so.
+    @objc func allowAndGrantSession() {
+        guard let id = currentRequestId, let req = currentRequest, !isDismissing,
+              SessionGrantCard.offersGrant(agent: req.agent, session: req.session,
+                                           coverable: req.sessionCoverable, hasChoices: req.choices != nil),
+              let agent = req.agent, let session = req.session else { return }
+        let now = Date()
+        guard CardSafety.sessionGrantMayFire(shownAt: currentCardShownAt, now: now) else {
+            playSound(.hotKeyBlocked)
+            shakeCard()
+            return
+        }
+        if retireIfPastAnswerWindow(id: id, decision: "allow") { return }
+        // opencode: the root of the asking session when its chain is known,
+        // the asking session itself otherwise (narrower, the safe side).
+        let grantSession = agent == "opencode"
+            ? (openCodeBridge?.grantSessionID(for: session) ?? session) : session
+        let grant = SessionGrantCard.makeGrant(agent: agent, sessionID: grantSession, cwd: req.cwd,
+                                               project: req.project, tool: req.tool, hint: req.hint, now: now)
+        guard sessionGrantStore.grant(grant, now: now) else {
+            DebugLog.note("session grant for \(id) could not be written — card stays")
+            playSound(.hotKeyBlocked)
+            shakeCard()
+            sendNotification(title: SessionGrantCard.grantFailedTitle, body: SessionGrantCard.grantFailedBody)
+            return
+        }
+        AutoLog.append(.grantStarted(grant, ts: now.timeIntervalSince1970), in: dirURL)
+        reloadSessionGrantCache()
+        refreshSessionGrantViews()
+        // What else the grant covers, before this card's own answer: opencode's
+        // tree through the bridge, Claude's session through the queue.
+        if agent == "opencode" {
+            openCodeBridge?.sweepCoveredCards(excluding: id)
+        } else {
+            sweepQueueBySessionGrants(orderedRequests().filter { $0.id != id })
+        }
+        respond("allow", sessionGrant: grant)
     }
 
     @objc func allow() { respond("allow") }

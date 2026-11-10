@@ -109,11 +109,19 @@ struct PendingRequest: Decodable {
     let critical: Bool?
     let reason: String?
 
+    // Which session asked, and whether a session grant would cover this
+    // request (buddy-rule's session_coverable). Optional on disk: a hook or a
+    // bridge older than the field writes neither, and then no grant is offered.
+    let session: String?
+    let sessionCoverableFlag: Bool?
+
     var isCritical: Bool { critical == true }
+    var sessionCoverable: Bool { sessionCoverableFlag == true }
 
     enum CodingKeys: String, CodingKey {
         case id, tool, hint, project, ts, cwd, choices, hidden
-        case agent, category, critical, reason
+        case agent, category, critical, reason, session
+        case sessionCoverableFlag = "session_coverable"
         case hostBundle = "host_bundle"
         case termProgram = "term_program"
     }
@@ -201,6 +209,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
     // The connection to the local opencode service. Nil until launch, and nil
     // forever if opencode never comes up — the app is fully usable without it.
     var openCodeBridge: OpenCodeBridge?
+
+    // The live session grants (session_auto/), cached so the icon, the menu
+    // and the queue sweep don't list that folder every second. Kept by
+    // SessionGrants.swift: reloaded when the folder's modification date
+    // changes, and every 30 ticks with the idle-expiry sweep.
+    var sessionGrants: [SessionGrantStatus] = []
+    var sessionGrantsFolderStamp: Date?
+    var sessionGrantTicks = 0
+
+    // "Auto completo: N sesiones" in the idle menu and in the pending one,
+    // kept so a change can be painted into them in place.
+    var idleSessionGrantsItem: NSMenuItem?
+    var pendingSessionGrantsItem: NSMenuItem?
 
     // One listing of the config directory per poll tick, shared by everyone
     // who reads it: pending requests, done markers, turn_start markers and the
@@ -457,6 +478,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         // variableLength, not squareLength: the icon grows a count and (in
         // auto mode) a bolt beside the panda.
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        // Before the first menu and icon: grants survive a restart of the
+        // buddy, and the icon has to show them from the first frame.
+        reloadSessionGrantCache()
         buildIdleMenu()
         setIdle()
         if floatingPetVisible { showFloatingPet() }
@@ -541,6 +565,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
         choiceIndex = 0
         collectedAnswers = [:]
         approvalHotKeys.disable()
+        pendingSessionGrantsItem = nil
         updateIdleTitle()
         statusItem.menu = idleMenu
         hideStatusBubble()
@@ -615,6 +640,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             captureDecisionStatsIfRequested()
         }
 
+        tickSessionGrants()
         processDoneMarkers()
         processCompactMarkers()
         // Background usage/mood/session-count refresh, throttled to every
@@ -635,7 +661,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, NSWind
             updatePetMood()
         }
 
-        let requests = orderedRequests()
+        // opencode's cards are the bridge's to sweep: it knows the session
+        // tree and answers over HTTP. Before the scan, so the request files
+        // it removes are not read below.
+        if sessionGrants.contains(where: { $0.grant.agent == "opencode" }) {
+            openCodeBridge?.sweepCoveredCards()
+        }
+        var requests = orderedRequests()
+        // Claude requests that arrived a moment before a grant was switched on.
+        if sessionGrants.contains(where: { $0.grant.agent == "claude" }), !requests.isEmpty {
+            let swept = sweepQueueBySessionGrants(requests)
+            requests.removeAll { swept.contains($0.id) }
+        }
         guard let first = requests.first else {
             if currentRequestId != nil {
                 // Resolved WITHOUT an app decision — hook timeout, answered

@@ -13,4 +13,14 @@ enum OpenCodeFixtures {
     static let executionFailed = #"{"id":"evt_12","created":12,"type":"session.execution.failed","data":{"sessionID":"ses_1","error":"x"}}"#
     static let executionInterrupted = #"{"id":"evt_13","created":13,"type":"session.execution.interrupted","data":{"sessionID":"ses_1","reason":"user"}}"#
     static let textDelta = #"{"id":"evt_14","created":14,"type":"session.text.delta","location":{"directory":"/tmp/oc-prueba"},"data":{"sessionID":"ses_1","delta":"hola"}}"#
+    // opencode 2.1.2 session events, from the v2.1.2 schema (packages/schema/src/session-event.ts),
+    // not a live capture. session.archived and session.deleted carry only data.sessionID.
+    static let sessionCreatedChild = #"{"id":"evt_20","created":20,"type":"session.created","location":{"directory":"/tmp/oc-prueba"},"data":{"sessionID":"ses_hija","projectID":"prj_1","location":{"directory":"/tmp/oc-prueba"},"parentID":"ses_1","slug":"explora-repo","title":"Explora el repo","agent":"general","version":"2.1.2"}}"#
+    static let sessionArchived = #"{"id":"evt_21","created":21,"type":"session.archived","location":{"directory":"/tmp/oc-prueba"},"data":{"sessionID":"ses_1"}}"#
+    static let sessionDeleted = #"{"id":"evt_22","created":22,"type":"session.deleted","location":{"directory":"/tmp/oc-prueba"},"data":{"sessionID":"ses_1"}}"#
+
+    // Bodies of GET /api/session/{id} in opencode 2.1.2 (packages/schema/src/session.ts):
+    // {"data": Session.Info}; time.* in milliseconds.
+    static let sessionInfoChild = #"{"data":{"id":"ses_hija","parentID":"ses_1","projectID":"prj_1","cost":0,"tokens":{"input":0,"output":0,"reasoning":0,"cache":{"read":0,"write":0}},"time":{"created":1794199000000,"updated":1794199050000},"title":"Explora el repo","location":{"directory":"/tmp/oc-prueba"}}}"#
+    static let sessionInfoArchivedRoot = #"{"data":{"id":"ses_1","projectID":"prj_1","cost":0,"tokens":{"input":0,"output":0,"reasoning":0,"cache":{"read":0,"write":0}},"time":{"created":1794198000000,"updated":1794199100000,"archived":1794199200000},"title":"Sesión raíz","location":{"directory":"/tmp/oc-prueba"}}}"#
 }

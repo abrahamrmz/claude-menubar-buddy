@@ -18,6 +18,18 @@ public enum CardSafety {
         return now.timeIntervalSince(shownAt) >= criticalHotKeyDelay
     }
 
+    /// How long the card's session-grant button ignores a click. The widest
+    /// grant in the app comes from a deliberate click, never a reflex; unlike
+    /// the hotkey it does not care whether the request is critical (spec 9.1).
+    public static let sessionGrantDelay: TimeInterval = 1.5
+
+    public static func sessionGrantMayFire(shownAt: Date?, now: Date) -> Bool {
+        // nil means "can't tell when it appeared": safe answer is no. A clock
+        // that went back gives a negative interval and is refused too.
+        guard let shownAt else { return false }
+        return now.timeIntervalSince(shownAt) >= sessionGrantDelay
+    }
+
     public static func batchAllowable<T>(_ items: [T], isCritical: (T) -> Bool) -> [T] {
         items.filter { !isCritical($0) }
     }

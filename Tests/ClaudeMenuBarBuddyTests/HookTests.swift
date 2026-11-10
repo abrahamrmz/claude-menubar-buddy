@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import BuddyCore
 
 // Fixture harness for the REAL hook.sh — the piece that decides what runs
 // without a card, exercised end-to-end: request JSON in on stdin, decision
@@ -60,6 +61,26 @@ struct HookTests {
         }
 
         func cleanup() { try? FileManager.default.removeItem(at: home) }
+
+        /// A session grant on disk, as the card's button would write it.
+        func grant(_ sessionID: String, cwd: String = "/tmp/proyX") -> Bool {
+            SessionGrantStore(configDirectory: configDir).grant(SessionGrant(
+                agent: "claude", sessionID: sessionID, cwd: cwd, project: (cwd as NSString).lastPathComponent,
+                grantedAt: Date().timeIntervalSince1970, trigger: "Bash: python3 x.py"))
+        }
+
+        /// A stand-in buddy-rule that ignores its input and prints `output`.
+        func fakeRule(_ output: String) throws -> String {
+            let fake = home.appendingPathComponent("fake-rule")
+            try "#!/bin/sh\ncat >/dev/null\nprintf '%s' '\(output)'\n".write(to: fake, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fake.path)
+            return fake.path
+        }
+
+        func autoLogLineCount() -> Int {
+            let text = (try? String(contentsOf: configDir.appendingPathComponent("auto_decisions.jsonl"), encoding: .utf8)) ?? ""
+            return text.split(separator: "\n").count
+        }
 
         func firstRequestFile() throws -> URL? {
             try FileManager.default.contentsOfDirectory(at: configDir, includingPropertiesForKeys: nil)
@@ -150,8 +171,10 @@ struct HookTests {
         }
     }
 
-    private func bash(_ command: String, cwd: String = "/tmp/proyX") -> [String: Any] {
-        ["tool_name": "Bash", "tool_input": ["command": command], "cwd": cwd]
+    private func bash(_ command: String, cwd: String = "/tmp/proyX", session: String? = nil) -> [String: Any] {
+        var input: [String: Any] = ["tool_name": "Bash", "tool_input": ["command": command], "cwd": cwd]
+        if let session { input["session_id"] = session }
+        return input
     }
 
     private func edit(_ path: String) -> [String: Any] {
@@ -560,5 +583,105 @@ struct HookTests {
         let run = try h.run(bash("rm -rf /tmp/x"))  // no respond → harness TERMs
         #expect(run.cardShown)
         #expect(try h.firstRequestFile() == nil)
+    }
+
+    // MARK: - Auto completo por sesión
+
+    @Test func requestCarriesTheSessionAndWhetherAGrantWouldCoverIt() throws {
+        let h = try Harness()
+        defer { h.cleanup() }
+        let python = try h.run(bash("python3 x.py", session: "ses-a"), respond: ["decision": "allow"])
+        #expect(python.request?["session"] as? String == "ses-a")
+        #expect(python.request?["session_coverable"] as? Bool == true)
+        let push = try h.run(bash("git push"), respond: ["decision": "allow"])
+        #expect(push.request?["session"] as? String == "")
+        #expect(push.request?["session_coverable"] as? Bool == false)
+    }
+
+    /// No app, no icon announcing the grant: the grant does not apply.
+    @Test func noAppMeansNativePromptEvenWithASessionGrant() throws {
+        let h = try Harness()
+        defer { h.cleanup() }
+        #expect(h.grant("ses-a"))
+        let run = try h.run(bash("python3 x.py", session: "ses-a"), appRunning: false)
+        #expect(run.stdout == "{}")
+        #expect(!run.cardShown)
+        #expect(h.autoLogLineCount() == 0)
+    }
+
+    @Test func aSessionGrantPassesWithoutACard() throws {
+        let h = try Harness()
+        defer { h.cleanup() }
+        #expect(h.grant("ses-a"))
+        let run = try h.run(bash("python3 x.py", session: "ses-a"))
+        assertAllowed(run, reasonContains: "Auto completo de esta sesión (ejecuta)")
+        #expect(!run.cardShown)
+        #expect(h.autoLogLineCount() == 1)
+    }
+
+    @Test func anotherSessionsGrantDoesNotApply() throws {
+        let h = try Harness()
+        defer { h.cleanup() }
+        #expect(h.grant("ses-a"))
+        #expect(try h.run(bash("python3 x.py", session: "ses-b")).cardShown)
+    }
+
+    @Test func unansweredPushUnderAGrantGoesBackToThePrompt() throws {
+        let h = try Harness()
+        defer { h.cleanup() }
+        #expect(h.grant("ses-a"))
+        let run = try h.run(bash("git push", session: "ses-a"), extraEnv: ["BUDDY_HOOK_WAIT_TICKS": "2"],
+                            letItTimeOut: true)
+        #expect(run.cardShown)
+        #expect(run.decision?["permissionDecision"] as? String == "ask")
+        #expect((run.decision?["permissionDecisionReason"] as? String ?? "").contains("sale de tu máquina: git push"))
+    }
+
+    /// On timeout the hook only reads the rule's answer. A stand-in rule
+    /// plays each answer, including a held request that isn't critical (which
+    /// only the session-hold rules of block 1 produce) and an old buddy-rule
+    /// that doesn't know ask_on_timeout yet.
+    @Test(arguments: [
+        // Held, not critical, in a session with a grant: back to the agent's prompt.
+        (#"{"verdict":"card","category":"desconocido","critical":false,"reason":"retenido: x","grant":null,"session_coverable":false,"ask_on_timeout":true}"#, "ask"),
+        // The same request without a grant: the native flow, as today.
+        (#"{"verdict":"card","category":"desconocido","critical":false,"reason":"la regla no reconoce: x","grant":null,"session_coverable":false,"ask_on_timeout":false}"#, nil),
+        // An old buddy-rule without ask_on_timeout: critical decides, as today.
+        (#"{"verdict":"card","category":"ejecuta","critical":true,"reason":"ejecuta código: python3","grant":null}"#, "ask"),
+        (#"{"verdict":"card","category":"lectura","critical":false,"reason":"solo lee","grant":null}"#, nil),
+        // Never less than critical, whatever ask_on_timeout says.
+        (#"{"verdict":"card","category":"ejecuta","critical":true,"reason":"ejecuta código: python3","grant":null,"session_coverable":true,"ask_on_timeout":false}"#, "ask"),
+    ] as [(String, String?)])
+    func timeoutFollowsAskOnTimeout(ruleOutput: String, expected: String?) throws {
+        let h = try Harness()
+        defer { h.cleanup() }
+        let run = try h.run(bash("x", session: "ses-a"),
+                            extraEnv: ["BUDDY_RULE": try h.fakeRule(ruleOutput), "BUDDY_HOOK_WAIT_TICKS": "2"],
+                            letItTimeOut: true)
+        #expect(run.cardShown)
+        if let expected {
+            #expect(run.decision?["permissionDecision"] as? String == expected, "got: \(run.stdout)")
+        } else {
+            #expect(run.stdout == "{}")
+        }
+    }
+
+    @Test func anOldRuleIsNeverCoverable() throws {
+        let h = try Harness()
+        defer { h.cleanup() }
+        let old = try h.fakeRule(#"{"verdict":"card","category":"lectura","critical":false,"reason":"solo lee","grant":null}"#)
+        let run = try h.run(bash("ls", session: "ses-a"), respond: ["decision": "allow"], extraEnv: ["BUDDY_RULE": old])
+        #expect(run.request?["session"] as? String == "ses-a")
+        #expect(run.request?["session_coverable"] as? Bool == false)
+    }
+
+    @Test func noRuleAnswerIsNeverCoverable() throws {
+        let h = try Harness()
+        defer { h.cleanup() }
+        let run = try h.run(bash("ls", session: "ses-a"),
+                            extraEnv: ["BUDDY_RULE": "/nonexistent/buddy-rule", "BUDDY_HOOK_WAIT_TICKS": "2"],
+                            letItTimeOut: true)
+        #expect(run.request?["session_coverable"] as? Bool == false)
+        #expect(run.decision?["permissionDecision"] as? String == "ask")
     }
 }

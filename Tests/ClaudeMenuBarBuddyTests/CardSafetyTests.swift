@@ -17,6 +17,22 @@ import BuddyCore
         #expect(!CardSafety.hotKeyMayApprove(critical: true, shownAt: nil, now: t0))
     }
 
+    @Test func sessionGrantButtonWaitsOneAndAHalfSeconds() {
+        #expect(CardSafety.sessionGrantDelay == 1.5)
+        #expect(!CardSafety.sessionGrantMayFire(shownAt: t0, now: t0))
+        #expect(!CardSafety.sessionGrantMayFire(shownAt: t0, now: t0.addingTimeInterval(1.49)))
+        #expect(CardSafety.sessionGrantMayFire(shownAt: t0, now: t0.addingTimeInterval(1.5)))
+        #expect(CardSafety.sessionGrantMayFire(shownAt: t0, now: t0.addingTimeInterval(30)))
+    }
+
+    @Test func sessionGrantButtonRefusesWithoutAShownTime() {
+        #expect(!CardSafety.sessionGrantMayFire(shownAt: nil, now: t0))
+    }
+
+    @Test func sessionGrantButtonRefusesAClockThatWentBack() {
+        #expect(!CardSafety.sessionGrantMayFire(shownAt: t0, now: t0.addingTimeInterval(-5)))
+    }
+
     @Test func batchSkipsCritical() {
         let items = [("a", false), ("b", true), ("c", false)]
         #expect(CardSafety.batchAllowable(items, isCritical: { $0.1 }).map(\.0) == ["a", "c"])

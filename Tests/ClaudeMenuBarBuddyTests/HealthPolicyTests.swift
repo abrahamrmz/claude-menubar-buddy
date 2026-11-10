@@ -66,6 +66,48 @@ import BuddyCore
                 == .complete(count: HealthPolicy.expectedMatchers.count))
     }
 
+    // MARK: - Event wiring (SessionEnd)
+
+    private let notify = "/Users/x/.config/claude-menubar-buddy/notify-done.sh"
+
+    private func events(_ body: String) -> Data { settings(#"{"hooks": {\#(body)}}"#) }
+
+    private func eventEntry(_ command: String) -> String {
+        #"[{"hooks": [{"type": "command", "command": "\#(command)", "timeout": 5}]}]"#
+    }
+
+    @Test func sessionEndWiredToNotifyDone() {
+        let json = events(#""Stop": \#(eventEntry(notify)), "SessionEnd": \#(eventEntry(notify))"#)
+        #expect(HealthPolicy.eventWired(settingsJSON: json, event: "SessionEnd"))
+    }
+
+    @Test func otherEventsDoNotCountForSessionEnd() {
+        let json = events(#""UserPromptSubmit": \#(eventEntry(notify)), "Stop": \#(eventEntry(notify))"#)
+        #expect(!HealthPolicy.eventWired(settingsJSON: json, event: "SessionEnd"))
+    }
+
+    @Test func aForeignSessionEndHookIsNotOurs() {
+        let json = events(#""SessionEnd": \#(eventEntry("/somewhere/else/cleanup.sh"))"#)
+        #expect(!HealthPolicy.eventWired(settingsJSON: json, event: "SessionEnd"))
+    }
+
+    @Test func oursAmongOthersCounts() {
+        let both = #"[{"hooks": [{"type": "command", "command": "/somewhere/else/cleanup.sh"}]}, "#
+            + #"{"hooks": [{"type": "command", "command": "\#(notify)", "timeout": 5}]}]"#
+        #expect(HealthPolicy.eventWired(settingsJSON: events(#""SessionEnd": \#(both)"#), event: "SessionEnd"))
+    }
+
+    @Test func noHooksOrBrokenJSONIsNotWired() {
+        #expect(!HealthPolicy.eventWired(settingsJSON: settings("{}"), event: "SessionEnd"))
+        #expect(!HealthPolicy.eventWired(settingsJSON: settings("{not json"), event: "SessionEnd"))
+        #expect(!HealthPolicy.eventWired(settingsJSON: events(#""SessionEnd": "notify-done.sh""#), event: "SessionEnd"))
+    }
+
+    @Test func theMarkerCanBeChosen() {
+        let json = events(#""SessionEnd": \#(eventEntry("/opt/x/other.sh"))"#)
+        #expect(HealthPolicy.eventWired(settingsJSON: json, event: "SessionEnd", hookMarker: "x/other.sh"))
+    }
+
     // MARK: - Transcript shape
 
     private func transcriptRecord(usage: Any?, content: Any?) -> [String: Any] {

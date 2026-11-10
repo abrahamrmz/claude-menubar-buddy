@@ -14,13 +14,18 @@ public struct HistoryLine: Equatable {
     /// lines, which is what the rule did to them.
     public let decision: String
     public let isAuto: Bool
+    /// The grant field exactly as the line carries it. An auto line without
+    /// the field predates session grants and counts as "auto".
+    public let grant: String?
 
-    public init(ts: Double, tool: String, project: String, decision: String, isAuto: Bool) {
+    public init(ts: Double, tool: String, project: String, decision: String, isAuto: Bool,
+                grant: String? = nil) {
         self.ts = ts
         self.tool = tool
         self.project = project
         self.decision = decision
         self.isAuto = isAuto
+        self.grant = grant
     }
 }
 
@@ -38,12 +43,28 @@ public enum DecisionHistory {
                                tool: tool,
                                project: object["project"] as? String ?? "",
                                decision: isAuto ? "allow" : object["decision"] as? String ?? "",
-                               isAuto: isAuto)
+                               isAuto: isAuto,
+                               grant: object["grant"] as? String)
         }
     }
 
     /// The newest `limit` lines across both logs.
     public static func latest(_ human: [HistoryLine], _ auto: [HistoryLine], limit: Int) -> [HistoryLine] {
         Array((human + auto).sorted { $0.ts > $1.ts }.prefix(limit))
+    }
+}
+
+extension DecisionHistory {
+    /// The glyph for an auto line, by how it passed. Human lines get nil,
+    /// whatever their grant: the menu gives them their own icons, and the
+    /// click that creates a grant is a human "allow" with grant "session"
+    /// that is not a pass by grant.
+    public static func glyph(for line: HistoryLine) -> String? {
+        guard line.isAuto else { return nil }
+        switch line.grant {
+        case "session": return "\u{21C9}"
+        case "concesion": return "\u{25E6}"
+        default: return "\u{26A1}\u{FE0E}"
+        }
     }
 }

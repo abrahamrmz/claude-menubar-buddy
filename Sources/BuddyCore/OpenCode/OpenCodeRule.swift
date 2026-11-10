@@ -32,7 +32,8 @@ public enum OpenCodeRule {
     }
 
     /// The worst assessment over those subjects (highest severity, first wins on ties) and the
-    /// subject it came from. An empty list is Assessment(.desconocido, "la regla no reconoce: ACTION").
+    /// subject it came from, mixed like Assessment.worse: the winner inherits a loser's hold.
+    /// An empty list is Assessment(.desconocido, "la regla no reconoce: ACTION").
     public static func assess(_ request: OpenCodePermissionRequest, toolInput: [String: String]?,
                               directory: String, context: RuleContext) -> (subject: RuleSubject, assessment: Assessment) {
         let mapped = subjects(for: request, toolInput: toolInput, directory: directory)
@@ -40,9 +41,8 @@ public enum OpenCodeRule {
         var best: (subject: RuleSubject, assessment: Assessment) = (candidates[0], CommandRule.assess(candidates[0], context: context))
         for subject in candidates.dropFirst() {
             let assessment = CommandRule.assess(subject, context: context)
-            if assessment.category.severity > best.assessment.category.severity {
-                best = (subject, assessment)
-            }
+            let mixed = Assessment.worse(best.assessment, assessment)!
+            best = (assessment.category.severity > best.assessment.category.severity ? subject : best.subject, mixed)
         }
         return best
     }

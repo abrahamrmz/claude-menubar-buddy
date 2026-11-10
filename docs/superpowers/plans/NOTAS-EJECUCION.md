@@ -42,3 +42,43 @@ Los dos primeros porque `sed` y `find` no están en ningún `CommandCatalog`, y 
 2. El paso 1 pide «una `URLSession` propia con delegado». En Foundation, `URLSession.delegate` es de solo lectura: solo se fija al construir la sesión con `init(configuration:delegate:delegateQueue:)`. Como `self` todavía no existe antes de `super.init()`, no se puede asignar el delegado después.
 
 **Qué se hizo (sin cambiar el diseño):** `OpenCodeService.load(from: OpenCodeService.defaultFile)`, que es lo que el plan quiere decir; y la sesión del stream se declaró `lazy` con `delegate: self`, en lugar de asignar el delegado tras `init`. Los endpoints, el ciclo de reconexión y la recuperación son los del plan, y el delegado sigue recibiendo solo los eventos del stream porque las demás llamadas van por una `URLSession` aparte.
+
+---
+
+## Tarea 13 (entrega 5): tres comprobaciones de lectura del paso 7 chocan con el propio plan
+
+**Paso:** paso 7 («revisar el diff»).
+
+**Qué pasó:** tres de las comprobaciones del paso 7 no se cumplen tal cual, pero no porque falte nada en el código — el código es exactamente el bloque que da el propio plan — sino porque sus expectativas contradicen instrucciones anteriores del mismo plan:
+
+1. «`git grep -n "SessionGrantStore(" Sources/ClaudeMenuBarBuddy` aparece solo en `Prefs.swift`». Aparece también en `OpenCodeBridge.swift`, que es lo que el bloque 3 manda explícitamente: la línea 4248 del plan dice «`Prefs.sessionGrantStore` llega en la tarea 13; el puente tiene el suyo, sobre la misma carpeta», y la tarea 11 (paso 1) escribe `self.grantStore = SessionGrantStore(configDirectory: configDir)`.
+2. «`git grep -n "sweepExpired\|grantEnded" Sources/ClaudeMenuBarBuddy` aparece solo en `SessionGrants.swift` (la tarea 14 sumará `Menus.swift`)». Aparece también en `OpenCodeBridge.swift` (bloque 3, tarea 11): al recibir `sessionEnded` el puente llama a `AutoLog.append(.grantEnded(…, cause: .sessionEnded, …))`.
+3. «`git grep -n "decisions.jsonl\|writeDecision\|openCodeBridge" Sources/ClaudeMenuBarBuddy/SessionGrants.swift` no encuentra nada». Encuentra dos coincidencias, ambas en el comentario que el propio plan manda copiar textualmente (líneas 4920–4921: «never in `decisions.jsonl`, which is what you answered»). Ninguna línea de código escribe en ese archivo ni toca el puente.
+
+**Qué se hizo:** nada en el código: se copió el bloque de `SessionGrants.swift` tal cual (verbatim), y el objetivo real de las tres comprobaciones se cumple — el barrido de la app no escribe en `decisions.jsonl`, no pasa por `writeDecision` ni por el puente de opencode, y no crea concesiones. Las expectativas de los greps quedaron desactualizadas respecto al bloque 3 y respecto al propio comentario verbatim del plan. Se deja anotado para que quien revise lo confirme; no se cambió ninguna decisión de diseño.
+
+**Comprobaciones del paso 7 que sí se cumplen:** `openCodeBridge?.sweepCoveredCards()` va antes de `var requests = orderedRequests()`; `\.grant(` no aparece en `Sources/ClaudeMenuBarBuddy`; `sessionCoverableFlag` es `Bool?` y `session` es `String?`; `tickSessionGrants()` queda después de `if isDismissing { return }`.
+
+---
+
+## Tarea 16 (entrega 5): el paso 9 dice «cinco salidas» y el propio bloque del plan tiene seis
+
+**Paso:** paso 9 («revisar el diff»), primera comprobación.
+
+**Qué pasó:** dice «Las cinco salidas de `notifyFreshnessCheck` y `sessionEndCheck` llevan `optional: true`», pero el bloque verbatim que el propio plan manda copiar tiene seis salidas (`return Check`): tres en `notifyFreshnessCheck` (omitido, igual, distinto) y tres en `sessionEndCheck` (omitido, conectado, no conectado). Las seis llevan `optional: true`.
+
+**Qué se hizo:** nada en el código: se copió el bloque tal cual. La intención de la comprobación —«las dos son opcionales en todas sus salidas», para que nunca enciendan el aviso del menú— se cumple con las seis. Se deja anotado para que quien revise lo confirme; no se cambió nada.
+
+**Las otras dos comprobaciones del paso 9 sí se cumplen:** `Health.swift` sólo lee `settings.json` con `Data(contentsOf:)` (ninguna escritura), y el JSON del paso 4b de `SKILL.md` es válido (con `SessionEnd` junto a `UserPromptSubmit`, `Stop` y `PreCompact`).
+
+---
+
+## Tarea 17 (entrega 5): el grep del paso 2 busca el tipo con mayúscula y el código usa la propiedad en minúscula
+
+**Paso:** paso 2 («la concesión solo nace en un lugar»).
+
+**Qué pasó:** la comprobación es `grep -rn "SessionGrantStore" Sources --include='*.swift' | grep "\.grant("`, y su esperado es «una sola línea, en `Sources/ClaudeMenuBarBuddy/CardDecision.swift`». Pero la línea que crea la concesión usa la propiedad `sessionGrantStore` (minúscula), que es exactamente lo que el plan manda escribir en la tarea 15 (`guard sessionGrantStore.grant(grant, now: now) else {`, línea 5330 del plan): `SessionGrantStore` con mayúscula es el *tipo*, y no aparece en esa línea. Con el grep tal cual, la salida queda vacía.
+
+**Qué se hizo:** nada en el código. La intención de la comprobación se verifica con la del paso 4 de la tarea 15: `grep -rn "\.grant(" Sources --include='*.swift'` da exactamente una línea, `Sources/ClaudeMenuBarBuddy/CardDecision.swift:447`, el único lugar que crea concesiones. Es un desajuste de mayúsculas en la línea del grep, no una concesión de más.
+
+**Los otros pasos de la tarea 17 se cumplen:** build limpio desde cero y `Test run with 466 tests passed` con `shellcheck` sin salida (paso 1); `pgrep` (línea 33) antes que `RULE_BIN=` (línea 45) en `hook.sh` (paso 3); `git status` vacío y un commit por tarea (1 a 16) más los de la spec y el plan por encima de `origin/personal` (paso 4).

@@ -70,9 +70,16 @@ public enum OpenCodeEvent: Equatable {
     case toolCalled(sessionID: String, callID: String, input: [String: String])   // only the string-valued inputs
     case formCreated(OpenCodeForm, directory: String?)
     case formClosed(sessionID: String, formID: String)       // form.replied or form.cancelled
-    case sessionCreated(sessionID: String, directory: String?)
+    case sessionCreated(sessionID: String, directory: String?, parentID: String?)
     case executionStarted(sessionID: String)
     case executionFinished(sessionID: String)                // succeeded, failed or interrupted
+    case sessionEnded(sessionID: String)                     // session.deleted or session.archived
+    /// Synthetic: the bridge's own GET /api/session/{id}. parentID nil = a root session.
+    case sessionInfo(sessionID: String, parentID: String?, archived: Bool)
+    /// Synthetic: that GET answered 404.
+    case sessionGone(sessionID: String)
+    /// Synthetic: that GET failed, or `OpenCodeBridgeCore.lineageWait` went by without an answer.
+    case lineageUnavailable(sessionID: String)
     case other(type: String)
 
     /// nil when the text isn't a JSON object with a string "type"; `.other(type)` for a type the
@@ -149,7 +156,16 @@ public enum OpenCodeEvent: Equatable {
 
         case "session.created":
             guard let sessionID = data["sessionID"] as? String else { return .other(type: type) }
-            return .sessionCreated(sessionID: sessionID, directory: directory)
+            return .sessionCreated(sessionID: sessionID, directory: directory,
+                                   parentID: nonEmptyString(data["parentID"]))
+
+        case "session.deleted", "session.archived":
+            // The exact shape wasn't captured live: try data.sessionID, then
+            // data.id, then data.info.id. No usable id: not our event.
+            let infoID = (data["info"] as? [String: Any])?["id"]
+            guard let sessionID = nonEmptyString(data["sessionID"]) ?? nonEmptyString(data["id"])
+                    ?? nonEmptyString(infoID) else { return .other(type: type) }
+            return .sessionEnded(sessionID: sessionID)
 
         case "session.execution.started":
             guard let sessionID = data["sessionID"] as? String else { return .other(type: type) }
@@ -162,5 +178,50 @@ public enum OpenCodeEvent: Equatable {
         default:
             return .other(type: type)
         }
+    }
+
+    private static func nonEmptyString(_ value: Any?) -> String? {
+        guard let text = value as? String, !text.isEmpty else { return nil }
+        return text
+    }
+}
+
+extension OpenCodeEvent {
+    /// Builds .sessionInfo from the body of GET /api/session/{id} ({"data": Session.Info} or the bare object).
+    /// nil — read by the bridge as "lineage unavailable" — unless the object's `id` is `sessionID` and
+    /// `parentID` is absent, null or a non-empty string.
+    public static func sessionInfo(sessionID: String, responseBody: Data) -> OpenCodeEvent? {
+        guard let object = try? JSONSerialization.jsonObject(with: responseBody),
+              let root = object as? [String: Any] else { return nil }
+        // With a "data" key the info is its value (and must be an object);
+        // without it, the object itself, as each item of GET /api/session comes.
+        let info: [String: Any]
+        if let data = root["data"] {
+            guard let dict = data as? [String: Any] else { return nil }
+            info = dict
+        } else {
+            info = root
+        }
+        // Another session's body must never lend its parent to this one.
+        guard let id = info["id"] as? String, id == sessionID else { return nil }
+
+        let parentID: String?
+        if let raw = info["parentID"] {
+            if raw is NSNull {
+                parentID = nil
+            } else if let text = raw as? String, !text.isEmpty {
+                parentID = text
+            } else {
+                return nil
+            }
+        } else {
+            parentID = nil
+        }
+
+        var archived = false
+        if let time = info["time"] as? [String: Any], let raw = time["archived"] {
+            archived = !(raw is NSNull)
+        }
+        return .sessionInfo(sessionID: sessionID, parentID: parentID, archived: archived)
     }
 }

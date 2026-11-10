@@ -75,6 +75,14 @@ import BuddyCore
         #expect(ShellScript.parse("cat <<-EOF\n\tx\n\tEOF").commands[0].heredocBody == "x")
     }
 
+    @Test func aHeredocBelongsToTheCommandThatOpenedIt() {
+        let piped = ShellScript.parse("bash <<EOF | cat\ngit push\nEOF")
+        #expect(piped.commands.map { $0.words.first?.text } == ["bash", "cat"])
+        #expect(piped.commands.map(\.heredocBody) == ["git push", nil])
+        #expect(ShellScript.parse("bash <<A; cat <<B\nuno\nA\ndos\nB").commands.map(\.heredocBody) == ["uno", "dos"])
+        #expect(ShellScript.parse("bash <<A <<B\nuno\nA\ndos\nB").commands.map(\.heredocBody) == ["uno\ndos"])
+    }
+
     @Test(arguments: ["cat <<EOF\nno end", "echo 'unterminated", #"echo "open"#, "echo $(ls", "echo `ls", "echo $((1+2)"])
     func malformedInputIsUnparseable(source: String) {
         #expect(ShellScript.parse(source).unparseable)

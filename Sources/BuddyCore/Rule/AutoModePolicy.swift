@@ -9,6 +9,7 @@ public enum Verdict: String, Equatable {
 public enum Grant: String, Equatable {
     case auto
     case always
+    case session
 }
 
 public struct RuleDecision: Equatable {
@@ -33,9 +34,11 @@ public struct RuleDecision: Equatable {
 public enum AutoModePolicy {
     /// The order is the promise: a question never passes on its own, a grant
     /// never covers something critical, and auto mode never reaches past the
-    /// categories it was allowed to wave through.
+    /// categories it was allowed to wave through. A session grant comes last,
+    /// so `.session` marks only what passed thanks to it (spec 5.4).
     public static func decide(subject: RuleSubject, assessment: Assessment, autoMode: Bool,
-                              allowList: AlwaysAllow, cwd: String?, planMode: Bool) -> RuleDecision {
+                              allowList: AlwaysAllow, cwd: String?, planMode: Bool,
+                              sessionGrant: Bool = false) -> RuleDecision {
         if assessment.category == .pregunta {
             return RuleDecision(verdict: .card, assessment: assessment)
         }
@@ -55,6 +58,37 @@ public enum AutoModePolicy {
             return RuleDecision(verdict: .pass, assessment: assessment, grant: .auto)
         }
 
+        if sessionGrant && sessionGrantCovers(subject: subject, assessment: assessment) {
+            if planMode {
+                return RuleDecision(verdict: .deferToAgent, assessment: assessment)
+            }
+            return RuleDecision(verdict: .pass, assessment: assessment, grant: .session)
+        }
+
         return RuleDecision(verdict: .card, assessment: assessment)
+    }
+
+    /// The reason for what a session grant covers, in one place: `buddy-rule`
+    /// and the app's queue sweep (block 4) say the same thing, from here.
+    public static func sessionGrantReason(category: RuleCategory) -> String {
+        "Auto completo de esta sesión (\(category.rawValue)) vía Claude Menu Bar Buddy"
+    }
+
+    /// The only place that decides what a session grant covers (spec 5.1).
+    /// The web passes although it is `.sale`: the user chose so. Anything
+    /// else with a hold (`effectiveHold`) never passes on a grant.
+    public static func sessionGrantCovers(subject: RuleSubject, assessment: Assessment) -> Bool {
+        if case .web = subject { return true }
+        guard assessment.effectiveHold == nil else { return false }
+        switch subject {
+        case .shell:
+            return ![.sale, .rutaProtegida, .pregunta].contains(assessment.category)
+        case .fileEdit:
+            return assessment.category == .edicion || assessment.category == .sensible
+        case .fileRead, .web:
+            return true
+        case .question, .other:
+            return false
+        }
     }
 }

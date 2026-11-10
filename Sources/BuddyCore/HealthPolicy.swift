@@ -68,6 +68,25 @@ public enum HealthPolicy {
                                : .partial(wired: wired.count, missing: missing)
     }
 
+    // MARK: - Event wiring
+
+    /// Whether settings.json wires `event` to a command containing hookMarker.
+    /// A separate check from `wiring`: these events carry no matcher and are
+    /// not part of the card's PreToolUse setup.
+    public static func eventWired(settingsJSON: Data, event: String,
+                                  hookMarker: String = "claude-menubar-buddy/notify-done.sh") -> Bool {
+        guard let root = try? JSONSerialization.jsonObject(with: settingsJSON) as? [String: Any],
+              let hooks = root["hooks"] as? [String: Any],
+              let entries = hooks[event] as? [[String: Any]] else { return false }
+        return entries.contains { entry in
+            guard let commands = entry["hooks"] as? [[String: Any]] else { return false }
+            return commands.contains { command in
+                guard let text = command["command"] as? String else { return false }
+                return text.contains(hookMarker)
+            }
+        }
+    }
+
     // MARK: - Transcript shape
 
     /// The transcript fields the buddy reads, named the way the check reports

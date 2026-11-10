@@ -15,7 +15,7 @@ When Claude Code needs a permission decision (Bash, Edit/MultiEdit/Write, Notebo
 - **Questions, not just permissions** — `AskUserQuestion` options become buttons (⌘1-4) answered through the tool's own `answers` field; multi-question calls are walked one at a time. Plans get their three real choices: approve each edit, approve + auto-accept, or keep planning (a deny that says *why*).
 - **A queue you can reach into** — the orange `+N` badge lists what's waiting, jumps to any request (⌘1-9), and offers allow/deny-all behind a confirmation, because answering things you haven't read is what this app exists to prevent.
 - **Hand off with ↗** — the native prompt appears immediately with its full options. Cards are answerable for ~60 seconds (the hook's window); after that the native prompt owns the decision and the card retires itself. Long reads belong on ↗ from the start.
-- **Standing grants** — the lightning row on a Bash card remembers the base command *for that project*; on an edit or plan card it turns on auto mode. Both are covered in detail under [the two standing grants](#the-two-standing-grants).
+- **Standing grants** — the lightning row on a Bash card remembers the base command *for that project*; on an edit or plan card it turns on auto mode. Both are covered in detail under [the two standing grants](#the-two-standing-grants). On a card a session grant would cover, one more row leaves that one session in auto mode for everything except publishing — see [session auto mode](#session-auto-mode).
 
 ## The pet
 
@@ -81,6 +81,14 @@ The card only writes into `projects`, keyed on the session's absolute path and m
 
 A path is settled before it is matched, because one file answers to many spellings. Repeated slashes are squeezed, `/./` and symlinks resolved (`/etc` is really `/private/etc`, and a home directory can sit behind a link of its own), and the comparison is case-insensitive: on the case-insensitive volume macOS formats by default, a write to `.GIT/config` lands in `.git/config`, and a list that only knew the lowercase spelling would be a list you could walk around.
 
+### Session auto mode
+
+On a card that a session grant would cover, a third row offers **Permitir y dejar esta sesión en auto completo**: approve this request and let *this one session* through on everything except publishing — Python, tests, builds, `rm`, sensitive files and the agent's web reads included. What leaves the machine by shell (`git push`, deploys, `curl`, an `ssh` that does more than read), questions, plans and protected paths still get a card, and so does any command line that hides one of those (`sudo`, `bash -c`, `eval`, a command held in a variable). The row has no shortcut and ignores clicks for the first 1.5 s a card is up: the widest grant in the app comes from a deliberate click, never a reflex.
+
+The grant belongs to that session alone — another session in the same folder still asks — and in opencode to the root session, which covers its subagents. It ends when the session closes (the `SessionEnd` hook, see `SKILL.md` step 4b), when you switch it off under **Auto completo** in the menu (one row per session, and **Apagar en todas**), or after 8 hours without a request. While any is on, the menu bar icon carries a ▶▶ mark beside the panda, also while a card is up: the cards left in such a session are the ones that publish. Each grant is a file under `session_auto/` in the config directory, and its whole life — switched on, switched off and why, and everything it let through — goes to `auto_decisions.jsonl`.
+
+It guards against the agent's mistakes, not against a manipulated agent: a script can do anything, and the promise is about what the command line says. Switching it on is trusting that session.
+
 ## opencode
 
 The buddy also serves [opencode](https://opencode.ai). opencode v2 keeps a background service on this machine (`opencode serve --service`, started by its terminal), and the buddy connects to it by itself — only to the service on this machine, never a remote one — and shows its permission requests and its questions in the same card, judged by the same rule and the same auto mode as Claude Code's. A permission card's answer goes back to opencode; a question card offers the same options opencode's own picker would. The card says which agent is asking (`opencode · <project>`), and a finished turn gets the same toast, labelled `opencode — <project>`.
@@ -134,10 +142,13 @@ git checkout "$(git describe --tags --abbrev=0)"   # latest known-good state (CI
 swift build
 mkdir -p ~/.config/claude-menubar-buddy
 cp hook.sh ~/.config/claude-menubar-buddy/ && chmod +x ~/.config/claude-menubar-buddy/hook.sh
+cp notify-done.sh ~/.config/claude-menubar-buddy/ && chmod +x ~/.config/claude-menubar-buddy/notify-done.sh
 cp .build/debug/buddy-rule ~/.config/claude-menubar-buddy/ && chmod +x ~/.config/claude-menubar-buddy/buddy-rule
 ```
 
-Then merge the `hooks.PreToolUse` block from `SKILL.md` into `~/.claude/settings.json` (real home directory in the path, not `~`), and optionally the LaunchAgent plist for start-at-login.
+The three installed files are snapshots: copy `hook.sh`, `notify-done.sh` and `buddy-rule` again after every `swift build`.
+
+Then merge the `hooks.PreToolUse` block from `SKILL.md` into `~/.claude/settings.json` (real home directory in the path, not `~`), the `UserPromptSubmit`, `Stop`, `PreCompact` and `SessionEnd` entries for `notify-done.sh` (step 4b), and optionally the LaunchAgent plist for start-at-login.
 
 **Requirements**: macOS 13+ · Swift 5.9+ (Command Line Tools) · `jq` · Python 3 + Pillow only to regenerate GIFs.
 
@@ -163,7 +174,7 @@ Sources/ClaudeMenuBarBuddy/
   Resources/Sounds/           # CC0 sounds + CREDITS.md (source, license, sha256)
 Tests/ClaudeMenuBarBuddyTests # hook fixtures, burn-rate shapes, art and sound audits
 hook.sh                       # the PreToolUse hook
-notify-done.sh                # UserPromptSubmit/Stop/PreCompact hook
+notify-done.sh                # UserPromptSubmit/Stop/PreCompact/SessionEnd hook
 generate_pets.py              # regenerates all pet art via PixelLab
 <pet>_manifest.json           # prompts, seed, character ids, crop box per pet
 ```
